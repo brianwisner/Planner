@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Segmented Shear Wall Analyzer — SDPWS</title>
+  <link rel="stylesheet" href="css/styles.css" />
+</head>
+<body>
+  <!-- ═══ Header ═══ -->
+  <header class="app-header">
+    <div class="header-content">
+      <h1>Segmented Shear Wall Analyzer</h1>
+      <p class="subtitle">Per AWC SDPWS-2021 &sect;4.3 — Individual Full-Height Wall Segments</p>
+    </div>
+  </header>
+
+  <main class="app-main">
+    <!-- ═══ Input Panel ═══ -->
+    <aside class="input-panel">
+
+      <!-- Wall Geometry -->
+      <section class="input-section">
+        <h2 class="section-title">Wall Geometry</h2>
+        <div class="form-row">
+          <label for="wallLength">Total Wall Length (ft)</label>
+          <input type="number" id="wallLength" value="20" min="1" step="0.5" />
+        </div>
+        <div class="form-row">
+          <label for="wallHeight">Wall Height (ft)</label>
+          <input type="number" id="wallHeight" value="8" min="1" step="0.5" />
+        </div>
+      </section>
+
+      <!-- Openings -->
+      <section class="input-section">
+        <h2 class="section-title">Openings</h2>
+        <div class="form-row">
+          <label for="numOpenings">Number of Openings</label>
+          <input type="number" id="numOpenings" value="0" min="0" max="20" step="1" />
+        </div>
+        <div id="openingsContainer" class="openings-container"></div>
+        <p class="help-text">X Position = distance from left edge of wall to left edge of opening.</p>
+      </section>
+
+      <!-- Sheathing / Nailing -->
+      <section class="input-section">
+        <h2 class="section-title">Sheathing &amp; Nailing <span class="ref-tag">Table 4.3A</span></h2>
+        <div class="form-row">
+          <label for="panelType">Panel Type</label>
+          <select id="panelType">
+            <option value="Structural I">Structural I</option>
+            <option value="Rated Sheathing">Rated Sheathing (Other)</option>
+          </select>
+        </div>
+        <div class="form-row">
+          <label for="panelThickness">Panel Thickness</label>
+          <select id="panelThickness">
+            <option value="">Select thickness...</option>
+          </select>
+        </div>
+        <div class="form-row">
+          <label for="nailSize">Nail Size</label>
+          <select id="nailSize">
+            <option value="">Select nail size...</option>
+          </select>
+        </div>
+        <div class="form-row">
+          <label for="edgeSpacing">Edge Nail Spacing</label>
+          <select id="edgeSpacing">
+            <option value="">Select spacing...</option>
+          </select>
+        </div>
+        <div class="form-row info-row">
+          <label>Min. Penetration</label>
+          <span id="penetrationDisplay" class="info-value">—</span>
+        </div>
+        <div class="form-row">
+          <label for="sheathingSides">Sheathing Sides</label>
+          <select id="sheathingSides">
+            <option value="1">One side</option>
+            <option value="2">Both sides (same construction)</option>
+          </select>
+        </div>
+        <div id="capacityInfo" class="capacity-info"></div>
+      </section>
+
+      <!-- Loading -->
+      <section class="input-section">
+        <h2 class="section-title">Loading</h2>
+        <div class="form-row">
+          <label for="loadType">Load Type</label>
+          <select id="loadType">
+            <option value="wind">Wind</option>
+            <option value="seismic">Seismic</option>
+          </select>
+        </div>
+        <div class="form-row">
+          <label for="designMethod">Design Method</label>
+          <select id="designMethod">
+            <option value="ASD">ASD (Ω = 2.0)</option>
+            <option value="LRFD">LRFD (φ = 0.80)</option>
+          </select>
+        </div>
+        <div class="form-row">
+          <label for="appliedLoad">Applied Lateral Load (lbs)</label>
+          <input type="number" id="appliedLoad" min="0" step="100" placeholder="e.g. 5000" />
+        </div>
+        <div class="form-row">
+          <label for="deadLoad">Dead Load on Wall (plf)</label>
+          <input type="number" id="deadLoad" value="0" min="0" step="10" />
+          <span class="help-text">For hold-down offset (0.6D for ASD, 0.9D for LRFD)</span>
+        </div>
+      </section>
+
+      <!-- Buttons -->
+      <div class="button-row">
+        <button id="analyzeBtn" class="btn btn-primary">Analyze Wall</button>
+        <button id="clearBtn" class="btn btn-secondary">Clear</button>
+      </div>
+    </aside>
+
+    <!-- ═══ Output Panel ═══ -->
+    <div class="output-panel">
+      <!-- Errors -->
+      <div id="errorsContainer" class="errors-container"></div>
+
+      <!-- Diagram -->
+      <section class="diagram-section">
+        <div id="diagramContainer" class="diagram-container">
+          <p class="diagram-placeholder">Enter wall dimensions to see diagram</p>
+        </div>
+      </section>
+
+      <!-- Results -->
+      <section id="resultsSection" class="results-section"></section>
+
+      <!-- Disclaimer -->
+      <footer class="disclaimer">
+        <p><strong>Disclaimer:</strong> This tool is provided for preliminary engineering analysis only.
+        All results must be verified by a licensed professional engineer. Capacity values are based on
+        SDPWS-2021 Table 4.3A for blocked wood structural panel shear walls with framing specific gravity
+        ≥ 0.42 (Douglas-Fir-Larch / Southern Pine). The engineer of record is responsible for confirming
+        all inputs, assumptions, and applicable code provisions.</p>
+      </footer>
+    </div>
+  </main>
+
+  <!-- Scripts (order matters: tables → analysis → diagram → app) -->
+  <script src="js/tables.js"></script>
+  <script src="js/analysis.js"></script>
+  <script src="js/diagram.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
