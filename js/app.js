@@ -25,6 +25,8 @@ document.addEventListener("DOMContentLoaded", () => {
   const resultsSection = document.getElementById("resultsSection");
   const errorsContainer = document.getElementById("errorsContainer");
   const capacityInfoDisplay = document.getElementById("capacityInfo");
+  const printBar = document.getElementById("printBar");
+  const printBtn = document.getElementById("printBtn");
 
   // ── State ──
   let currentResults = null;
@@ -209,6 +211,7 @@ document.addEventListener("DOMContentLoaded", () => {
     resultsSection.classList.remove("visible");
     errorsContainer.innerHTML = "";
     errorsContainer.classList.remove("visible");
+    printBar.classList.remove("visible");
   }
 
   function updateDiagram() {
@@ -304,7 +307,8 @@ document.addEventListener("DOMContentLoaded", () => {
     // Update diagram with results
     renderDiagram(diagramContainer, config, currentResults);
 
-    // Scroll to results
+    // Show print button and scroll to results
+    printBar.classList.add("visible");
     resultsSection.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
@@ -514,6 +518,7 @@ document.addEventListener("DOMContentLoaded", () => {
   wallHeightInput.addEventListener("input", updateDiagram);
   analyzeBtn.addEventListener("click", runAnalysis);
   clearBtn.addEventListener("click", clearAll);
+  printBtn.addEventListener("click", () => window.print());
 
   // ── Initialize ──
   populateThicknesses();

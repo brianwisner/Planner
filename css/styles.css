@@ -525,6 +525,29 @@ body {
   font-style: italic;
 }
 
+/* ── Print Bar ── */
+.print-bar {
+  display: none;
+  justify-content: flex-end;
+  margin-bottom: 1rem;
+}
+
+.print-bar.visible {
+  display: flex;
+}
+
+.btn-print {
+  flex: 0;
+  background: #37474f;
+  color: #fff;
+  padding: 0.5rem 1.25rem;
+  white-space: nowrap;
+}
+
+.btn-print:hover {
+  background: #455a64;
+}
+
 /* ── Disclaimer ── */
 .disclaimer {
   margin-top: 1.5rem;
@@ -597,7 +620,8 @@ body {
     break-inside: avoid;
   }
 
-  .btn {
-    display: none;
+  .btn,
+  .print-bar {
+    display: none !important;
   }
 }
