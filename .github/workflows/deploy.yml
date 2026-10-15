@@ -31,10 +31,12 @@ jobs:
           cache: npm
           cache-dependency-path: planner/package-lock.json
       - run: npm ci
+      # Supabase connection values are read from planner/.env.production
       - run: npm run build
-        env:
-          VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
-          VITE_SUPABASE_ANON_KEY: ${{ vars.VITE_SUPABASE_ANON_KEY }}
+      # Turns on GitHub Pages for this repository the first time it runs.
+      - uses: actions/configure-pages@v5
+        with:
+          enablement: true
       # Keep the shear wall analyzer reachable at /Who-knows/shear-wall/
       - run: mkdir -p dist/shear-wall && cp -r ../index.html ../css ../js dist/shear-wall/
       - uses: actions/upload-pages-artifact@v3
