@@ -76,6 +76,14 @@ Conventions:
 
 `planner/supabase/functions/ics/index.ts` is a Supabase Edge Function that returns an `.ics` feed for `?token=<profiles.ics_token>` (optionally `&mine=1`). It must be deployed with JWT verification OFF. Settings page shows each user their link. Client-side fallbacks: "Download .ics" and per-item Google Calendar links (`lib/calendar.ts`).
 
+### Google sign-in + reading Google Calendar
+
+- Login: `signInWithGoogle()` in `lib/google.ts` calls Supabase OAuth with scope `calendar.readonly`, `access_type=offline`, `prompt=consent`. Supabase must have the Google provider enabled (client id/secret from a Google Cloud OAuth client whose redirect URI is `https://axjyhkyvmbrhtivgofya.supabase.co/auth/v1/callback`) and the site URL in its redirect allow-list.
+- On the `SIGNED_IN` event (`App.tsx`) the one-time `provider_refresh_token` is saved to `google_tokens` (RLS: own row only).
+- `supabase/functions/google-calendar` (verify_jwt ON) refreshes the Google access token server-side using `private_config` rows `google_client_id` / `google_client_secret` (RLS with no policies → service role only) and returns calendars or events. The browser never sees Google credentials.
+- UI: `useGoogleEvents()` hook → Dashboard card + Calendar page (kind `google`, teal, external links). Settings → "Google account & calendar" picks which calendars (`profiles.google_calendar_ids`).
+- `settings.allowed_email_domains` is enforced in `handle_new_user()`; set it before enabling Google sign-in, otherwise any Google account could create a login (RLS lets every authenticated user read everything).
+
 ### Build / deploy
 
 - `cd planner && npm run build` must pass (`tsc -b && vite build`). `npm run lint` is oxlint (warnings only).

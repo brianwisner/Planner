@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { HashRouter, Route, Routes } from 'react-router-dom'
 import type { Session } from '@supabase/supabase-js'
 import { supabase } from './lib/supabase'
+import { saveGoogleTokensFromSession } from './lib/google'
 import { DataProvider, useData } from './lib/store'
 import { Layout } from './components/Layout'
 import { Login, SetPassword } from './pages/Login'
@@ -30,6 +31,10 @@ export default function App() {
     const { data: sub } = supabase.auth.onAuthStateChange((event, s) => {
       setSession(s)
       if (event === 'PASSWORD_RECOVERY') setNeedsPassword(true)
+      // Coming back from Google sign-in: keep the calendar access Google granted.
+      if (event === 'SIGNED_IN' && s?.provider_refresh_token) {
+        void saveGoogleTokensFromSession(s).then(() => { if (window.location.hash.includes('provider_token')) window.location.hash = '#/settings' })
+      }
     })
     return () => sub.subscription.unsubscribe()
   }, [])
