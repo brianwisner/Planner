@@ -42,7 +42,7 @@ export function calendarItems(store: Pick<Store, 'jobs' | 'phases' | 'tasks' | '
 
 function icsDate(d: Date) { return format(d, "yyyyMMdd'T'HHmmss") }
 function icsDay(iso: string) { return iso.replace(/-/g, '') }
-function icsEscape(s: string) { return s.replace(/\\/g, '\\\\').replace(/;/g, '\;').replace(/,/g, '\\,').replace(/\n/g, '\\n') }
+function icsEscape(s: string) { return s.replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\n/g, '\\n') }
 
 export function googleCalendarLink(item: CalItem, siteUrl: string): string {
   const base = 'https://calendar.google.com/calendar/render?action=TEMPLATE'

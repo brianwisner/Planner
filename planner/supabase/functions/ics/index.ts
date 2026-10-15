@@ -8,7 +8,7 @@ const SHORT: Record<string, string> = {
   design: 'Design', plan_check: 'Plan check', construction: 'Construction', client_changes: 'Client changes',
 }
 
-function esc(s: string) { return s.replace(/\\/g, '\\\\').replace(/;/g, '\;').replace(/,/g, '\\,').replace(/\n/g, '\\n') }
+function esc(s: string) { return s.replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\n/g, '\\n') }
 function day(iso: string) { return iso.slice(0, 10).replace(/-/g, '') }
 function nextDay(iso: string) { const d = new Date(iso.slice(0, 10) + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() + 1); return d.toISOString().slice(0, 10).replace(/-/g, '') }
 function stamp(d: Date) { return d.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '') }
