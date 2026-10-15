@@ -1,0 +1,75 @@
+@import "tailwindcss";
+
+:root {
+  --bg: #f6f6f4;
+  --surface: #ffffff;
+  --surface-2: #f0f0ed;
+  --text: #1f2933;
+  --muted: #5f6b76;
+  --line: #dcdfe3;
+  --accent: #0f6e6a;
+  --accent-soft: #e2f1ef;
+  --warn: #b45309;
+  --warn-soft: #fdf1e2;
+  --danger: #b91c1c;
+  --danger-soft: #fde8e8;
+  --ok: #1f7a4d;
+  --ok-soft: #e3f3ea;
+  --info: #3b5bdb;
+  --info-soft: #e8ecfb;
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-ink: var(--text);
+  --color-muted: var(--muted);
+  --color-line: var(--line);
+  --color-accent: var(--accent);
+  --color-accent-soft: var(--accent-soft);
+  --color-warn: var(--warn);
+  --color-warn-soft: var(--warn-soft);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-ok: var(--ok);
+  --color-ok-soft: var(--ok-soft);
+  --color-info: var(--info);
+  --color-info-soft: var(--info-soft);
+  --font-sans: var(--font-geist-sans), system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+}
+
+html { -webkit-text-size-adjust: 100%; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: 16px;
+  line-height: 1.5;
+}
+
+/* Shared primitives */
+.card { @apply bg-surface border border-line rounded-xl p-4 shadow-[0_1px_2px_rgba(0,0,0,0.04)] min-w-0; }
+.btn { @apply inline-flex items-center justify-center gap-2 rounded-lg px-3.5 py-2 text-sm font-medium border border-line bg-surface text-ink hover:bg-surface-2 active:bg-surface-2 disabled:opacity-50 disabled:cursor-not-allowed min-h-[40px] cursor-pointer whitespace-nowrap; }
+.btn-primary { @apply bg-accent text-white border-accent hover:bg-[#0c5c58] active:bg-[#0c5c58]; }
+.btn-danger { @apply bg-danger-soft text-danger border-danger-soft hover:bg-[#fbd5d5]; }
+.btn-sm { @apply px-2.5 py-1 text-xs min-h-[32px]; }
+.input, .select, .textarea { @apply w-full rounded-lg border border-line bg-surface px-3 py-2 text-base text-ink focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent min-h-[42px]; }
+.textarea { @apply min-h-[90px]; }
+.label { @apply block text-xs font-medium text-muted mb-1 uppercase tracking-wide; }
+.badge { @apply inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium whitespace-nowrap; }
+.table { @apply w-full text-sm; }
+.table th { @apply text-left text-xs uppercase tracking-wide text-muted font-medium py-2 px-2 border-b border-line; }
+.table td { @apply py-2 px-2 border-b border-line align-top; }
+.link { @apply text-accent hover:underline; }
+.h1 { @apply text-2xl font-semibold tracking-tight; }
+.h2 { @apply text-lg font-semibold; }
+.h3 { @apply text-sm font-semibold text-muted uppercase tracking-wide; }
+.muted { color: var(--muted); }
+
+@media print {
+  .no-print { display: none !important; }
+  body { background: white; }
+  .card { box-shadow: none; border: 1px solid #ccc; }
+}
