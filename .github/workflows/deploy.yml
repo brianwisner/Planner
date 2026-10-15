@@ -1,0 +1,54 @@
+# Builds the planner app and publishes it to GitHub Pages every time code
+# is pushed to the default branch. Nothing to run by hand.
+name: Deploy planner to GitHub Pages
+
+on:
+  push:
+    branches: [claude/shear-wall-analyzer-kQe3k, main]
+    paths-ignore: ['**.md']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: planner
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: planner/package-lock.json
+      - run: npm ci
+      # Supabase connection values are read from planner/.env.production
+      - run: npm run build
+      # Turns on GitHub Pages for this repository the first time it runs.
+      - uses: actions/configure-pages@v5
+        with:
+          enablement: true
+      # Keep the shear wall analyzer reachable at /Who-knows/shear-wall/
+      - run: mkdir -p dist/shear-wall && cp -r ../index.html ../css ../js dist/shear-wall/
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: planner/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

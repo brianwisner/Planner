@@ -1,0 +1,408 @@
+// Pop-up forms for creating and editing things: tasks, jobs, clients,
+// time entries and invoices. Every page reuses these.
+import { useEffect, useState } from 'react'
+import { useData } from '../lib/store'
+import type { Client, Invoice, Job, JobStatus, Recurrence, Task, TaskStatus, TimeEntry } from '../lib/types'
+import { JOB_STATUS_LABEL, RECURRENCE_LABEL, TASK_STATUS_LABEL } from '../lib/types'
+import { nextOccurrence, todayISO } from '../lib/utils'
+import { Modal, PersonSelect } from './ui'
+
+/* =============== Task =============== */
+export interface TaskDraft {
+  id?: string
+  job_id: string
+  phase_id: string | null
+  title: string
+  description: string
+  status: TaskStatus
+  assignee_id: string | null
+  due_date: string | null
+  scheduled_at: string | null
+  is_site_visit: boolean
+  estimate_hours: number | null
+  recurrence: Recurrence
+}
+
+export function TaskModal({ task, defaults, onClose }: { task?: Task; defaults?: Partial<TaskDraft>; onClose: () => void }) {
+  const { jobs, phases, clients, insert, update, remove, me, toast } = useData()
+  const activeJobs = jobs.filter(j => j.status !== 'archived')
+  const [d, setD] = useState<TaskDraft>(() => task ? {
+    id: task.id, job_id: task.job_id, phase_id: task.phase_id, title: task.title, description: task.description, status: task.status,
+    assignee_id: task.assignee_id, due_date: task.due_date, scheduled_at: task.scheduled_at, is_site_visit: task.is_site_visit,
+    estimate_hours: task.estimate_hours, recurrence: task.recurrence,
+  } : {
+    job_id: defaults?.job_id ?? activeJobs[0]?.id ?? '', phase_id: defaults?.phase_id ?? null, title: defaults?.title ?? '', description: '',
+    status: 'todo', assignee_id: defaults?.assignee_id ?? me?.id ?? null, due_date: defaults?.due_date ?? null, scheduled_at: null,
+    is_site_visit: defaults?.is_site_visit ?? false, estimate_hours: null, recurrence: 'none',
+  })
+  const [saving, setSaving] = useState(false)
+  const jobPhases = phases.filter(p => p.job_id === d.job_id)
+  const set = <K extends keyof TaskDraft>(k: K, v: TaskDraft[K]) => setD(x => ({ ...x, [k]: v }))
+
+  // Keep the site-visit time's date in step with the due date.
+  const timePart = d.scheduled_at ? localTime(d.scheduled_at) : '09:00'
+
+  async function save() {
+    if (!d.title.trim() || !d.job_id) { toast('Give the task a title and a job', 'error'); return }
+    setSaving(true)
+    const row: Partial<Task> = {
+      job_id: d.job_id, phase_id: d.phase_id, title: d.title.trim(), description: d.description, status: d.status,
+      assignee_id: d.assignee_id, due_date: d.due_date, is_site_visit: d.is_site_visit,
+      scheduled_at: d.is_site_visit && d.due_date ? new Date(`${d.due_date}T${timePart}:00`).toISOString() : null,
+      estimate_hours: d.estimate_hours, recurrence: d.recurrence,
+      completed_at: d.status === 'done' ? (task?.completed_at ?? new Date().toISOString()) : null,
+    }
+    if (task) await update('tasks', task.id, row)
+    else await insert('tasks', { ...row, created_by: me?.id ?? null })
+    setSaving(false)
+    onClose()
+  }
+
+  async function del() {
+    if (!task || !confirm('Delete this task?')) return
+    await remove('tasks', task.id)
+    onClose()
+  }
+
+  return (
+    <Modal title={task ? 'Edit task' : 'New task'} onClose={onClose} footer={<>
+      {task && <button className="btn danger left" onClick={del}>Delete</button>}
+      <button className="btn" onClick={onClose}>Cancel</button>
+      <button className="btn primary" onClick={save} disabled={saving}>{task ? 'Save' : 'Add task'}</button>
+    </>}>
+      <div className="field">
+        <label>Task</label>
+        <input autoFocus value={d.title} onChange={e => set('title', e.target.value)} placeholder="What needs to be done?" onKeyDown={e => { if (e.key === 'Enter') void save() }} />
+      </div>
+      <div className="row">
+        <div className="field">
+          <label>Job</label>
+          <select value={d.job_id} onChange={e => { set('job_id', e.target.value); set('phase_id', null) }}>
+            {activeJobs.map(j => <option key={j.id} value={j.id}>{j.job_number ? `${j.job_number} · ` : ''}{j.name} ({clients.find(c => c.id === j.client_id)?.name})</option>)}
+          </select>
+        </div>
+        <div className="field">
+          <label>Phase</label>
+          <select value={d.phase_id ?? ''} onChange={e => set('phase_id', e.target.value || null)}>
+            <option value="">No phase (general)</option>
+            {jobPhases.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+          </select>
+        </div>
+      </div>
+      <div className="row">
+        <div className="field">
+          <label>Assigned to</label>
+          <PersonSelect value={d.assignee_id} onChange={v => set('assignee_id', v)} />
+        </div>
+        <div className="field">
+          <label>Status</label>
+          <select value={d.status} onChange={e => set('status', e.target.value as TaskStatus)}>
+            {(Object.keys(TASK_STATUS_LABEL) as TaskStatus[]).map(s => <option key={s} value={s}>{TASK_STATUS_LABEL[s]}</option>)}
+          </select>
+        </div>
+      </div>
+      <div className="row">
+        <div className="field">
+          <label>Due date</label>
+          <input type="date" value={d.due_date ?? ''} onChange={e => set('due_date', e.target.value || null)} />
+        </div>
+        <div className="field">
+          <label>Estimate (hours)</label>
+          <input type="number" step="0.5" min="0" value={d.estimate_hours ?? ''} onChange={e => set('estimate_hours', e.target.value === '' ? null : Number(e.target.value))} />
+        </div>
+        <div className="field">
+          <label>Repeats</label>
+          <select value={d.recurrence} onChange={e => set('recurrence', e.target.value as Recurrence)}>
+            {(Object.keys(RECURRENCE_LABEL) as Recurrence[]).map(r => <option key={r} value={r}>{RECURRENCE_LABEL[r]}</option>)}
+          </select>
+        </div>
+      </div>
+      <div className="row">
+        <label className="chip" style={{ marginBottom: 12 }}>
+          <input type="checkbox" style={{ width: 18, minHeight: 0, margin: 0 }} checked={d.is_site_visit} onChange={e => set('is_site_visit', e.target.checked)} />
+          Site visit
+        </label>
+        {d.is_site_visit && (
+          <div className="field">
+            <label>Time</label>
+            <input type="time" value={timePart} onChange={e => set('scheduled_at', d.due_date ? new Date(`${d.due_date}T${e.target.value}:00`).toISOString() : null)} disabled={!d.due_date} />
+          </div>
+        )}
+      </div>
+      <div className="field">
+        <label>Notes</label>
+        <textarea value={d.description} onChange={e => set('description', e.target.value)} />
+      </div>
+    </Modal>
+  )
+}
+
+function localTime(iso: string) {
+  const d = new Date(iso)
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+}
+
+/** Mark a task done or not done. Recurring tasks spawn their next occurrence. */
+export async function toggleTaskDone(store: ReturnType<typeof useData>, task: Task) {
+  const done = task.status !== 'done'
+  await store.update('tasks', task.id, { status: done ? 'done' : 'todo', completed_at: done ? new Date().toISOString() : null })
+  if (done && task.recurrence !== 'none' && task.due_date) {
+    const next = nextOccurrence(task.due_date, task.recurrence)
+    if (next) {
+      await store.insert('tasks', {
+        job_id: task.job_id, phase_id: task.phase_id, title: task.title, description: task.description, status: 'todo',
+        assignee_id: task.assignee_id, due_date: next, is_site_visit: task.is_site_visit, estimate_hours: task.estimate_hours,
+        recurrence: task.recurrence, sort_order: task.sort_order, created_by: task.created_by,
+        scheduled_at: task.scheduled_at ? new Date(`${next}T${localTime(task.scheduled_at)}:00`).toISOString() : null,
+      })
+      store.toast(`Next "${task.title}" scheduled for ${next}`)
+    }
+  }
+}
+
+/* =============== Job =============== */
+export function JobModal({ job, defaultClientId, onClose, onCreated }: { job?: Job; defaultClientId?: string; onClose: () => void; onCreated?: (job: Job) => void }) {
+  const { clients, jobs, insert, update, remove, toast } = useData()
+  const [d, setD] = useState(() => ({
+    client_id: job?.client_id ?? defaultClientId ?? clients[0]?.id ?? '',
+    job_number: job?.job_number ?? suggestJobNumber(jobs),
+    name: job?.name ?? '', description: job?.description ?? '', address: job?.address ?? '',
+    status: (job?.status ?? 'active') as JobStatus,
+    fee: job?.fee ?? null as number | null,
+    start_date: job?.start_date ?? todayISO() as string | null,
+    due_date: job?.due_date ?? null as string | null,
+  }))
+  const [saving, setSaving] = useState(false)
+  const set = <K extends keyof typeof d>(k: K, v: (typeof d)[K]) => setD(x => ({ ...x, [k]: v }))
+
+  async function save() {
+    if (!d.name.trim() || !d.client_id) { toast('A job needs a name and a client', 'error'); return }
+    setSaving(true)
+    if (job) { await update('jobs', job.id, { ...d, name: d.name.trim() }); onClose() }
+    else {
+      const maxPriority = Math.max(0, ...jobs.filter(j => j.status === 'active').map(j => j.priority))
+      const created = await insert('jobs', { ...d, name: d.name.trim(), priority: maxPriority + 1 })
+      if (created) { toast('Job created with its four phases'); onCreated?.(created) }
+      onClose()
+    }
+    setSaving(false)
+  }
+  async function del() {
+    if (!job || !confirm(`Delete "${job.name}" and everything in it (phases, tasks, hours, invoices)? This cannot be undone.`)) return
+    await remove('jobs', job.id); onClose()
+  }
+
+  return (
+    <Modal title={job ? 'Edit job' : 'New job'} onClose={onClose} footer={<>
+      {job && <button className="btn danger left" onClick={del}>Delete job</button>}
+      <button className="btn" onClick={onClose}>Cancel</button>
+      <button className="btn primary" onClick={save} disabled={saving}>{job ? 'Save' : 'Create job'}</button>
+    </>}>
+      <div className="row">
+        <div className="field" style={{ flex: '0 1 120px' }}>
+          <label>Job #</label>
+          <input value={d.job_number} onChange={e => set('job_number', e.target.value)} />
+        </div>
+        <div className="field">
+          <label>Job name</label>
+          <input autoFocus value={d.name} onChange={e => set('name', e.target.value)} placeholder="e.g. Smith Residence — Addition" />
+        </div>
+      </div>
+      <div className="row">
+        <div className="field">
+          <label>Client</label>
+          <select value={d.client_id} onChange={e => set('client_id', e.target.value)}>
+            {clients.length === 0 && <option value="">Add a client first</option>}
+            {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+        </div>
+        <div className="field">
+          <label>Status</label>
+          <select value={d.status} onChange={e => set('status', e.target.value as JobStatus)}>
+            {(Object.keys(JOB_STATUS_LABEL) as JobStatus[]).map(s => <option key={s} value={s}>{JOB_STATUS_LABEL[s]}</option>)}
+          </select>
+        </div>
+      </div>
+      <div className="field">
+        <label>Site address</label>
+        <input value={d.address} onChange={e => set('address', e.target.value)} />
+      </div>
+      <div className="row">
+        <div className="field">
+          <label>Start date</label>
+          <input type="date" value={d.start_date ?? ''} onChange={e => set('start_date', e.target.value || null)} />
+        </div>
+        <div className="field">
+          <label>Overall due date</label>
+          <input type="date" value={d.due_date ?? ''} onChange={e => set('due_date', e.target.value || null)} />
+        </div>
+        <div className="field">
+          <label>Fee ($)</label>
+          <input type="number" min="0" step="50" value={d.fee ?? ''} onChange={e => set('fee', e.target.value === '' ? null : Number(e.target.value))} />
+        </div>
+      </div>
+      <div className="field">
+        <label>Description</label>
+        <textarea value={d.description} onChange={e => set('description', e.target.value)} placeholder="Scope, structure type, anything the team should know" />
+      </div>
+      {!job && <p className="small muted">The four standard phases (Original design, County / plan-check comments, Construction changes, Client-requested changes) are added automatically.</p>}
+    </Modal>
+  )
+}
+
+function suggestJobNumber(jobs: Job[]): string {
+  const yy = String(new Date().getFullYear()).slice(2)
+  const nums = jobs.map(j => j.job_number).filter(n => n.startsWith(yy + '-')).map(n => parseInt(n.slice(3), 10)).filter(n => !isNaN(n))
+  const next = (nums.length ? Math.max(...nums) : 0) + 1
+  return `${yy}-${String(next).padStart(3, '0')}`
+}
+
+/* =============== Client =============== */
+export function ClientModal({ client, onClose, onCreated }: { client?: Client; onClose: () => void; onCreated?: (c: Client) => void }) {
+  const { insert, update, remove, toast } = useData()
+  const [d, setD] = useState({
+    name: client?.name ?? '', contact_name: client?.contact_name ?? '', email: client?.email ?? '', phone: client?.phone ?? '',
+    address: client?.address ?? '', notes: client?.notes ?? '',
+  })
+  const set = <K extends keyof typeof d>(k: K, v: string) => setD(x => ({ ...x, [k]: v }))
+  async function save() {
+    if (!d.name.trim()) { toast('Client needs a name', 'error'); return }
+    if (client) await update('clients', client.id, d)
+    else { const c = await insert('clients', d); if (c) onCreated?.(c) }
+    onClose()
+  }
+  async function del() {
+    if (!client || !confirm(`Delete "${client.name}" and ALL of their jobs? This cannot be undone.`)) return
+    await remove('clients', client.id); onClose()
+  }
+  return (
+    <Modal title={client ? 'Edit client' : 'New client'} onClose={onClose} footer={<>
+      {client && <button className="btn danger left" onClick={del}>Delete</button>}
+      <button className="btn" onClick={onClose}>Cancel</button>
+      <button className="btn primary" onClick={save}>{client ? 'Save' : 'Add client'}</button>
+    </>}>
+      <div className="field"><label>Client / company name</label><input autoFocus value={d.name} onChange={e => set('name', e.target.value)} /></div>
+      <div className="row">
+        <div className="field"><label>Contact person</label><input value={d.contact_name} onChange={e => set('contact_name', e.target.value)} /></div>
+        <div className="field"><label>Phone</label><input type="tel" value={d.phone} onChange={e => set('phone', e.target.value)} /></div>
+      </div>
+      <div className="field"><label>Email</label><input type="email" value={d.email} onChange={e => set('email', e.target.value)} /></div>
+      <div className="field"><label>Address</label><input value={d.address} onChange={e => set('address', e.target.value)} /></div>
+      <div className="field"><label>Notes</label><textarea value={d.notes} onChange={e => set('notes', e.target.value)} /></div>
+    </Modal>
+  )
+}
+
+/* =============== Time entry =============== */
+export function TimeModal({ entry, defaults, onClose }: { entry?: TimeEntry; defaults?: Partial<TimeEntry>; onClose: () => void }) {
+  const { jobs, phases, tasks, clients, me, insert, update, remove, toast } = useData()
+  const activeJobs = jobs.filter(j => j.status !== 'archived')
+  const [d, setD] = useState({
+    job_id: entry?.job_id ?? defaults?.job_id ?? activeJobs[0]?.id ?? '',
+    phase_id: entry?.phase_id ?? defaults?.phase_id ?? null as string | null,
+    task_id: entry?.task_id ?? defaults?.task_id ?? null as string | null,
+    user_id: entry?.user_id ?? defaults?.user_id ?? me?.id ?? '',
+    date: entry?.date ?? defaults?.date ?? todayISO(),
+    hours: entry?.hours ?? defaults?.hours ?? null as number | null,
+    notes: entry?.notes ?? defaults?.notes ?? '',
+  })
+  const set = <K extends keyof typeof d>(k: K, v: (typeof d)[K]) => setD(x => ({ ...x, [k]: v }))
+  const jobPhases = phases.filter(p => p.job_id === d.job_id)
+  const jobTasks = tasks.filter(t => t.job_id === d.job_id && (!d.phase_id || t.phase_id === d.phase_id))
+  useEffect(() => { if (!jobPhases.some(p => p.id === d.phase_id)) setD(x => ({ ...x, phase_id: jobPhases[0]?.id ?? null })) }, [d.job_id]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function save() {
+    if (!d.job_id || d.hours == null || d.hours <= 0) { toast('Enter the job and the hours', 'error'); return }
+    if (entry) await update('time_entries', entry.id, { ...d, started_at: null })
+    else await insert('time_entries', { ...d, started_at: null })
+    onClose()
+  }
+  async function del() { if (entry && confirm('Delete this time entry?')) { await remove('time_entries', entry.id); onClose() } }
+
+  return (
+    <Modal title={entry ? 'Edit hours' : 'Log hours'} onClose={onClose} footer={<>
+      {entry && <button className="btn danger left" onClick={del}>Delete</button>}
+      <button className="btn" onClick={onClose}>Cancel</button>
+      <button className="btn primary" onClick={save}>Save</button>
+    </>}>
+      <div className="row">
+        <div className="field">
+          <label>Job</label>
+          <select value={d.job_id} onChange={e => { set('job_id', e.target.value); set('task_id', null) }}>
+            {activeJobs.map(j => <option key={j.id} value={j.id}>{j.job_number ? `${j.job_number} · ` : ''}{j.name} ({clients.find(c => c.id === j.client_id)?.name})</option>)}
+          </select>
+        </div>
+      </div>
+      <div className="row">
+        <div className="field">
+          <label>Phase</label>
+          <select value={d.phase_id ?? ''} onChange={e => { set('phase_id', e.target.value || null); set('task_id', null) }}>
+            <option value="">General</option>
+            {jobPhases.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+          </select>
+        </div>
+        <div className="field">
+          <label>Task (optional)</label>
+          <select value={d.task_id ?? ''} onChange={e => set('task_id', e.target.value || null)}>
+            <option value="">—</option>
+            {jobTasks.map(t => <option key={t.id} value={t.id}>{t.title}</option>)}
+          </select>
+        </div>
+      </div>
+      <div className="row">
+        <div className="field"><label>Person</label><PersonSelect value={d.user_id} onChange={v => set('user_id', v ?? '')} allowNone={false} /></div>
+        <div className="field"><label>Date</label><input type="date" value={d.date} onChange={e => set('date', e.target.value)} /></div>
+        <div className="field"><label>Hours</label><input autoFocus type="number" step="0.25" min="0" value={d.hours ?? ''} onChange={e => set('hours', e.target.value === '' ? null : Number(e.target.value))} /></div>
+      </div>
+      <div className="field"><label>Notes</label><input value={d.notes} onChange={e => set('notes', e.target.value)} placeholder="What did you work on?" /></div>
+    </Modal>
+  )
+}
+
+/* =============== Invoice =============== */
+export function InvoiceModal({ invoice, jobId, entryIds, onClose }: { invoice?: Invoice; jobId: string; entryIds?: string[]; onClose: () => void }) {
+  const { invoices, insert, update, remove, toast } = useData()
+  const [d, setD] = useState({
+    number: invoice?.number ?? suggestInvoiceNumber(invoices),
+    amount: invoice?.amount ?? 0,
+    issued_date: invoice?.issued_date ?? todayISO(),
+    paid_date: invoice?.paid_date ?? null as string | null,
+    notes: invoice?.notes ?? '',
+  })
+  const set = <K extends keyof typeof d>(k: K, v: (typeof d)[K]) => setD(x => ({ ...x, [k]: v }))
+  async function save() {
+    if (invoice) await update('invoices', invoice.id, d)
+    else {
+      const created = await insert('invoices', { ...d, job_id: jobId })
+      if (created && entryIds?.length) {
+        await Promise.all(entryIds.map(id => update('time_entries', id, { billed: true, invoice_id: created.id })))
+        toast(`${entryIds.length} time entries marked as billed`)
+      }
+    }
+    onClose()
+  }
+  async function del() { if (invoice && confirm('Delete this invoice? Hours on it will become unbilled again.')) { await remove('invoices', invoice.id); onClose() } }
+  return (
+    <Modal title={invoice ? 'Edit invoice' : 'Record invoice'} onClose={onClose} footer={<>
+      {invoice && <button className="btn danger left" onClick={del}>Delete</button>}
+      <button className="btn" onClick={onClose}>Cancel</button>
+      <button className="btn primary" onClick={save}>Save</button>
+    </>}>
+      {entryIds && entryIds.length > 0 && <p className="small muted">{entryIds.length} unbilled time entries will be marked as billed on this invoice.</p>}
+      <div className="row">
+        <div className="field"><label>Invoice #</label><input value={d.number} onChange={e => set('number', e.target.value)} /></div>
+        <div className="field"><label>Amount ($)</label><input autoFocus type="number" min="0" step="1" value={d.amount} onChange={e => set('amount', Number(e.target.value))} /></div>
+      </div>
+      <div className="row">
+        <div className="field"><label>Issued</label><input type="date" value={d.issued_date} onChange={e => set('issued_date', e.target.value)} /></div>
+        <div className="field"><label>Paid on (blank = outstanding)</label><input type="date" value={d.paid_date ?? ''} onChange={e => set('paid_date', e.target.value || null)} /></div>
+      </div>
+      <div className="field"><label>Notes</label><input value={d.notes} onChange={e => set('notes', e.target.value)} /></div>
+    </Modal>
+  )
+}
+
+function suggestInvoiceNumber(invoices: Invoice[]): string {
+  const nums = invoices.map(i => parseInt(i.number.replace(/\D/g, ''), 10)).filter(n => !isNaN(n))
+  return `INV-${String((nums.length ? Math.max(...nums) : 1000) + 1).padStart(4, '0')}`
+}
