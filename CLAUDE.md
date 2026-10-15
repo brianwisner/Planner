@@ -80,7 +80,9 @@ Conventions:
 
 - `cd planner && npm run build` must pass (`tsc -b && vite build`). `npm run lint` is oxlint (warnings only).
 - `vite.config.ts` has `base: '/Who-knows/'` — change it if the repo is renamed.
-- Deploy: GitHub Actions workflow reads repository **variables** `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`, builds, copies the shear-wall tool into `dist/shear-wall/`, publishes to Pages.
+- Deploy: GitHub Actions workflow builds (Vite reads `planner/.env.production`, which holds the Supabase URL and *publishable* key — public by design), copies the shear-wall tool into `dist/shear-wall/`, and pushes the result to the `gh-pages` branch, which GitHub Pages serves. `.env.production` is deliberately un-ignored in `planner/.gitignore`.
+- Live Supabase project: `wisner-planner` (ref `axjyhkyvmbrhtivgofya`, us-east-1). Schema was applied with the Supabase MCP `execute_sql` tool in chunks; note that statements containing `drop …` make that tool wait for a confirmation that never arrives in a cloud session (60s timeout), so write migrations without DROP or run them from the dashboard.
+- Creating logins without the dashboard: insert into `auth.users` + `auth.identities` via SQL (see conversation history / Supabase docs); the `on_auth_user_created` trigger then creates the profile. Password resets by email need Site URL set in Supabase Auth settings, which the MCP cannot change.
 - There is no automated test suite. A throwaway Playwright harness with a fake Supabase backend was used during development (mock PostgREST routes + seeded session); recreate something similar if you need to click through the UI without a real project.
 
 ### Things the owner is likely to ask for

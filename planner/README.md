@@ -25,107 +25,42 @@ A project planning app for a small structural engineering firm. It runs in any b
 
 ## How it's built (plain English)
 
-- **The app itself** is a website made with React. It is hosted for free on **GitHub Pages**, straight from this repository. Every time code is pushed to the main branch, GitHub rebuilds and republishes it automatically (see `.github/workflows/deploy.yml`).
-- **The data** (clients, jobs, hours, invoices…) lives in **Supabase**, a hosted database with built-in logins and live syncing. The free plan is plenty for a small team.
-- **Logins** are email + password. You create staff accounts from the Supabase dashboard (invite by email).
-- Your web address will be: **https://brianwisner.github.io/Who-knows/**
-
-The website files are public (anyone could view the code), but all of your data sits behind the login and is only visible to signed-in team members.
+- **The app itself** is a website made with React. It is hosted for free on **GitHub Pages**, straight from this repository. Every time code is pushed to the main branch, GitHub rebuilds it and publishes it to the `gh-pages` branch automatically (see `.github/workflows/deploy.yml`).
+- **The data** (clients, jobs, hours, invoices…) lives in **Supabase**, a hosted database with built-in logins and live syncing. The free plan is plenty for a small team. The project is called `wisner-planner`.
+- **Logins** are email + password. Team members are added by creating accounts in Supabase (ask Claude to do it, or see "Adding staff" below).
+- The web address is: **https://brianwisner.github.io/Who-knows/**
+- The connection between the website and the database is the file `planner/.env.production`. It holds the project address and the *publishable* key, which Supabase designs to be visible inside a website. All data sits behind the login and row-level security, so this key alone cannot read anything.
 
 ---
 
-## Setup — one-time, about 20 minutes
+## Setup status
 
-You need: a GitHub account (you have one) and a free Supabase account (step 1).
+This has already been done for you:
 
-### Step 1 — Create the database (Supabase)
+- [x] Supabase project created, tables built, security and live sync turned on, sample data loaded
+- [x] Calendar feed function (`ics`) deployed in Supabase
+- [x] Owner login created (the first account automatically gets the sample jobs assigned to it)
+- [x] App connected to the database and published by the deploy workflow
 
-1. Go to **https://supabase.com** and click **Start your project**. Sign in with your GitHub account (easiest).
-2. Click **New project**.
-   - Organization: leave the default.
-   - Name: `wisner-planner`
-   - Database password: click **Generate a password**, then copy it somewhere safe (you will rarely need it, but keep it).
-   - Region: pick the one closest to you (for example *West US*).
-   - Plan: **Free**.
-3. Click **Create new project** and wait about 2 minutes until the project page says it's ready.
+The one thing GitHub only lets the repository owner do, once:
 
-### Step 2 — Build the tables and add sample data
+- [ ] **Turn on GitHub Pages:** open https://github.com/brianwisner/Who-knows/settings/pages → under *Build and deployment* set **Source** to "Deploy from a branch", choose branch **gh-pages** and folder **/ (root)**, click **Save**. A couple of minutes later the site is live.
 
-1. In the left sidebar, click **SQL Editor** (the icon looks like `>_`).
-2. Click **New query** (or the **+** tab).
-3. Open the file `planner/supabase/setup.sql` from this repository in GitHub, click the **copy** icon at the top-right of the file (two overlapping squares), go back to Supabase and **paste** everything into the big editor box.
-4. Click **Run** (bottom right, or press Ctrl/Cmd+Enter). After a few seconds it should say **Success. No rows returned**.
-
-That created all the tables, the security rules, live-sync, and three sample clients with jobs.
-
-### Step 3 — Tell Supabase where the app lives
-
-1. Left sidebar → **Authentication** → **URL Configuration**.
-2. **Site URL**: `https://brianwisner.github.io/Who-knows/`
-3. Under **Redirect URLs**, click **Add URL** and enter `https://brianwisner.github.io/Who-knows/**` (with the two stars).
-4. Click **Save**.
-
-This makes the "accept invitation" and "reset password" emails send people to the right place.
-
-### Step 4 — Create your own login
-
-1. Left sidebar → **Authentication** → **Users**.
-2. Click **Add user** → **Create new user**.
-3. Enter your email and a password you'll remember. Tick **Auto Confirm User**. Click **Create user**.
-
-The first account created gets the sample jobs assigned to it, so your dashboard has something to show.
-
-### Step 5 — Copy the two connection values into GitHub
-
-1. In Supabase, click the **gear icon (Project Settings)** at the bottom of the left sidebar, then **API Keys** (on some projects it's called **API**).
-2. You need two things:
-   - **Project URL** — looks like `https://abcdefghijkl.supabase.co`
-   - **Publishable key** (older projects call it the **anon public** key) — a long string starting with `sb_publishable_` or `eyJ…`
-3. Now open your repository on GitHub: **https://github.com/brianwisner/Who-knows**
-4. Click **Settings** (top tab) → in the left list, **Secrets and variables** → **Actions** → click the **Variables** tab.
-5. Click **New repository variable**. Name: `VITE_SUPABASE_URL`  Value: paste the Project URL. Click **Add variable**.
-6. Click **New repository variable** again. Name: `VITE_SUPABASE_ANON_KEY`  Value: paste the key. Click **Add variable**.
-
-### Step 6 — Turn on the free website hosting
-
-1. Still in the repository **Settings**, click **Pages** in the left list.
-2. Under **Build and deployment → Source**, choose **GitHub Actions**. (That's it, nothing else to click.)
-
-### Step 7 — Publish
-
-1. Go to the repository's **Pull requests** tab and open the pull request named *"Add project planner web app"*.
-2. Click **Ready for review**, then **Merge pull request**, then **Confirm merge**.
-3. Click the **Actions** tab. You'll see *"Deploy planner to GitHub Pages"* running. Wait until it shows a green check (about 2 minutes).
-4. Open **https://brianwisner.github.io/Who-knows/** and sign in with the email and password from Step 4.
-
-If you ever change the two variables from Step 5, go to **Actions → Deploy planner to GitHub Pages → Run workflow** to republish.
-
-### Step 8 — Put it on your phone and iPad
+### Put it on your phone and iPad
 
 - **iPhone / iPad:** open the address in Safari, tap the **Share** button, then **Add to Home Screen**. It then opens full-screen like an app.
 - **Android:** open in Chrome → menu (⋮) → **Add to Home screen**.
 - **Desktop:** just bookmark it. In Chrome you can also click the install icon in the address bar.
 
-### Step 9 — Add your staff
+### Adding staff
 
-1. Supabase → **Authentication** → **Users** → **Add user** → **Send invitation**. Enter their email.
-2. They get an email with an **Accept the invite** link. It opens the app and asks them to choose a password and enter their name.
-3. That's it; they see all the same jobs. Each person can set their hourly rate and weekly capacity under **Settings**.
+Easiest: tell Claude the person's name and email and it will create the account and give you a temporary password to pass on. They change it under **Settings** in the app.
 
-### Step 10 (optional) — Google Calendar sync
+To do it yourself instead: Supabase dashboard → **Authentication** → **Users** → **Add user** → **Create new user**, enter their email and a temporary password, tick **Auto Confirm User**. (The "Send invitation" option also works, but first set **Authentication → URL Configuration → Site URL** to `https://brianwisner.github.io/Who-knows/` so the email link opens the app.)
 
-The calendar feed needs a tiny piece of server code running inside Supabase. One-time setup:
+### Google Calendar sync
 
-1. Supabase → left sidebar **Edge Functions** → **Deploy a new function** → **Via Editor**.
-2. Function name: `ics`
-3. Delete the example code in the editor and paste the entire contents of `planner/supabase/functions/ics/index.ts` from this repository.
-4. Click **Deploy function**.
-5. Open the `ics` function → **Details** (or **Settings**) tab → turn **off** the option called **Verify JWT with legacy secret** (or **Enforce JWT verification**) → Save. This lets Google Calendar fetch the feed without a login; the long random token in each person's link is what keeps it private.
-6. In the app, go to **Settings → Google Calendar sync**, click **Copy link**, then click the Google Calendar button and paste the link into **URL of calendar** → **Add calendar**.
-
-Deadlines and site visits now show up in Google Calendar on every device. Google refreshes subscribed calendars every few hours. The feed includes everyone's items; add `&mine=1` to the end of the link for only your own.
-
-Until you do this step, the **Calendar** page's **Download .ics** button and the per-item **Add to Google Calendar** links work with no setup at all.
+In the app go to **Settings → Google Calendar sync**, click **Copy link**, then click the Google Calendar button and paste the link into **URL of calendar** → **Add calendar**. Deadlines and site visits then appear in Google Calendar on every device; Google refreshes subscribed calendars every few hours. The feed includes everyone's items; add `&mine=1` to the end of the link for only your own. The **Calendar** page also has **Download .ics** and per-item **Add to Google Calendar** links.
 
 ---
 
