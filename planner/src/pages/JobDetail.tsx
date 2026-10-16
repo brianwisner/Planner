@@ -3,11 +3,12 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useData } from '../lib/store'
-import { entryHours, hoursForPhase, jobBilling, timerHours } from '../lib/calc'
+import { entryHours, hoursForPhase, jobBilling, jobHours, timerHours } from '../lib/calc'
+import { StatusBadge } from './Billing'
 import type { Phase, Task } from '../lib/types'
-import { fmtDate, fmtDateTime, fmtHours, fmtMoney, sum } from '../lib/utils'
+import { fmtDate, fmtDateTime, fmtHours, fmtMoney, fmtSigned, sum } from '../lib/utils'
 import { Avatar, Checkbox, DueBadge, Empty, Icon, JobStatusBadge, Person, PersonSelect, PhaseStatusSelect, Progress } from '../components/ui'
-import { JobModal, TaskModal, TimeModal, toggleTaskDone } from '../components/editors'
+import { DepositModal, JobModal, TaskModal, TimeModal, toggleTaskDone } from '../components/editors'
 
 export function JobDetail() {
   const { id } = useParams()
@@ -21,6 +22,7 @@ export function JobDetail() {
   const [timeModal, setTimeModal] = useState<{ phaseId?: string | null; taskId?: string | null } | null>(null)
   const [comment, setComment] = useState('')
   const [showDone, setShowDone] = useState(false)
+  const [deposit, setDeposit] = useState(false)
 
   // Deep link: /jobs/:id?task=... opens that task.
   useEffect(() => {
@@ -29,6 +31,7 @@ export function JobDetail() {
   }, [params, tasks, setParams])
 
   const billing = useMemo(() => job ? jobBilling(store, job) : null, [store, job])
+  const hourMap = useMemo(() => new Map(id ? jobHours(store, id).map(h => [h.entry.id, h]) : []), [store, id])
   if (!job) return <div className="card"><Empty>Job not found. <Link to="/jobs">Back to jobs</Link></Empty></div>
   const client = clients.find(c => c.id === job.client_id)
   const jobPhases = phases.filter(p => p.job_id === job.id)
@@ -65,6 +68,7 @@ export function JobDetail() {
         <div className="actions">
           {running ? <button className="btn" onClick={stopTimer}><Icon name="stop" size={14} /> Stop timer</button> : <button className="btn" onClick={() => startTimer(jobPhases.find(p => p.status === 'in_progress')?.id ?? jobPhases[0]?.id ?? null, null)}><Icon name="play" size={14} /> Start timer</button>}
           <button className="btn" onClick={() => setTimeModal({})}><Icon name="time" size={14} /> Log hours</button>
+          <button className="btn" onClick={() => setDeposit(true)}><Icon name="plus" size={14} /> Deposit</button>
           <button className="btn" onClick={() => setEditJob(true)}><Icon name="edit" size={14} /> Edit</button>
         </div>
       </div>
@@ -72,8 +76,8 @@ export function JobDetail() {
       <div className="stats mb">
         <div className="stat"><div className="label">Hours</div><div className="value">{fmtHours(logged)}<span className="muted" style={{ fontSize: 14 }}> / {fmtHours(est)}</span></div><Progress value={logged} max={est} /></div>
         <div className="stat"><div className="label">Due</div><div className="value" style={{ fontSize: 20 }}>{job.due_date ? fmtDate(job.due_date) : '–'}</div><div className="sub"><DueBadge date={job.due_date} done={job.status === 'complete'} /></div></div>
-        <div className="stat"><div className="label">Fee</div><div className="value" style={{ fontSize: 20 }}>{fmtMoney(job.fee)}</div><div className="sub">{billing && `${fmtMoney(billing.invoiced)} invoiced`}</div></div>
-        <div className="stat"><div className="label">Unbilled</div><div className="value" style={{ fontSize: 20 }}>{billing && fmtMoney(billing.unbilledAmount)}</div><div className="sub">{billing && `${fmtHours(billing.unbilledHours)} · `}<Link to={`/billing?job=${job.id}`}>billing →</Link></div></div>
+        <div className="stat"><div className="label">Job balance</div><div className={`value ${billing && billing.balance < 0 ? 'money-neg' : 'money-pos'}`} style={{ fontSize: 20 }}>{billing && fmtSigned(billing.balance)}</div><div className="sub">{billing && `${fmtMoney(billing.deposits)} deposits · ${fmtMoney(billing.invoiced)} billed`}</div></div>
+        <div className="stat"><div className="label">Not billed yet</div><div className={`value ${billing && billing.unbilledAmount > 0.5 ? 'danger-text' : ''}`} style={{ fontSize: 20 }}>{billing && fmtMoney(billing.unbilledAmount)}</div><div className="sub">{billing && `${fmtHours(billing.unbilledHours)} · `}<Link to={`/billing?job=${job.id}`}>money details →</Link></div></div>
       </div>
 
       <div className="grid job-grid">
@@ -121,7 +125,7 @@ export function JobDetail() {
                       <td><Person userId={e.user_id} hideName /></td>
                       <td className="small">{phases.find(p => p.id === e.phase_id)?.name ?? 'General'}{e.notes && <div className="tiny muted">{e.notes}</div>}</td>
                       <td className="num nowrap">{e.started_at && e.hours == null ? <span className="timer-pill"><span className="dot" />running</span> : fmtHours(e.hours)}</td>
-                      <td>{e.billed && <span className="badge complete">billed</span>}</td>
+                      <td>{hourMap.get(e.id) && <StatusBadge h={hourMap.get(e.id)!} />}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -143,6 +147,7 @@ export function JobDetail() {
       </div>
 
       {editJob && <JobModal job={job} onClose={() => setEditJob(false)} />}
+      {deposit && <DepositModal jobId={job.id} onClose={() => setDeposit(false)} />}
       {taskModal && <TaskModal task={taskModal.task} defaults={{ job_id: job.id, phase_id: taskModal.phaseId ?? null }} onClose={() => setTaskModal(null)} />}
       {timeModal && <TimeModal defaults={{ job_id: job.id, phase_id: timeModal.phaseId ?? null, task_id: timeModal.taskId ?? null }} onClose={() => setTimeModal(null)} />}
     </div>
