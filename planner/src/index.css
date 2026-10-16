@@ -418,3 +418,22 @@ tfoot td { font-weight: 600; background: var(--surface-2); }
 .sched-day:last-child { border-bottom: 0; }
 .sched-day input { min-height: 34px; padding: 4px 8px; }
 .sched-date { font-size: 14px; font-weight: 500; }
+
+/* ---------- Plan hours grid (jobs table) ---------- */
+th.plan-col, td.plan-col { width: 58px; min-width: 52px; text-align: center; padding-left: 3px; padding-right: 3px; }
+th.plan-col div { font-size: 14px; color: var(--text); text-transform: none; letter-spacing: 0; }
+th.plan-col.is-today { color: var(--danger); }
+th.plan-col.is-today div span { color: #fff; background: var(--danger); border-radius: 4px; padding: 0 5px; }
+.plan-cell { width: 50px; min-height: 34px; padding: 4px 2px; text-align: center; font-weight: 600; font-variant-numeric: tabular-nums; border-color: transparent; background: var(--surface-2); -moz-appearance: textfield; }
+.plan-cell::-webkit-outer-spin-button, .plan-cell::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.plan-cell.filled { background: #e8f0fe; color: var(--navy); }
+.plan-cell:hover { border-color: var(--border); }
+.plan-cell[readonly] { cursor: pointer; }
+td.plan-over { background: #fde68a !important; color: #92400e; }
+@media (max-width: 760px) {
+  table.planning .plan-hide-mobile { display: none; }
+  table.planning th.plan-col, table.planning td.plan-col { width: 36px; min-width: 35px; padding-left: 1px; padding-right: 1px; font-size: 11px; }
+  table.planning .plan-cell { width: 33px; padding: 4px 0; }
+  table.planning th:first-child, table.planning td:first-child { padding-left: 2px; padding-right: 2px; }
+  table.planning td:nth-child(2) { min-width: 104px; }
+}
