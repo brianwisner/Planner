@@ -77,7 +77,7 @@ export function Jobs() {
         <span className="small muted">{filteredJobs.length} job{filteredJobs.length === 1 ? '' : 's'}</span>
       </div>
 
-      {view === 'table' && <div className="card"><JobsTable jobs={filteredJobs} /></div>}
+      {view === 'table' && <div className="card"><JobsTable jobs={filteredJobs} schedulable /></div>}
       {view === 'board' && <Kanban tasks={filteredTasks} />}
       {view === 'gantt' && <Gantt jobs={filteredJobs} />}
       {view === 'calendar' && <CalendarView items={calItems} />}

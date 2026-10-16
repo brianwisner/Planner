@@ -67,6 +67,7 @@ In the app go to **Settings → Google Calendar sync**, click **Copy link**, the
 ## Everyday use
 
 - **Start a job:** Jobs → **New job**. Pick the client, give it a name, optional fee and due date. The four phases are created for you. Then open the job and fill in each phase's estimate, dates and who's doing it.
+- **Plan hours in the table:** Jobs → Table with **Plan hours** on. Each job has a box for every day of the week; type hours to schedule them on the job's current phase and clear a box to remove them. Use the arrows to change weeks and **Weekends** to show Saturday and Sunday. The bottom row is your total per day.
 - **Plan hours on the Gantt:** Jobs → Gantt. Drag across days on a phase row (or tap a day on a phone) and enter hours for each day, e.g. 4 on Wednesday and 2 on Thursday. The top row shows how many hours you have scheduled each day (yellow = more than a full day). Click the arrow beside a job to roll its phases up.
 - **Prioritize:** on the Jobs table, drag the **≡** handle to reorder. Number 1 is the top of the queue.
 - **Daily list:** Dashboard → *My open tasks*, or Jobs → Board.

@@ -61,7 +61,10 @@ components/
   SearchPalette.tsx global search (/)
   Shortcuts.tsx     keyboard shortcut hook + help modal
 views/              reusable big views used inside pages
-  JobsTable.tsx     sortable table, drag-to-reorder priority (dnd-kit sortable)
+  JobsTable.tsx     sortable table, drag-to-reorder priority (dnd-kit sortable);
+                    `schedulable` prop (Jobs page) adds the "Plan hours" week grid:
+                    DayCell inputs write schedule_entries on the job's current phase,
+                    tfoot = person's daily totals; >1 phase on a day opens ScheduleModal
   Kanban.tsx        task board, drag between status columns (dnd-kit)
   Gantt.tsx         timeline: sticky job/phase column + sticky date header (month / date /
                     weekday letter M T W R F S U / scheduled hours per day for a chosen

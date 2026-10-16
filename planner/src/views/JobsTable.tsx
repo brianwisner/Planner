@@ -1,6 +1,10 @@
 // The prioritized job queue as a table. Drag the handle to reorder priority,
 // click a column header to sort, click a row to open the job.
-import { useMemo, useState } from 'react'
+// With "Plan hours" on, each row also gets one box per day of the chosen week:
+// typing hours there schedules them on the job's current phase (same data as
+// dragging on the Gantt chart). The bottom row is the person's total per day.
+import { useEffect, useMemo, useState } from 'react'
+import { addDays, addWeeks, format, isWeekend, startOfWeek } from 'date-fns'
 import { useNavigate } from 'react-router-dom'
 import { DndContext, PointerSensor, TouchSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core'
 import { SortableContext, arrayMove, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
@@ -9,14 +13,33 @@ import { useData } from '../lib/store'
 import { hoursForJob, hoursForPhase } from '../lib/calc'
 import type { Job, Phase } from '../lib/types'
 import { PHASE_KIND_SHORT } from '../lib/types'
-import { daysUntil, downloadCSV, fmtHours, sum } from '../lib/utils'
-import { DueBadge, Empty, JobStatusBadge, Person, Progress } from '../components/ui'
+import { daysUntil, downloadCSV, fmtHours, sum, todayISO } from '../lib/utils'
+import type { ScheduleEntry } from '../lib/types'
+import { ScheduleModal } from '../components/ScheduleModal'
+import { DueBadge, Empty, Icon, JobStatusBadge, Person, Progress } from '../components/ui'
 
 type SortKey = 'priority' | 'name' | 'client' | 'due' | 'assignee'
 
-export function JobsTable({ jobs, showExport = true }: { jobs: Job[]; showExport?: boolean }) {
+function readPref(key: string, fallback: boolean) {
+  try { const v = localStorage.getItem(key); return v == null ? fallback : v === '1' } catch { return fallback }
+}
+function writePref(key: string, v: boolean) {
+  try { localStorage.setItem(key, v ? '1' : '0') } catch { /* storage unavailable */ }
+}
+
+export function JobsTable({ jobs, showExport = true, schedulable = false }: { jobs: Job[]; showExport?: boolean; schedulable?: boolean }) {
   const store = useData()
-  const { clients, phases, timeEntries, profiles, update } = store
+  const { clients, phases, timeEntries, profiles, update, schedule, me, settings } = store
+  const [plan, setPlan] = useState(() => schedulable && readPref('table-plan', true))
+  const [weekends, setWeekends] = useState(() => readPref('table-plan-weekends', false))
+  const [weekStart, setWeekStart] = useState(() => startOfWeek(new Date(), { weekStartsOn: 1 }))
+  const [who, setWho] = useState(me?.id ?? '')
+  const [modal, setModal] = useState<{ jobId: string; phaseId: string | null; from: string; to: string } | null>(null)
+  useEffect(() => { if (!who && me) setWho(me.id) }, [me, who])
+  const days = useMemo(() => Array.from({ length: 7 }, (_, i) => addDays(weekStart, i)).filter(d => weekends || !isWeekend(d)).map(d => format(d, 'yyyy-MM-dd')), [weekStart, weekends])
+  const mine = useMemo(() => schedule.filter(s => s.user_id === who && days.includes(s.date)), [schedule, who, days])
+  const person = profiles.find(p => p.id === who)
+  const dailyCap = (person?.weekly_hours || settings.weekly_capacity || 40) / 5
   const nav = useNavigate()
   const [sort, setSort] = useState<SortKey>('priority')
   const [asc, setAsc] = useState(true)
@@ -73,38 +96,75 @@ export function JobsTable({ jobs, showExport = true }: { jobs: Job[]; showExport
 
   if (jobs.length === 0) return <Empty>No jobs match.</Empty>
 
+  const showPlan = schedulable && plan
+  const dayTotal = (d: string) => sum(mine.filter(s => s.date === d).map(s => s.hours))
+  const today = todayISO()
+
   return (
     <div>
+      {schedulable && (
+        <div className="filters">
+          <button className={`chip ${plan ? 'on' : ''}`} onClick={() => { setPlan(!plan); writePref('table-plan', !plan) }}><Icon name="calendar" size={14} /> Plan hours</button>
+          {plan && <>
+            <button className="btn sm icon" onClick={() => setWeekStart(w => addWeeks(w, -1))} aria-label="Previous week"><Icon name="chevronL" size={16} /></button>
+            <span className="bold nowrap">Week of {format(weekStart, 'MMM d')}</span>
+            <button className="btn sm icon" onClick={() => setWeekStart(w => addWeeks(w, 1))} aria-label="Next week"><Icon name="chevronR" size={16} /></button>
+            <button className="btn sm" onClick={() => setWeekStart(startOfWeek(new Date(), { weekStartsOn: 1 }))}>This week</button>
+            <button className={`chip ${weekends ? 'on' : ''}`} onClick={() => { setWeekends(!weekends); writePref('table-plan-weekends', !weekends) }}>Weekends</button>
+            <span className="grow" />
+            <label className="small muted" style={{ margin: 0 }}>Hours for</label>
+            <select value={who} onChange={e => setWho(e.target.value)} style={{ width: 'auto' }}>
+              {profiles.map(p => <option key={p.id} value={p.id}>{p.id === me?.id ? 'Me' : p.full_name}</option>)}
+            </select>
+          </>}
+        </div>
+      )}
+      {showPlan && <p className="small muted" style={{ margin: '-4px 0 8px' }}>Type hours in a day's box to schedule them on the job's current phase. Clear the box to remove them. The bottom row is the total for each day (yellow = more than a full day).</p>}
       <div className="table-wrap">
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
           <SortableContext items={sorted.map(r => r.j.id)} strategy={verticalListSortingStrategy}>
-            <table>
+            <table className={showPlan ? 'planning' : ''}>
               <thead>
                 <tr>
                   {header('priority', '#', 'nowrap')}
                   {header('name', 'Job')}
-                  {header('client', 'Client', 'hide-mobile')}
-                  <th>Phase</th>
+                  {!showPlan && header('client', 'Client', 'hide-mobile')}
+                  <th className="plan-hide-mobile">Phase</th>
                   {header('assignee', 'Who', 'hide-mobile')}
-                  {header('due', 'Due')}
-                  <th className="hide-mobile" style={{ width: 140 }}>Hours</th>
+                  {header('due', 'Due', 'plan-hide-mobile')}
+                  {!showPlan && <th className="hide-mobile" style={{ width: 140 }}>Hours</th>}
+                  {showPlan && days.map(d => <th key={d} className={`plan-col ${d === today ? 'is-today' : ''}`}>{format(new Date(d + 'T00:00:00'), 'EEE')}<div><span>{format(new Date(d + 'T00:00:00'), 'd')}</span></div></th>)}
+                  {showPlan && <th className="plan-col num plan-hide-mobile">Week</th>}
                 </tr>
               </thead>
               <tbody>
-                {sorted.map(r => <Row key={r.j.id} r={r} onOpen={() => nav(`/jobs/${r.j.id}`)} draggable={sort === 'priority'} phaseLogged={r.cp ? hoursForPhase(timeEntries, r.cp.id) : 0} />)}
+                {sorted.map(r => <Row key={r.j.id} r={r} onOpen={() => nav(`/jobs/${r.j.id}`)} draggable={sort === 'priority'} phaseLogged={r.cp ? hoursForPhase(timeEntries, r.cp.id) : 0}
+                  plan={showPlan ? { days, who, entries: mine.filter(s => s.job_id === r.j.id), onComplex: (d: string) => setModal({ jobId: r.j.id, phaseId: r.cp?.id ?? null, from: d, to: d }) } : null} />)}
               </tbody>
+              {showPlan && (
+                <tfoot>
+                  <tr>
+                    <td colSpan={2}>{who === me?.id ? 'Your' : `${person?.full_name ?? ''}'s`} total <span className="tiny muted" style={{ fontWeight: 400 }}>(all jobs)</span></td>
+                    <td className="plan-hide-mobile" /><td className="hide-mobile" /><td className="plan-hide-mobile" />
+                    {days.map(d => { const t = dayTotal(d); return <td key={d} className={`plan-col num ${t > dailyCap ? 'plan-over' : ''}`}>{t ? fmtHours(t) : <span className="muted">–</span>}</td> })}
+                    <td className="plan-col num plan-hide-mobile">{fmtHours(sum(days.map(dayTotal)))}</td>
+                  </tr>
+                </tfoot>
+              )}
             </table>
           </SortableContext>
         </DndContext>
       </div>
+      {modal && <ScheduleModal {...modal} onClose={() => setModal(null)} />}
       {showExport && <div className="row mt small muted"><span>{sort === 'priority' ? 'Drag the ≡ handle to change priority.' : 'Sort by # to drag-reorder priority.'}</span><span className="grow" /><button className="btn sm" onClick={exportCSV}>Export CSV</button></div>}
     </div>
   )
 }
 
 type RowData = { j: Job; cp: Phase | undefined; est: number; logged: number; nextDue: string | null; client: string; assignee: string }
+type PlanProps = { days: string[]; who: string; entries: ScheduleEntry[]; onComplex: (date: string) => void }
 
-function Row({ r, onOpen, draggable, phaseLogged }: { r: RowData; onOpen: () => void; draggable: boolean; phaseLogged: number }) {
+function Row({ r, onOpen, draggable, phaseLogged, plan }: { r: RowData; onOpen: () => void; draggable: boolean; phaseLogged: number; plan: PlanProps | null }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: r.j.id, disabled: !draggable })
   const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1 }
   const overdue = daysUntil(r.nextDue) != null && (daysUntil(r.nextDue) as number) < 0 && r.j.status === 'active'
@@ -115,16 +175,57 @@ function Row({ r, onOpen, draggable, phaseLogged }: { r: RowData; onOpen: () => 
       </td>
       <td>
         <div className="bold">{r.j.name}</div>
-        <div className="tiny muted">{r.j.job_number}{r.j.job_number && ' · '}<span className="hide-mobile">{r.client}</span><span className="hide-mobile" />{r.j.status !== 'active' && <> <JobStatusBadge status={r.j.status} /></>}</div>
+        <div className="tiny muted">{r.j.job_number}{r.j.job_number && ' · '}<span className={plan ? '' : 'hide-mobile'}>{r.client}</span>{r.j.status !== 'active' && <> <JobStatusBadge status={r.j.status} /></>}</div>
       </td>
-      <td className="hide-mobile">{r.client}</td>
-      <td>{r.cp ? <span className={`badge ${r.cp.status}`}>{PHASE_KIND_SHORT[r.cp.kind]}</span> : <span className="muted">–</span>}</td>
+      {!plan && <td className="hide-mobile">{r.client}</td>}
+      <td className={plan ? 'plan-hide-mobile' : ''}>{r.cp ? <span className={`badge ${r.cp.status}`}>{PHASE_KIND_SHORT[r.cp.kind]}</span> : <span className="muted">–</span>}{plan && r.cp && <div className="tiny muted nowrap">{fmtHours(phaseLogged)} / {fmtHours(r.cp.estimate_hours)}</div>}</td>
       <td className="hide-mobile"><Person userId={r.cp?.assignee_id} /></td>
-      <td className="nowrap"><DueBadge date={r.nextDue} done={r.j.status === 'complete'} />{overdue && ''}</td>
-      <td className="hide-mobile">
+      <td className={`nowrap ${plan ? 'plan-hide-mobile' : ''}`}><DueBadge date={r.nextDue} done={r.j.status === 'complete'} />{overdue && ''}</td>
+      {!plan && <td className="hide-mobile">
         <div className="tiny muted">{fmtHours(phaseLogged)} / {fmtHours(r.cp?.estimate_hours ?? 0)} phase · {fmtHours(r.logged)} / {fmtHours(r.est)} job</div>
         <Progress value={r.logged} max={r.est} />
-      </td>
+      </td>}
+      {plan && plan.days.map(d => <DayCell key={d} date={d} jobId={r.j.id} phaseId={r.cp?.id ?? null} who={plan.who} entries={plan.entries.filter(e => e.date === d)} onComplex={() => plan.onComplex(d)} />)}
+      {plan && <td className="plan-col num bold plan-hide-mobile">{(() => { const t = sum(plan.entries.map(e => e.hours)); return t ? fmtHours(t) : <span className="muted">–</span> })()}</td>}
     </tr>
+  )
+}
+
+/** One editable day box. Saves when you leave the box (or press Enter). */
+function DayCell({ date, jobId, phaseId, who, entries, onComplex }: { date: string; jobId: string; phaseId: string | null; who: string; entries: ScheduleEntry[]; onComplex: () => void }) {
+  const { insert, update, remove } = useData()
+  const total = sum(entries.map(e => e.hours))
+  const shown = total ? String(Math.round(total * 100) / 100) : ''
+  const [val, setVal] = useState(shown)
+  const [focused, setFocused] = useState(false)
+  useEffect(() => { if (!focused) setVal(shown) }, [shown, focused])
+  const multi = entries.length > 1  // several phases scheduled that day → edit in the full form
+
+  async function commit() {
+    setFocused(false)
+    const v = val.trim() === '' ? 0 : Number(val)
+    if (Number.isNaN(v) || v < 0 || v === total) { setVal(shown); return }
+    if (entries.length === 1) {
+      if (v === 0) await remove('schedule_entries', entries[0].id)
+      else await update('schedule_entries', entries[0].id, { hours: v })
+    } else if (entries.length === 0 && v > 0) {
+      await insert('schedule_entries', { job_id: jobId, phase_id: phaseId, user_id: who, date, hours: v })
+    }
+  }
+
+  return (
+    <td className="plan-col" onClick={e => e.stopPropagation()}>
+      <input
+        className={`plan-cell ${total ? 'filled' : ''}`}
+        type="number" inputMode="decimal" min="0" max="24" step="0.5"
+        value={val} placeholder="–" readOnly={multi}
+        title={multi ? 'Hours on more than one phase. Click to edit.' : 'Hours scheduled'}
+        aria-label={`Hours on ${date}`}
+        onFocus={() => { if (multi) onComplex(); else setFocused(true) }}
+        onChange={e => setVal(e.target.value)}
+        onBlur={() => { if (!multi) void commit() }}
+        onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); if (e.key === 'Escape') { setVal(shown); setFocused(false); (e.target as HTMLInputElement).blur() } }}
+      />
+    </td>
   )
 }
