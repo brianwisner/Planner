@@ -121,6 +121,18 @@ export interface Deposit {
   created_at: string
 }
 
+/** Planned (not yet worked) hours for a person on a day, set from the Gantt chart. */
+export interface ScheduleEntry {
+  id: string
+  job_id: string
+  phase_id: string | null
+  user_id: string
+  date: string
+  hours: number
+  note: string
+  created_at: string
+}
+
 export interface Comment {
   id: string
   job_id: string
