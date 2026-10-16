@@ -3,10 +3,10 @@
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useData } from '../lib/store'
-import { teamWorkload } from '../lib/calc'
+import { jobBilling, teamWorkload } from '../lib/calc'
 import { calendarItems } from '../lib/calendar'
 import { PHASE_KIND_SHORT } from '../lib/types'
-import { daysUntil, fmtDate, fmtHours, todayISO } from '../lib/utils'
+import { daysUntil, fmtDate, fmtHours, fmtMoney, fmtSigned, todayISO } from '../lib/utils'
 import { Avatar, Checkbox, DueBadge, Empty, Icon, Person } from '../components/ui'
 import { TaskModal, toggleTaskDone } from '../components/editors'
 import { useReminders } from '../lib/reminders'
@@ -19,6 +19,7 @@ export function Dashboard() {
   useReminders()
 
   const workload = useMemo(() => teamWorkload(store), [store])
+  const toBill = useMemo(() => jobs.filter(j => j.status !== 'archived').map(j => jobBilling(store, j)).filter(b => b.unbilledAmount > 0.5).sort((a, b) => b.unbilledAmount - a.unbilledAmount), [store, jobs])
   const items = useMemo(() => calendarItems(store), [store])
   const today = todayISO()
   const open = items.filter(i => !i.done && (!onlyMine || i.assigneeId === me?.id || i.assigneeId == null))
@@ -63,6 +64,19 @@ export function Dashboard() {
                     <div className="bold">{fmtHours(w.remainingHours)} left</div>
                     <div className="tiny muted">{w.bookedUntil ? `booked until ${fmtDate(w.bookedUntil.toISOString())} (${w.weeksOut.toFixed(1)} wk)` : 'available'}</div>
                   </div>
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          <div className="card">
+            <h2>Needs billing <Link className="small" to="/billing" style={{ marginLeft: 'auto', fontWeight: 400 }}>Billing →</Link></h2>
+            {toBill.length === 0 && <Empty>All work is paid for or billed.</Empty>}
+            <ul className="list">
+              {toBill.slice(0, 6).map(b => (
+                <li key={b.job.id}>
+                  <div className="title"><Link to={`/billing?job=${b.job.id}`}>{b.job.name}</Link><div className="meta">{fmtHours(b.unbilledHours)} not billed{b.deposits > 0 ? ' · deposit used up' : ''}</div></div>
+                  <div className="right"><div className="bold danger-text">{fmtMoney(b.unbilledAmount)}</div><div className="tiny muted">balance {fmtSigned(b.balance)}</div></div>
                 </li>
               ))}
             </ul>

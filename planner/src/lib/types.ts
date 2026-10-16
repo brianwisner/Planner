@@ -104,9 +104,20 @@ export interface TimeEntry {
   date: string
   hours: number | null
   started_at: string | null
+  rate: number | null           // $/hour saved when the entry was created
   notes: string
   billed: boolean
   invoice_id: string | null
+  created_at: string
+}
+
+export interface Deposit {
+  id: string
+  job_id: string
+  amount: number
+  received_date: string
+  method: string
+  notes: string
   created_at: string
 }
 

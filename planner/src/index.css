@@ -132,7 +132,8 @@ kbd {
 
 /* ---------- Cards / tables ---------- */
 .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); padding: 16px; }
-.card + .card { margin-top: 16px; }
+.card + .card, .grid + .card, .card + .grid, .grid + .grid { margin-top: 16px; }
+.grid > .card + .card { margin-top: 0; }
 .card h2 { display: flex; align-items: center; gap: 8px; }
 .card h2 .actions { margin-left: auto; display: flex; gap: 6px; }
 .grid { display: grid; gap: 16px; }
@@ -335,3 +336,39 @@ tfoot td { font-weight: 600; background: var(--surface-2); }
 @media (hover: none) {
   .btn, .chip, .check { -webkit-tap-highlight-color: transparent; }
 }
+
+/* ---------- Money charts ---------- */
+.wsb { margin: 6px 0 2px; }
+.wsb-bar { display: flex; gap: 2px; height: 16px; }
+.wsb-seg { position: relative; min-width: 4px; border: 2px solid transparent; cursor: pointer; transition: opacity 0.1s; }
+.wsb-seg:first-child { border-top-left-radius: 4px; border-bottom-left-radius: 4px; }
+.wsb-seg:last-child { border-top-right-radius: 4px; border-bottom-right-radius: 4px; }
+.wsb-seg.dashed { border-style: dashed; }
+.wsb-seg.dim { opacity: 0.35; }
+.wsb-legend { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 10px; font-size: 13px; color: var(--muted); }
+.wsb-key { display: inline-flex; align-items: center; gap: 6px; }
+.wsb-key b { color: var(--text); }
+.wsb-key.zero { opacity: 0.5; }
+.wsb-key i { width: 12px; height: 12px; border-radius: 3px; border: 2px solid transparent; }
+.wsb-key i.dashed { border-style: dashed; }
+.chart-tip { position: absolute; bottom: calc(100% + 8px); left: 50%; transform: translateX(-50%); z-index: 5; background: var(--navy-dark); color: #fff; padding: 6px 10px; border-radius: 6px; font-size: 12px; white-space: nowrap; display: flex; flex-direction: column; gap: 1px; pointer-events: none; box-shadow: var(--shadow); }
+.chart-tip b { font-size: 14px; }
+.chart-tip .danger-text { color: #ffb4b4; }
+.chart-tip .ok-text { color: #9be59b; }
+.bal { position: relative; width: 100%; touch-action: pan-y; }
+.bal svg { display: block; }
+.bal-grid { stroke: var(--border); stroke-width: 1; }
+.bal-zero { stroke: var(--muted); stroke-width: 1.5; }
+.bal-axis { fill: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+.bal-cross { stroke: var(--muted); stroke-width: 1; stroke-dasharray: 3 3; }
+.bal-tip { top: 0; bottom: auto; transform: translateX(-50%); }
+.bal-legend { display: flex; flex-wrap: wrap; gap: 4px 16px; margin-top: 4px; }
+.bal-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.bal-legend .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+.bal-legend .dot.ring { box-shadow: 0 0 0 2px #fff, 0 0 0 3px #2a78d6; }
+.badge.h-deposit, .badge.h-paid { background: #dcfce7; color: #166534; }
+.badge.h-partial { background: #fef3c7; color: #92400e; }
+.badge.h-billed { background: #fef3c7; color: #92400e; }
+.badge.h-unbilled { background: #fee2e2; color: #991b1b; }
+.money-pos { color: var(--ok); }
+.money-neg { color: var(--danger); }

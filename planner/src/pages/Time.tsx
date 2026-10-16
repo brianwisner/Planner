@@ -3,14 +3,17 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { addDays, format, parseISO } from 'date-fns'
 import { useData } from '../lib/store'
-import { entryHours, startOfWeekISO, timerHours } from '../lib/calc'
+import { allHours, entryHours, startOfWeekISO, timerHours } from '../lib/calc'
+import { StatusBadge } from './Billing'
 import type { TimeEntry } from '../lib/types'
 import { downloadCSV, fmtDate, fmtHours, sum } from '../lib/utils'
 import { TimeModal } from '../components/editors'
 import { Avatar, Icon, Person } from '../components/ui'
 
 export function Time() {
-  const { timeEntries, jobs, phases, profiles, me, update, clients } = useData()
+  const store = useData()
+  const { timeEntries, jobs, phases, profiles, me, update, clients } = store
+  const hourMap = useMemo(() => allHours(store), [store])
   const [params, setParams] = useSearchParams()
   const [who, setWho] = useState(me?.id ?? '')
   const [jobFilter, setJobFilter] = useState(params.get('job') ?? '')
@@ -37,8 +40,8 @@ export function Time() {
   const running = timeEntries.find(e => e.user_id === me?.id && e.started_at && e.hours == null)
 
   function exportCSV() {
-    downloadCSV(`hours-${showAll ? 'all' : weekStart}.csv`, ['Date', 'Person', 'Client', 'Job #', 'Job', 'Phase', 'Hours', 'Notes', 'Billed'],
-      listEntries.map(e => { const j = jobs.find(j => j.id === e.job_id); return [e.date, profiles.find(p => p.id === e.user_id)?.full_name, clients.find(c => c.id === j?.client_id)?.name, j?.job_number, j?.name, phases.find(p => p.id === e.phase_id)?.name ?? 'General', Math.round(entryHours(e) * 100) / 100, e.notes, e.billed ? 'yes' : 'no'] }))
+    downloadCSV(`hours-${showAll ? 'all' : weekStart}.csv`, ['Date', 'Person', 'Client', 'Job #', 'Job', 'Phase', 'Hours', 'Notes', 'Billing status'],
+      listEntries.map(e => { const j = jobs.find(j => j.id === e.job_id); return [e.date, profiles.find(p => p.id === e.user_id)?.full_name, clients.find(c => c.id === j?.client_id)?.name, j?.job_number, j?.name, phases.find(p => p.id === e.phase_id)?.name ?? 'General', Math.round(entryHours(e) * 100) / 100, e.notes, hourMap.get(e.id)?.status ?? (e.started_at ? 'running' : '')] }))
   }
 
   return (
@@ -87,7 +90,7 @@ export function Time() {
       <div className="card">
         <h2>Entries <span className="actions"><button className={`chip ${showAll ? 'on' : ''}`} onClick={() => setShowAll(!showAll)}>{showAll ? 'All time' : 'This week'}</button></span></h2>
         <div className="table-wrap"><table>
-          <thead><tr><th>Date</th><th>Who</th><th>Job / phase</th><th className="hide-mobile">Notes</th><th className="num">Hours</th><th></th></tr></thead>
+          <thead><tr><th>Date</th><th>Who</th><th>Job / phase</th><th className="hide-mobile">Notes</th><th className="num">Hours</th><th className="hide-mobile">Billing</th></tr></thead>
           <tbody>
             {listEntries.slice(0, 300).map(e => (
               <tr key={e.id} className="clickable" onClick={() => setEditing(e)}>
@@ -96,7 +99,7 @@ export function Time() {
                 <td>{jobName(e.job_id)}<div className="tiny muted">{phases.find(p => p.id === e.phase_id)?.name ?? 'General'}</div></td>
                 <td className="hide-mobile small muted">{e.notes}</td>
                 <td className="num">{e.started_at && e.hours == null ? '⏱' : fmtHours(e.hours)}</td>
-                <td>{e.billed ? <span className="badge complete">billed</span> : ''}</td>
+                <td className="hide-mobile">{hourMap.get(e.id) && <StatusBadge h={hourMap.get(e.id)!} />}</td>
               </tr>
             ))}
             {listEntries.length === 0 && <tr><td colSpan={6} className="empty">No entries.</td></tr>}

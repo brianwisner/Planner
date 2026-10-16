@@ -187,9 +187,36 @@ create table if not exists time_entries (
   date date not null default current_date,
   hours numeric,                                -- null while a timer is running
   started_at timestamptz,                       -- set while a timer is running
+  rate numeric,                                 -- $/hour saved when the entry is created
   notes text default '',
   billed boolean not null default false,
   invoice_id uuid references invoices(id) on delete set null,
+  created_at timestamptz not null default now()
+);
+
+-- Save the billing rate on each new time entry (person's rate, else company default),
+-- so changing a rate later does not change the value of hours already logged.
+create or replace function set_entry_rate() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  if new.rate is null then
+    new.rate := coalesce((select hourly_rate from profiles where id = new.user_id),
+                         (select default_rate from settings where id = 1), 0);
+  end if;
+  return new;
+end $$;
+drop trigger if exists time_entry_rate on time_entries;
+create trigger time_entry_rate before insert on time_entries for each row execute procedure set_entry_rate();
+
+-- ---------- Deposits (retainers) received on a job ----------
+-- A deposit pays for that job's un-invoiced hours, oldest first (worked out in the app).
+create table if not exists deposits (
+  id uuid primary key default gen_random_uuid(),
+  job_id uuid not null references jobs(id) on delete cascade,
+  amount numeric not null default 0,
+  received_date date not null default current_date,
+  method text default '',
+  notes text default '',
   created_at timestamptz not null default now()
 );
 
@@ -210,6 +237,7 @@ create index if not exists tasks_phase_idx on tasks(phase_id);
 create index if not exists time_job_idx on time_entries(job_id);
 create index if not exists time_user_idx on time_entries(user_id);
 create index if not exists comments_job_idx on comments(job_id);
+create index if not exists deposits_job_idx on deposits(job_id);
 
 -- ---------- Security: only signed-in team members can see or change data ----------
 alter table settings     enable row level security;
@@ -219,13 +247,14 @@ alter table jobs         enable row level security;
 alter table phases       enable row level security;
 alter table tasks        enable row level security;
 alter table invoices     enable row level security;
+alter table deposits     enable row level security;
 alter table time_entries enable row level security;
 alter table comments     enable row level security;
 
 do $$
 declare t text;
 begin
-  foreach t in array array['settings','profiles','clients','jobs','phases','tasks','invoices','time_entries','comments'] loop
+  foreach t in array array['settings','profiles','clients','jobs','phases','tasks','invoices','deposits','time_entries','comments'] loop
     execute format('drop policy if exists team_all on %I', t);
     execute format('create policy team_all on %I for all to authenticated using (true) with check (true)', t);
   end loop;
@@ -235,7 +264,7 @@ end $$;
 do $$
 declare t text;
 begin
-  foreach t in array array['settings','profiles','clients','jobs','phases','tasks','invoices','time_entries','comments'] loop
+  foreach t in array array['settings','profiles','clients','jobs','phases','tasks','invoices','deposits','time_entries','comments'] loop
     begin
       execute format('alter publication supabase_realtime add table %I', t);
     exception when duplicate_object then null;
@@ -335,4 +364,9 @@ begin
     (j2, 'INV-1052', 2500, current_date - 4, null),
     (j3, 'INV-1033', 3000, current_date - 30, current_date - 12),
     (j4, 'INV-0998', 900,  current_date - 95, current_date - 80);
+
+  -- Deposits: one used up (Smith, now has unbilled work), one with money left (Industrial Way)
+  insert into deposits (job_id, amount, received_date, method, notes) values
+    (j1, 2500, current_date - 21, 'Check', 'Retainer at signing'),
+    (j3, 1000, current_date - 60, 'ACH / transfer', 'Retainer at signing');
 end $$;

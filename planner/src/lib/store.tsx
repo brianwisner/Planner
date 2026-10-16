@@ -6,7 +6,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import type { Session } from '@supabase/supabase-js'
 import { supabase } from './supabase'
-import type { Client, Comment, Invoice, Job, Phase, Profile, Settings, Task, TimeEntry } from './types'
+import type { Client, Comment, Deposit, Invoice, Job, Phase, Profile, Settings, Task, TimeEntry } from './types'
 
 export interface Tables {
   settings: Settings
@@ -16,17 +16,18 @@ export interface Tables {
   phases: Phase
   tasks: Task
   invoices: Invoice
+  deposits: Deposit
   time_entries: TimeEntry
   comments: Comment
 }
 export type TableName = keyof Tables
 
-const TABLE_NAMES: TableName[] = ['settings', 'profiles', 'clients', 'jobs', 'phases', 'tasks', 'invoices', 'time_entries', 'comments']
+const TABLE_NAMES: TableName[] = ['settings', 'profiles', 'clients', 'jobs', 'phases', 'tasks', 'invoices', 'deposits', 'time_entries', 'comments']
 
 type Data = { [K in TableName]: Tables[K][] }
 
 const emptyData: Data = {
-  settings: [], profiles: [], clients: [], jobs: [], phases: [], tasks: [], invoices: [], time_entries: [], comments: [],
+  settings: [], profiles: [], clients: [], jobs: [], phases: [], tasks: [], invoices: [], deposits: [], time_entries: [], comments: [],
 }
 
 export interface Store {
@@ -39,6 +40,7 @@ export interface Store {
   phases: Phase[]
   tasks: Task[]
   invoices: Invoice[]
+  deposits: Deposit[]
   timeEntries: TimeEntry[]
   comments: Comment[]
   loading: boolean
@@ -166,6 +168,7 @@ export function DataProvider({ session, children }: { session: Session | null; c
       phases: [...data.phases].sort((a, b) => a.sort_order - b.sort_order),
       tasks: [...data.tasks].sort((a, b) => a.sort_order - b.sort_order || a.created_at.localeCompare(b.created_at)),
       invoices: [...data.invoices].sort((a, b) => a.issued_date.localeCompare(b.issued_date)),
+      deposits: [...data.deposits].sort((a, b) => a.received_date.localeCompare(b.received_date) || a.created_at.localeCompare(b.created_at)),
       timeEntries: [...data.time_entries].sort((a, b) => b.date.localeCompare(a.date) || b.created_at.localeCompare(a.created_at)),
       comments: [...data.comments].sort((a, b) => a.created_at.localeCompare(b.created_at)),
       loading, error, online, refresh, insert, update, remove, signOut, toast, toasts,

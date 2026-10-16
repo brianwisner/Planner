@@ -67,6 +67,7 @@ export function Settings() {
               <div className="field"><label>Default hourly rate ($)</label><input type="number" value={rate} onChange={e => setRate(e.target.value)} /></div>
               <div className="field"><label>Default weekly capacity (hours)</label><input type="number" value={cap} onChange={e => setCap(e.target.value)} /></div>
             </div>
+            <p className="small muted">Changing a rate only affects hours logged from now on. Hours already logged keep the rate they were logged at (you can edit any entry's rate on the Billing page).</p>
             <button className="btn primary" onClick={saveCompany}>Save</button>
           </div>
 
@@ -90,7 +91,7 @@ export function Settings() {
                 <li>Click the Google Calendar button. On the page that opens, paste the link into the <b>URL of calendar</b> box and click <b>Add calendar</b>.</li>
                 <li>It appears under "Other calendars" on every device signed into your Google account.</li>
               </ol>
-              <p className="small muted">Add <code>&amp;mine=1</code> to the end of the link to include only items assigned to you. This feed needs the small "ics" function from the README (step 5) to be deployed in Supabase. Until then, use "Download .ics" on the Calendar page.</p>
+              <p className="small muted">Add <code>&amp;mine=1</code> to the end of the link to include only items assigned to you.</p>
             </> : <p className="small muted">Available once connected to Supabase.</p>}
           </div>
 

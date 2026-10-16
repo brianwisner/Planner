@@ -1,7 +1,7 @@
 // The app shell: left sidebar (desktop), bottom tabs (phone), top bar with
 // search and quick-add, running-timer pill, toasts, and keyboard shortcuts.
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
-import { NavLink } from 'react-router-dom'
+import { NavLink, useLocation } from 'react-router-dom'
 import { useData } from '../lib/store'
 import { timerHours } from '../lib/calc'
 import { fmtHours } from '../lib/utils'
@@ -38,6 +38,10 @@ export function Layout({ children }: { children: ReactNode }) {
     quickAdd: () => setQuickAdd(true), search: () => setSearch(true), logTime: () => setLogTime(true), help: () => setHelp(true),
   }), [])
   useShortcuts(actions)
+
+  // Each new page starts at the top (filters and tabs within a page keep their place).
+  const { pathname } = useLocation()
+  useEffect(() => { window.scrollTo(0, 0) }, [pathname])
 
   const running = timeEntries.find(e => e.user_id === me?.id && e.started_at && e.hours == null)
   const stopTimer = useCallback(async () => {

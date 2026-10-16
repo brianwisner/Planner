@@ -22,7 +22,13 @@ It contains two separate things:
 - Every job gets **four phases automatically** via a database trigger (`add_standard_phases`): `design`, `plan_check`, `construction`, `client_changes`. Phase `kind` is fixed; `name` is the label.
 - `jobs.priority` (integer, lower = higher in queue) drives the prioritized job table.
 - `time_entries.hours` is null while a timer is running (`started_at` set). Stopping the timer fills `hours` (rounded to quarter hours).
-- `time_entries.billed` + `invoice_id` link hours to invoices. "Unbilled $" = unbilled hours × the person's `hourly_rate` (or `settings.default_rate`).
+- `time_entries.billed` + `invoice_id` link hours to invoices. `time_entries.rate` is the $/hour saved on insert by the `time_entry_rate` trigger (person's `hourly_rate`, else `settings.default_rate`), so rate changes never rewrite past hours.
+- `deposits` (job_id, amount, received_date, method, notes): retainers. The app (not the DB) applies them to a job's **un-invoiced** hours oldest-first.
+- Money model lives in `src/lib/calc.ts`:
+  - `jobHours()` gives each entry a status: `deposit` (paid by deposit), `partial`, `unbilled`, `billed` (on an unpaid invoice), `paid` (invoice paid).
+  - `jobBilling()` totals per job; **balance = deposits + invoiced − work value** (the owner's definition of job profitability: drops as hours are logged, rises when a deposit arrives or an invoice is sent). `collected` = deposits + paid invoices.
+  - `balanceHistory()` feeds the step chart; `depositUsage()` splits usage across deposits; `allHours()` is the cross-job status map.
+  - UI: `pages/Billing.tsx` (tabs Jobs / Deposits / Hours, and `?job=<id>` job money view), `components/MoneyCharts.tsx` (work-status bar + balance chart, status palette good #0ca30c / warning #fab219 / critical #d03b3b, always with text labels).
 - `profiles` rows are created by a trigger on `auth.users` (`handle_new_user`). The first-ever user also gets the sample data assigned to them.
 - Security: Row Level Security is on; one policy per table lets any **authenticated** user read/write everything (small trusted team). The anon key alone cannot read data.
 - Realtime: every table is in the `supabase_realtime` publication.
@@ -91,3 +97,4 @@ Conventions:
 - New phase types → the `kind` check constraint in `setup.sql`, `add_standard_phases()`, `PHASE_KIND_LABEL`/`PHASE_KIND_SHORT` in `types.ts`, Gantt colors in `index.css` (`.gbar.<kind>`).
 - Email reminders → would need a scheduled Edge Function (pg_cron + an email provider); currently reminders are browser notifications only.
 - Two-way Google Calendar → needs Google OAuth (Google Cloud project); current design is a one-way subscription feed.
+- **Google sign-in + showing the owner's work Google Calendar** was built once (commit 8df26c9) and then reverted at the owner's request ("connect my work account later"). To bring it back: revert the revert commit, then do the Google Cloud OAuth client + Supabase Google provider setup. The live database still has the dormant pieces (`google_tokens`, `private_config`, `settings.allowed_email_domains`, `profiles.google_calendar_ids`, and the `google-calendar` edge function); they are unused.

@@ -20,6 +20,13 @@ export function fmtHours(h: number | null | undefined): string {
   return Number.isInteger(r) ? `${r}h` : `${r.toFixed(r * 10 % 1 === 0 ? 1 : 2)}h`
 }
 
+/** Money with an explicit sign, e.g. +$1,200 or −$350 (for balances). */
+export function fmtSigned(n: number): string {
+  const r = Math.round(n)
+  if (r === 0) return '$0'
+  return (r > 0 ? '+' : '−') + fmtMoney(Math.abs(r))
+}
+
 export function fmtMoney(n: number | null | undefined): string {
   if (n == null) return '–'
   return n.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })

@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useData } from '../lib/store'
 import { jobBilling } from '../lib/calc'
-import { fmtDate, fmtHours, fmtMoney, sum } from '../lib/utils'
+import { fmtDate, fmtHours, fmtMoney, fmtSigned, sum } from '../lib/utils'
 import { JobsTable } from '../views/JobsTable'
 import { ClientModal, JobModal } from '../components/editors'
 import { Empty, Icon } from '../components/ui'
@@ -34,9 +34,9 @@ export function ClientDetail() {
       </div>
       <div className="stats mb">
         <div className="stat"><div className="label">Jobs</div><div className="value">{cj.filter(j => j.status === 'active').length}<span className="muted" style={{ fontSize: 14 }}> active / {cj.length}</span></div></div>
-        <div className="stat"><div className="label">Hours logged</div><div className="value">{fmtHours(sum(b.map(x => x.loggedHours)))}</div></div>
-        <div className="stat"><div className="label">Unbilled</div><div className="value">{fmtMoney(sum(b.map(x => x.unbilledAmount)))}</div><div className="sub">{fmtHours(sum(b.map(x => x.unbilledHours)))}</div></div>
-        <div className="stat"><div className="label">Outstanding</div><div className={`value ${sum(b.map(x => x.outstanding)) > 0 ? 'warn-text' : ''}`}>{fmtMoney(sum(b.map(x => x.outstanding)))}</div><div className="sub">{fmtMoney(sum(b.map(x => x.invoiced)))} invoiced total</div></div>
+        <div className="stat"><div className="label">Balance</div><div className={`value ${sum(b.map(x => x.balance)) < 0 ? 'money-neg' : 'money-pos'}`}>{fmtSigned(sum(b.map(x => x.balance)))}</div><div className="sub">{fmtHours(sum(b.map(x => x.loggedHours)))} logged · {fmtMoney(sum(b.map(x => x.depositRemaining)))} deposit left</div></div>
+        <div className="stat"><div className="label">Not billed</div><div className="value">{fmtMoney(sum(b.map(x => x.unbilledAmount)))}</div><div className="sub">{fmtHours(sum(b.map(x => x.unbilledHours)))}</div></div>
+        <div className="stat"><div className="label">Waiting for payment</div><div className={`value ${sum(b.map(x => x.outstanding)) > 0 ? 'warn-text' : ''}`}>{fmtMoney(sum(b.map(x => x.outstanding)))}</div><div className="sub">{fmtMoney(sum(b.map(x => x.invoiced)))} invoiced total</div></div>
       </div>
       {client.notes && <div className="card mb"><h2>Notes</h2><p style={{ whiteSpace: 'pre-wrap' }}>{client.notes}</p></div>}
       <div className="card"><h2>Jobs</h2><JobsTable jobs={cj} showExport={false} /></div>

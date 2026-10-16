@@ -70,7 +70,11 @@ In the app go to **Settings → Google Calendar sync**, click **Copy link**, the
 - **Prioritize:** on the Jobs table, drag the **≡** handle to reorder. Number 1 is the top of the queue.
 - **Daily list:** Dashboard → *My open tasks*, or Jobs → Board.
 - **Log time:** press **t** anywhere, or click **Start timer** on a job. Stop it from the green pill at the top.
-- **Bill a job:** Billing → click the job → tick the hours → **Invoice selected** → enter the invoice number and amount. Later, click **Mark paid**.
+- **Take a deposit:** on the job page click **Deposit** (or Billing → **Record deposit**), enter the amount and date.
+- **Job balance:** every job shows deposits + billed − the value of hours worked (hours × billing rate). It goes down as hours are logged and back up when a deposit comes in or an invoice goes out. Red means you've done work nobody has paid for or been billed for yet.
+- **Bill a job:** Billing → click the job → **Bill unbilled hours** (or tick specific hours → **Invoice selected**) → enter the invoice number. Later, click **Mark paid**.
+- **Which hours are paid:** every hour is marked *Paid by deposit*, *Not billed*, *Billed, not paid*, or *Paid*. Billing → **Hours** lists them across all jobs with filters and CSV export. Deposits pay for hours automatically, oldest first.
+- **Rates:** each time entry keeps the rate it was logged at, so changing someone's rate in Settings only affects new hours. You can change one entry's rate from the job's Billing page.
 - **Site visits:** make a task, tick **Site visit**, give it a date and time. It shows up purple on the calendar and in Google Calendar.
 - **Repeating tasks:** set **Repeats** on a task. When you tick it done, the next one is created automatically.
 - **Reminders:** Settings → **Turn on reminders on this device**. Once a day when you open the app, you get a notification of anything overdue or due today.
