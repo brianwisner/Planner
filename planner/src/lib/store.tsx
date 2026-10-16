@@ -6,7 +6,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import type { Session } from '@supabase/supabase-js'
 import { supabase } from './supabase'
-import type { Client, Comment, GoogleToken, Invoice, Job, Phase, Profile, Settings, Task, TimeEntry } from './types'
+import type { Client, Comment, Invoice, Job, Phase, Profile, Settings, Task, TimeEntry } from './types'
 
 export interface Tables {
   settings: Settings
@@ -18,16 +18,15 @@ export interface Tables {
   invoices: Invoice
   time_entries: TimeEntry
   comments: Comment
-  google_tokens: GoogleToken
 }
 export type TableName = keyof Tables
 
-const TABLE_NAMES: TableName[] = ['settings', 'profiles', 'clients', 'jobs', 'phases', 'tasks', 'invoices', 'time_entries', 'comments', 'google_tokens']
+const TABLE_NAMES: TableName[] = ['settings', 'profiles', 'clients', 'jobs', 'phases', 'tasks', 'invoices', 'time_entries', 'comments']
 
 type Data = { [K in TableName]: Tables[K][] }
 
 const emptyData: Data = {
-  settings: [], profiles: [], clients: [], jobs: [], phases: [], tasks: [], invoices: [], time_entries: [], comments: [], google_tokens: [],
+  settings: [], profiles: [], clients: [], jobs: [], phases: [], tasks: [], invoices: [], time_entries: [], comments: [],
 }
 
 export interface Store {
@@ -42,8 +41,6 @@ export interface Store {
   invoices: Invoice[]
   timeEntries: TimeEntry[]
   comments: Comment[]
-  googleTokens: GoogleToken[]  // only your own row is visible
-  googleConnected: boolean     // the signed-in person has linked their Google Calendar
   loading: boolean
   error: string | null
   online: boolean
@@ -160,7 +157,7 @@ export function DataProvider({ session, children }: { session: Session | null; c
 
   const value = useMemo<Store>(() => {
     const me = data.profiles.find(p => p.id === session?.user.id) ?? null
-    const settings: Settings = data.settings[0] ?? { id: 1, company_name: 'Wisner Engineering', default_rate: 150, weekly_capacity: 40, allowed_email_domains: [] }
+    const settings: Settings = data.settings[0] ?? { id: 1, company_name: 'Wisner Engineering', default_rate: 150, weekly_capacity: 40 }
     return {
       session, me, settings,
       profiles: [...data.profiles].sort((a, b) => a.full_name.localeCompare(b.full_name)),
@@ -171,8 +168,6 @@ export function DataProvider({ session, children }: { session: Session | null; c
       invoices: [...data.invoices].sort((a, b) => a.issued_date.localeCompare(b.issued_date)),
       timeEntries: [...data.time_entries].sort((a, b) => b.date.localeCompare(a.date) || b.created_at.localeCompare(a.created_at)),
       comments: [...data.comments].sort((a, b) => a.created_at.localeCompare(b.created_at)),
-      googleTokens: data.google_tokens,
-      googleConnected: data.google_tokens.some(t => t.user_id === session?.user.id),
       loading, error, online, refresh, insert, update, remove, signOut, toast, toasts,
     }
   }, [data, session, loading, error, online, refresh, insert, update, remove, signOut, toast, toasts])

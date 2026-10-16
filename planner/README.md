@@ -58,13 +58,7 @@ Easiest: tell Claude the person's name and email and it will create the account 
 
 To do it yourself instead: Supabase dashboard → **Authentication** → **Users** → **Add user** → **Create new user**, enter their email and a temporary password, tick **Auto Confirm User**. (The "Send invitation" option also works, but first set **Authentication → URL Configuration → Site URL** to `https://brianwisner.github.io/Who-knows/` so the email link opens the app.)
 
-### Google sign-in and seeing your Google Calendar in the planner
-
-The login page has **Continue with Google**, and Settings has **Connect Google account**. Once connected, your own Google Calendar events (from the calendars you tick in Settings) appear on the Calendar page and the Dashboard, in teal. Only you see your events; each team member connects their own account. The planner only reads calendars; it never changes them.
-
-This needs a one-time Google setup by the account owner (a Google Cloud "OAuth client"), plus the Client ID and secret entered into Supabase under **Authentication → Providers → Google** and into the `private_config` table (keys `google_client_id`, `google_client_secret`). Ask Claude for the current checklist. Sign-ins can be limited to your company email domain under **Settings → Company**.
-
-### Planner deadlines in Google Calendar (feed)
+### Google Calendar sync
 
 In the app go to **Settings → Google Calendar sync**, click **Copy link**, then click the Google Calendar button and paste the link into **URL of calendar** → **Add calendar**. Deadlines and site visits then appear in Google Calendar on every device; Google refreshes subscribed calendars every few hours. The feed includes everyone's items; add `&mine=1` to the end of the link for only your own. The **Calendar** page also has **Download .ics** and per-item **Add to Google Calendar** links.
 

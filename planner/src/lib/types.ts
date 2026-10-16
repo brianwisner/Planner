@@ -11,7 +11,6 @@ export interface Settings {
   company_name: string
   default_rate: number
   weekly_capacity: number
-  allowed_email_domains: string[]
 }
 
 export interface Profile {
@@ -22,17 +21,7 @@ export interface Profile {
   hourly_rate: number | null
   weekly_hours: number
   ics_token: string
-  google_calendar_ids: string[]
   created_at: string
-}
-
-export interface GoogleToken {
-  user_id: string
-  email: string | null
-  refresh_token: string
-  access_token: string | null
-  expires_at: string | null
-  updated_at: string
 }
 
 export interface Client {

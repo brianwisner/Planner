@@ -1,14 +1,13 @@
 // Settings: company name, rates, your profile, team list, Google Calendar
 // feed link, reminders, and sample-data cleanup.
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useData } from '../lib/store'
 import { SUPABASE_URL, supabase } from '../lib/supabase'
 import { enableNotifications } from '../lib/reminders'
-import { clearGoogleCache, disconnectGoogle, listGoogleCalendars, signInWithGoogle, type GoogleCalendar } from '../lib/google'
 import { Avatar } from '../components/ui'
 
 export function Settings() {
-  const { settings, me, profiles, clients, update, remove, signOut, toast, refresh, googleConnected, googleTokens } = useData()
+  const { settings, me, profiles, clients, update, remove, signOut, toast, refresh } = useData()
   const [company, setCompany] = useState(settings.company_name)
   const [rate, setRate] = useState(String(settings.default_rate))
   const [cap, setCap] = useState(String(settings.weekly_capacity))
@@ -18,21 +17,12 @@ export function Settings() {
   const [color, setColor] = useState(me?.color ?? '#1f6feb')
   const [notifMsg, setNotifMsg] = useState('')
   const [pw, setPw] = useState('')
-  const [domains, setDomains] = useState(settings.allowed_email_domains.join(', '))
-  const [gcals, setGcals] = useState<GoogleCalendar[] | null>(null)
-  const [gerr, setGerr] = useState<string | null>(null)
-  const myGoogle = googleTokens.find(t => t.user_id === me?.id)
-  useEffect(() => {
-    if (!googleConnected) { setGcals(null); return }
-    listGoogleCalendars().then(r => { if (r.error) setGerr(r.error); else { setGerr(null); setGcals(r.data!.calendars) } })
-  }, [googleConnected])
 
   const feedUrl = me && SUPABASE_URL ? `${SUPABASE_URL}/functions/v1/ics?token=${me.ics_token}` : ''
   const sample = clients.filter(c => c.is_sample)
 
   async function saveCompany() {
-    const allowed = domains.split(/[,\s]+/).map(d => d.trim().toLowerCase().replace(/^@/, '')).filter(Boolean)
-    await update('settings', 1, { company_name: company.trim() || 'Wisner Engineering', default_rate: Number(rate) || 0, weekly_capacity: Number(cap) || 40, allowed_email_domains: allowed })
+    await update('settings', 1, { company_name: company.trim() || 'Wisner Engineering', default_rate: Number(rate) || 0, weekly_capacity: Number(cap) || 40 })
     toast('Saved')
   }
   async function saveMe() {
@@ -77,7 +67,6 @@ export function Settings() {
               <div className="field"><label>Default hourly rate ($)</label><input type="number" value={rate} onChange={e => setRate(e.target.value)} /></div>
               <div className="field"><label>Default weekly capacity (hours)</label><input type="number" value={cap} onChange={e => setCap(e.target.value)} /></div>
             </div>
-            <div className="field"><label>Who may sign in — allowed email domains (comma separated, blank = anyone you invite)</label><input value={domains} onChange={e => setDomains(e.target.value)} placeholder="e.g. wisnerengineering.com" /></div>
             <button className="btn primary" onClick={saveCompany}>Save</button>
           </div>
 
@@ -89,41 +78,8 @@ export function Settings() {
         </div>
 
         <div>
-          <div className="card" id="google">
-            <h2>Google account &amp; calendar</h2>
-            {googleConnected ? <>
-              <p className="small">Connected as <b>{myGoogle?.email ?? me?.email}</b>. Events from the calendars ticked below show up on your Calendar page and Dashboard. Only you can see them.</p>
-              {gerr && <p className="small danger-text">Could not load calendars ({gerr}). Click Reconnect.</p>}
-              {gcals && (
-                <ul className="list">
-                  {gcals.map(c => {
-                    const chosen = me?.google_calendar_ids?.length ? me.google_calendar_ids : gcals.filter(x => x.primary).map(x => x.id)
-                    const on = chosen.includes(c.id)
-                    return (
-                      <li key={c.id}>
-                        <input type="checkbox" style={{ width: 18, minHeight: 0 }} checked={on} onChange={async () => {
-                          const next = on ? chosen.filter(id => id !== c.id) : [...chosen, c.id]
-                          if (me) { await update('profiles', me.id, { google_calendar_ids: next }); clearGoogleCache() }
-                        }} />
-                        <span style={{ width: 12, height: 12, borderRadius: 3, background: c.color ?? '#0e7490', display: 'inline-block' }} />
-                        <div className="title">{c.name}{c.primary && <span className="tiny muted"> · main calendar</span>}</div>
-                      </li>
-                    )
-                  })}
-                </ul>
-              )}
-              <div className="row mt">
-                <button className="btn" onClick={() => signInWithGoogle()}>Reconnect</button>
-                <button className="btn danger" onClick={async () => { if (me && confirm('Stop showing your Google Calendar in the planner?')) { await disconnectGoogle(me.id); clearGoogleCache(); await refresh('google_tokens'); toast('Google Calendar disconnected') } }}>Disconnect</button>
-              </div>
-            </> : <>
-              <p className="small">Connect your work Google account to sign in with it and to see your Google Calendar events alongside job deadlines. The planner only reads your calendar; it never changes it.</p>
-              <button className="btn primary" onClick={async () => { const err = await signInWithGoogle(); if (err) toast(err, 'error') }}>Connect Google account</button>
-            </>}
-          </div>
-
           <div className="card" id="calendar">
-            <h2>Planner → Google Calendar feed</h2>
+            <h2>Google Calendar sync</h2>
             <p className="small">Deadlines and site visits appear in Google Calendar automatically once you subscribe to your personal feed. Google refreshes subscribed calendars a few times a day.</p>
             {feedUrl ? <>
               <div className="field"><label>Your private calendar feed link</label><input readOnly value={feedUrl} onFocus={e => e.target.select()} /></div>
@@ -134,7 +90,7 @@ export function Settings() {
                 <li>Click the Google Calendar button. On the page that opens, paste the link into the <b>URL of calendar</b> box and click <b>Add calendar</b>.</li>
                 <li>It appears under "Other calendars" on every device signed into your Google account.</li>
               </ol>
-              <p className="small muted">Add <code>&amp;mine=1</code> to the end of the link to include only items assigned to you.</p>
+              <p className="small muted">Add <code>&amp;mine=1</code> to the end of the link to include only items assigned to you. This feed needs the small "ics" function from the README (step 5) to be deployed in Supabase. Until then, use "Download .ics" on the Calendar page.</p>
             </> : <p className="small muted">Available once connected to Supabase.</p>}
           </div>
 

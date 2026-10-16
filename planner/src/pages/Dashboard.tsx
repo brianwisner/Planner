@@ -10,14 +10,10 @@ import { daysUntil, fmtDate, fmtHours, todayISO } from '../lib/utils'
 import { Avatar, Checkbox, DueBadge, Empty, Icon, Person } from '../components/ui'
 import { TaskModal, toggleTaskDone } from '../components/editors'
 import { useReminders } from '../lib/reminders'
-import { useGoogleEvents } from '../lib/google'
-import { addDays, format, startOfDay } from 'date-fns'
 
 export function Dashboard() {
   const store = useData()
-  const { jobs, phases, tasks, me, clients, googleConnected } = store
-  const [gRange] = useState(() => ({ from: startOfDay(new Date()).toISOString(), to: addDays(startOfDay(new Date()), 3).toISOString() }))
-  const google = useGoogleEvents(googleConnected, gRange.from, gRange.to, me?.google_calendar_ids ?? [])
+  const { jobs, phases, tasks, me, clients } = store
   const [editing, setEditing] = useState<string | null>(null)
   const [onlyMine, setOnlyMine] = useState(false)
   useReminders()
@@ -71,29 +67,6 @@ export function Dashboard() {
               ))}
             </ul>
           </div>
-
-          {googleConnected && (
-            <div className="card">
-              <h2>My Google Calendar <span className="actions"><Link className="small" to="/calendar" style={{ fontWeight: 400 }}>Full calendar →</Link></span></h2>
-              {google.loading && google.events.length === 0 && <p className="small muted">Loading…</p>}
-              {google.error && <p className="small danger-text">Could not load Google Calendar ({google.error}). Try reconnecting under Settings.</p>}
-              {!google.loading && !google.error && google.events.length === 0 && <Empty>Nothing on your Google Calendar for the next 3 days.</Empty>}
-              <ul className="list">
-                {google.events.slice(0, 10).map(e => {
-                  const d = e.allDay ? new Date(e.start! + 'T00:00:00') : new Date(e.start!)
-                  return (
-                    <li key={e.id}>
-                      <span className="badge google nowrap">{format(d, 'EEE')}</span>
-                      <div className="title">
-                        <a href={e.link ?? '#'} target="_blank" rel="noreferrer">{e.title}</a>
-                        <div className="meta">{e.allDay ? 'All day' : format(d, 'h:mm a') + (e.end ? '–' + format(new Date(e.end), 'h:mm a') : '')}{e.location ? ` · ${e.location}` : ''}</div>
-                      </div>
-                    </li>
-                  )
-                })}
-              </ul>
-            </div>
-          )}
 
           <div className="card">
             <h2>My open tasks <Link className="small" to="/jobs?view=board" style={{ marginLeft: 'auto', fontWeight: 400 }}>Board →</Link></h2>

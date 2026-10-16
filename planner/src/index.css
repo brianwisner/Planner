@@ -258,8 +258,6 @@ tfoot td { font-weight: 600; background: var(--surface-2); }
 .cal .ev.phase { background: #9a6700; }
 .cal .ev.job { background: var(--navy); }
 .cal .ev.site_visit { background: #5b21b6; }
-.cal .ev.google { background: #0e7490; }
-.badge.google { background: #cffafe; color: #155e75; }
 .cal .ev.done { opacity: 0.45; text-decoration: line-through; }
 .cal .ev.overdue { background: var(--danger); }
 .agenda .day-head { font-weight: 600; margin: 14px 0 6px; padding-bottom: 4px; border-bottom: 1px solid var(--border); }

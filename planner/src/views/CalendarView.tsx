@@ -39,7 +39,7 @@ export function CalendarView({ items }: { items: CalItem[] }) {
           <button className="btn sm" onClick={() => setMonth(startOfMonth(new Date()))}>Today</button>
         </>}
         <span className="grow" />
-        <span className="small muted hide-mobile">Colors: <span className="badge" style={{ background: 'var(--navy)', color: '#fff' }}>job due</span> <span className="badge" style={{ background: '#9a6700', color: '#fff' }}>phase due</span> <span className="badge" style={{ background: 'var(--accent)', color: '#fff' }}>task</span> <span className="badge site">site visit</span> <span className="badge google">Google Calendar</span></span>
+        <span className="small muted hide-mobile">Colors: <span className="badge" style={{ background: 'var(--navy)', color: '#fff' }}>job due</span> <span className="badge" style={{ background: '#9a6700', color: '#fff' }}>phase due</span> <span className="badge" style={{ background: 'var(--accent)', color: '#fff' }}>task</span> <span className="badge site">site visit</span></span>
       </div>
 
       {mode === 'month' ? (
@@ -51,13 +51,11 @@ export function CalendarView({ items }: { items: CalItem[] }) {
             return (
               <div key={key} className={`day ${isSameMonth(d, month) ? '' : 'other'} ${isToday(d) ? 'today' : ''}`}>
                 <span className="num">{format(d, 'd')}</span>
-                {evs.map(ev => {
-                  const cls = `ev ${ev.kind} ${ev.done ? 'done' : ''} ${!ev.done && ev.kind !== 'google' && (daysUntil(ev.date) ?? 0) < 0 ? 'overdue' : ''}`
-                  const label = <>{ev.time ? format(new Date(ev.time), 'h:mma ') : ''}{ev.title}</>
-                  return ev.external
-                    ? <a key={ev.id} href={ev.link} target="_blank" rel="noreferrer" className={cls} title={`${ev.title} — ${ev.jobName}`}>{label}</a>
-                    : <Link key={ev.id} to={ev.link} className={cls} title={`${ev.title} — ${ev.jobName}`}>{label}</Link>
-                })}
+                {evs.map(ev => (
+                  <Link key={ev.id} to={ev.link} className={`ev ${ev.kind} ${ev.done ? 'done' : ''} ${!ev.done && (daysUntil(ev.date) ?? 0) < 0 ? 'overdue' : ''}`} title={`${ev.title} — ${ev.jobName}`}>
+                    {ev.time ? format(new Date(ev.time), 'h:mma ') : ''}{ev.title}
+                  </Link>
+                ))}
               </div>
             )
           })}
@@ -90,14 +88,14 @@ function groupByDay(items: CalItem[]): [string, CalItem[]][] {
 function AgendaRow({ ev, siteUrl }: { ev: CalItem; siteUrl: string }) {
   return (
     <li>
-      <span className={`badge ${ev.kind === 'site_visit' ? 'site' : ev.kind === 'phase' ? 'waiting' : ev.kind === 'job' ? 'archived' : ev.kind === 'google' ? 'google' : 'active'}`}>
-        {ev.kind === 'site_visit' ? 'Site visit' : ev.kind === 'phase' ? 'Phase due' : ev.kind === 'job' ? 'Job due' : ev.kind === 'google' ? 'Google' : 'Task'}
+      <span className={`badge ${ev.kind === 'site_visit' ? 'site' : ev.kind === 'phase' ? 'waiting' : ev.kind === 'job' ? 'archived' : 'active'}`}>
+        {ev.kind === 'site_visit' ? 'Site visit' : ev.kind === 'phase' ? 'Phase due' : ev.kind === 'job' ? 'Job due' : 'Task'}
       </span>
       <div className="title">
-        {ev.external ? <a href={ev.link} target="_blank" rel="noreferrer">{ev.title}</a> : <Link to={ev.link}>{ev.title}</Link>}
-        <div className="meta">{ev.time ? format(new Date(ev.time), 'h:mm a') + (ev.endTime ? '–' + format(new Date(ev.endTime), 'h:mm a') : '') + ' · ' : ''}{ev.jobName}</div>
+        <Link to={ev.link}>{ev.title}</Link>
+        <div className="meta">{ev.time ? format(new Date(ev.time), 'h:mm a') + ' · ' : ''}{ev.jobName}</div>
       </div>
-      {!ev.external && <a className="btn sm ghost" href={googleCalendarLink(ev, siteUrl)} target="_blank" rel="noreferrer" title="Add to Google Calendar"><Icon name="external" size={14} /></a>}
+      <a className="btn sm ghost" href={googleCalendarLink(ev, siteUrl)} target="_blank" rel="noreferrer" title="Add to Google Calendar"><Icon name="external" size={14} /></a>
     </li>
   )
 }

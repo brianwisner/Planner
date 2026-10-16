@@ -9,28 +9,12 @@ export interface CalItem {
   date: string          // yyyy-mm-dd
   time: string | null   // ISO datetime for timed items (site visits)
   title: string
-  kind: 'phase' | 'task' | 'site_visit' | 'job' | 'google'
+  kind: 'phase' | 'task' | 'site_visit' | 'job'
   jobId: string
   jobName: string
   assigneeId: string | null
   done: boolean
-  link: string          // in-app route, or a full URL when external is true
-  external?: boolean
-  endTime?: string | null
-}
-
-/** Convert Google Calendar events into calendar items (shown only to their owner). */
-export function googleToCalItems(events: { id: string; title: string; start: string | null; end: string | null; allDay: boolean; link: string | null; location: string | null }[], userId: string | null): CalItem[] {
-  return events.filter(e => e.start).map(e => ({
-    id: `google-${e.id}`,
-    date: e.allDay ? e.start!.slice(0, 10) : format(new Date(e.start!), 'yyyy-MM-dd'),
-    time: e.allDay ? null : e.start,
-    endTime: e.allDay ? null : e.end,
-    title: e.title,
-    kind: 'google' as const,
-    jobId: '', jobName: e.location ?? 'Google Calendar', assigneeId: userId, done: false,
-    link: e.link ?? 'https://calendar.google.com', external: true,
-  }))
+  link: string          // in-app route
 }
 
 export function calendarItems(store: Pick<Store, 'jobs' | 'phases' | 'tasks' | 'clients'>): CalItem[] {

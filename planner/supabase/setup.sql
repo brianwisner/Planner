@@ -9,8 +9,7 @@ create table if not exists settings (
   id int primary key default 1 check (id = 1),
   company_name text not null default 'Wisner Engineering',
   default_rate numeric not null default 150,     -- $/hour used for unbilled estimates
-  weekly_capacity numeric not null default 40,    -- default hours/week per person
-  allowed_email_domains text[] not null default '{}' -- e.g. {wisnerengineering.com}; empty = no restriction
+  weekly_capacity numeric not null default 40     -- default hours/week per person
 );
 insert into settings (id) values (1) on conflict do nothing;
 
@@ -23,52 +22,22 @@ create table if not exists profiles (
   hourly_rate numeric,                 -- overrides settings.default_rate when set
   weekly_hours numeric not null default 40,
   ics_token text not null default encode(gen_random_bytes(16), 'hex'),
-  google_calendar_ids text[] not null default '{}',  -- which of their Google calendars to show
   created_at timestamptz not null default now()
 );
-
--- Server-only configuration (Google OAuth client id/secret). RLS with no policies = service role only.
-create table if not exists private_config (
-  key text primary key,
-  value text not null,
-  updated_at timestamptz not null default now()
-);
-alter table private_config enable row level security;
-
--- Each person's Google Calendar connection. Only the owner can see their own row.
-create table if not exists google_tokens (
-  user_id uuid primary key references profiles(id) on delete cascade,
-  email text,
-  refresh_token text not null,
-  access_token text,
-  expires_at timestamptz,
-  updated_at timestamptz not null default now()
-);
-alter table google_tokens enable row level security;
-drop policy if exists own_row on google_tokens;
-create policy own_row on google_tokens for all to authenticated using (user_id = auth.uid()) with check (user_id = auth.uid());
 
 -- Automatically create a profile row whenever a user account is created.
 create or replace function handle_new_user() returns trigger
 language plpgsql security definer set search_path = public as $$
 declare
   n int;
-  doms text[];
   palette text[] := array['#1f6feb','#d1242f','#1a7f37','#9a6700','#8250df','#bf3989','#0e7490','#b35900'];
 begin
-  -- Sign-up guard: when allowed_email_domains is set, only those domains may create accounts.
-  select allowed_email_domains into doms from settings where id = 1;
-  if doms is not null and array_length(doms, 1) > 0
-     and lower(split_part(coalesce(new.email, ''), '@', 2)) <> all (doms) then
-    raise exception 'Sign-in is limited to the company email domain(s): %', array_to_string(doms, ', ');
-  end if;
-
   select count(*) into n from profiles;
   insert into profiles (id, email, full_name, color)
   values (
     new.id,
     new.email,
-    coalesce(new.raw_user_meta_data->>'full_name', new.raw_user_meta_data->>'name', split_part(new.email, '@', 1)),
+    coalesce(new.raw_user_meta_data->>'full_name', split_part(new.email, '@', 1)),
     palette[(n % array_length(palette, 1)) + 1]
   )
   on conflict (id) do nothing;
@@ -266,7 +235,7 @@ end $$;
 do $$
 declare t text;
 begin
-  foreach t in array array['settings','profiles','clients','jobs','phases','tasks','invoices','time_entries','comments','google_tokens'] loop
+  foreach t in array array['settings','profiles','clients','jobs','phases','tasks','invoices','time_entries','comments'] loop
     begin
       execute format('alter publication supabase_realtime add table %I', t);
     exception when duplicate_object then null;
