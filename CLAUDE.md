@@ -23,6 +23,7 @@ It contains two separate things:
 - `jobs.priority` (integer, lower = higher in queue) drives the prioritized job table.
 - `time_entries.hours` is null while a timer is running (`started_at` set). Stopping the timer fills `hours` (rounded to quarter hours).
 - `time_entries.billed` + `invoice_id` link hours to invoices. `time_entries.rate` is the $/hour saved on insert by the `time_entry_rate` trigger (person's `hourly_rate`, else `settings.default_rate`), so rate changes never rewrite past hours.
+- `schedule_entries` (job_id, phase_id, user_id, date, hours): **planned** hours (not worked time), created by dragging on the Gantt chart via `components/ScheduleModal.tsx`. The app merges by (job, phase, person, date): editing updates the row, 0/blank deletes it.
 - `deposits` (job_id, amount, received_date, method, notes): retainers. The app (not the DB) applies them to a job's **un-invoiced** hours oldest-first.
 - Money model lives in `src/lib/calc.ts`:
   - `jobHours()` gives each entry a status: `deposit` (paid by deposit), `partial`, `unbilled`, `billed` (on an unpaid invoice), `paid` (invoice paid).
@@ -62,7 +63,11 @@ components/
 views/              reusable big views used inside pages
   JobsTable.tsx     sortable table, drag-to-reorder priority (dnd-kit sortable)
   Kanban.tsx        task board, drag between status columns (dnd-kit)
-  Gantt.tsx         timeline: job bar + one bar per phase, hours-used shading
+  Gantt.tsx         timeline: sticky job/phase column + sticky date header (month / date /
+                    weekday letter M T W R F S U / scheduled hours per day for a chosen
+                    person); jobs roll up (collapsed set in localStorage); drag (mouse) or
+                    tap (touch) on a row opens ScheduleModal; grid + weekends are CSS
+                    gradients so rows stay light
   CalendarView.tsx  month grid + agenda list
 pages/              one file per route
   Dashboard, Jobs (Table/Board/Gantt/Calendar tabs), JobDetail, Clients,

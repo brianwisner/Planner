@@ -75,6 +75,16 @@ begin
         ('25-112','design',        current_date - 110, 4.5, 'Site visit and letter',   true)
       ) as d(job_number, kind, day, hrs, note, billed)
         on d.job_number = j.job_number and d.kind = p.kind;
+    -- A few scheduled days ahead so the Gantt chart shows planned hours.
+    insert into schedule_entries (job_id, phase_id, user_id, date, hours)
+      select p.job_id, p.id, new.id, days.day, v.hrs
+      from (values ('26-041','design',1,4),('26-041','design',2,6),('26-041','design',3,4),('26-041','design',4,2),
+                   ('26-029','plan_check',1,3),('26-029','plan_check',2,2),('26-038','plan_check',3,3)) v(job_number, kind, n, hrs)
+      join jobs j on j.job_number = v.job_number
+      join phases p on p.job_id = j.id and p.kind = v.kind
+      join (select d::date as day, row_number() over (order by d) as n
+              from generate_series(current_date + 1, current_date + 14, interval '1 day') d
+             where extract(isodow from d) < 6) days on days.n = v.n;
   end if;
   return new;
 end $$;
@@ -220,6 +230,18 @@ create table if not exists deposits (
   created_at timestamptz not null default now()
 );
 
+-- ---------- Scheduled (planned) hours, set by dragging on the Gantt chart ----------
+create table if not exists schedule_entries (
+  id uuid primary key default gen_random_uuid(),
+  job_id uuid not null references jobs(id) on delete cascade,
+  phase_id uuid references phases(id) on delete cascade,
+  user_id uuid not null references profiles(id) on delete cascade,
+  date date not null,
+  hours numeric not null check (hours > 0),
+  note text default '',
+  created_at timestamptz not null default now()
+);
+
 -- ---------- Comments / notes on jobs ----------
 create table if not exists comments (
   id uuid primary key default gen_random_uuid(),
@@ -238,6 +260,8 @@ create index if not exists time_job_idx on time_entries(job_id);
 create index if not exists time_user_idx on time_entries(user_id);
 create index if not exists comments_job_idx on comments(job_id);
 create index if not exists deposits_job_idx on deposits(job_id);
+create index if not exists schedule_date_idx on schedule_entries(date);
+create index if not exists schedule_job_idx on schedule_entries(job_id);
 
 -- ---------- Security: only signed-in team members can see or change data ----------
 alter table settings     enable row level security;
@@ -248,13 +272,14 @@ alter table phases       enable row level security;
 alter table tasks        enable row level security;
 alter table invoices     enable row level security;
 alter table deposits     enable row level security;
+alter table schedule_entries enable row level security;
 alter table time_entries enable row level security;
 alter table comments     enable row level security;
 
 do $$
 declare t text;
 begin
-  foreach t in array array['settings','profiles','clients','jobs','phases','tasks','invoices','deposits','time_entries','comments'] loop
+  foreach t in array array['settings','profiles','clients','jobs','phases','tasks','invoices','deposits','schedule_entries','time_entries','comments'] loop
     execute format('drop policy if exists team_all on %I', t);
     execute format('create policy team_all on %I for all to authenticated using (true) with check (true)', t);
   end loop;
@@ -264,7 +289,7 @@ end $$;
 do $$
 declare t text;
 begin
-  foreach t in array array['settings','profiles','clients','jobs','phases','tasks','invoices','deposits','time_entries','comments'] loop
+  foreach t in array array['settings','profiles','clients','jobs','phases','tasks','invoices','deposits','schedule_entries','time_entries','comments'] loop
     begin
       execute format('alter publication supabase_realtime add table %I', t);
     exception when duplicate_object then null;
