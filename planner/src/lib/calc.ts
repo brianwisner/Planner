@@ -1,12 +1,18 @@
 // Calculations shared by the dashboard, reports and billing pages.
 import { addDays, format } from 'date-fns'
 import type { Store } from './store'
-import type { Job, Phase, Profile, TimeEntry } from './types'
+import type { Job, JobItem, Phase, Profile, TimeEntry } from './types'
 import { sum } from './utils'
 
 /** Hours for a timer that is being stopped now: quarter hours, minimum 0.25. */
 export function timerHours(e: TimeEntry): number {
   return Math.max(0.25, Math.round(entryHours(e) * 4) / 4)
+}
+
+/** Default phase for new hours/schedule on a job: first unfinished phase, skipping Queued. */
+export function workPhase(phases: Phase[], jobId: string): Phase | undefined {
+  const jp = phases.filter(p => p.job_id === jobId)
+  return jp.find(p => p.status !== 'complete' && p.kind !== 'queued') ?? jp.find(p => p.kind === 'design') ?? jp[0]
 }
 
 export function entryHours(e: TimeEntry): number {
@@ -27,7 +33,7 @@ export function rateFor(user: Profile | undefined, defaultRate: number): number 
   return user?.hourly_rate ?? defaultRate
 }
 
-type MoneyStore = Pick<Store, 'timeEntries' | 'invoices' | 'deposits' | 'profiles' | 'settings'>
+type MoneyStore = Pick<Store, 'timeEntries' | 'invoices' | 'deposits' | 'items' | 'profiles' | 'settings'>
 
 /** The $/hour for a time entry: the rate saved on it, else the person's current rate. */
 export function entryRate(store: Pick<Store, 'profiles' | 'settings'>, e: TimeEntry): number {
@@ -38,15 +44,19 @@ export function entryAmount(store: Pick<Store, 'profiles' | 'settings'>, e: Time
   return entryHours(e) * entryRate(store, e)
 }
 
+export function itemAmount(i: JobItem): number {
+  return (Number(i.quantity) || 0) * (Number(i.unit_price) || 0)
+}
+
 /**
- * Where each hour stands, money-wise:
+ * Where each hour or charge stands, money-wise:
  *  - deposit:  not on an invoice, paid for by the job's deposits
  *  - partial:  the deposit covers part of it, the rest still needs billing
  *  - unbilled: not on an invoice and no deposit left to cover it
  *  - billed:   on an invoice that hasn't been paid yet
  *  - paid:     on an invoice that has been paid
- * Deposits pay for un-invoiced hours oldest-first, so as you log hours the
- * deposit runs down and, once it's used up, new hours show as unbilled.
+ * Deposits pay for un-invoiced hours AND charges oldest-first, so as work is
+ * logged the deposit runs down and, once it's used up, new work shows as unbilled.
  */
 export type HourStatus = 'deposit' | 'partial' | 'unbilled' | 'billed' | 'paid'
 
@@ -54,6 +64,13 @@ export interface HourMoney {
   entry: TimeEntry
   amount: number      // hours × rate
   covered: number     // $ of this entry paid by deposit
+  status: HourStatus
+}
+
+export interface ItemMoney {
+  item: JobItem
+  amount: number      // quantity × unit price
+  covered: number
   status: HourStatus
 }
 
@@ -65,24 +82,40 @@ export const HOUR_STATUS_LABEL: Record<HourStatus, string> = {
   paid: 'Paid',
 }
 
-export function jobHours(store: MoneyStore, jobId: string): HourMoney[] {
+/** Hours and charges on one job, in date order, with deposit coverage and status. */
+export function jobCharges(store: MoneyStore, jobId: string): { hours: HourMoney[]; items: ItemMoney[] } {
   const deposits = sum(store.deposits.filter(d => d.job_id === jobId).map(d => d.amount))
   const invoices = new Map(store.invoices.filter(i => i.job_id === jobId).map(i => [i.id, i]))
-  const entries = store.timeEntries
-    .filter(e => e.job_id === jobId && e.hours != null)
-    .sort((a, b) => (a.date ?? '').localeCompare(b.date ?? '') || (a.created_at ?? '').localeCompare(b.created_at ?? ''))
+  type Row = { kind: 'h'; e: TimeEntry; date: string; at: string } | { kind: 'i'; it: JobItem; date: string; at: string }
+  const rows: Row[] = [
+    ...store.timeEntries.filter(e => e.job_id === jobId && e.hours != null).map(e => ({ kind: 'h' as const, e, date: e.date ?? '', at: e.created_at ?? '' })),
+    ...store.items.filter(i => i.job_id === jobId).map(it => ({ kind: 'i' as const, it, date: it.date ?? '', at: it.created_at ?? '' })),
+  ].sort((a, b) => a.date.localeCompare(b.date) || a.at.localeCompare(b.at))
   let pool = deposits
-  return entries.map(e => {
-    const amount = entryAmount(store, e)
-    if (e.billed) {
-      const inv = e.invoice_id ? invoices.get(e.invoice_id) : undefined
-      return { entry: e, amount, covered: 0, status: inv?.paid_date ? 'paid' : 'billed' }
+  const hours: HourMoney[] = []
+  const items: ItemMoney[] = []
+  for (const r of rows) {
+    const billed = r.kind === 'h' ? r.e.billed : r.it.billed
+    const invoiceId = r.kind === 'h' ? r.e.invoice_id : r.it.invoice_id
+    const amount = r.kind === 'h' ? entryAmount(store, r.e) : itemAmount(r.it)
+    let covered = 0
+    let status: HourStatus
+    if (billed) {
+      const inv = invoiceId ? invoices.get(invoiceId) : undefined
+      status = inv?.paid_date ? 'paid' : 'billed'
+    } else {
+      covered = Math.max(0, Math.min(pool, amount))
+      pool -= covered
+      status = covered <= 0.005 ? 'unbilled' : covered >= amount - 0.005 ? 'deposit' : 'partial'
     }
-    const covered = Math.max(0, Math.min(pool, amount))
-    pool -= covered
-    const status: HourStatus = covered <= 0.005 ? 'unbilled' : covered >= amount - 0.005 ? 'deposit' : 'partial'
-    return { entry: e, amount, covered, status }
-  })
+    if (r.kind === 'h') hours.push({ entry: r.e, amount, covered, status })
+    else items.push({ item: r.it, amount, covered, status })
+  }
+  return { hours, items }
+}
+
+export function jobHours(store: MoneyStore, jobId: string): HourMoney[] {
+  return jobCharges(store, jobId).hours
 }
 
 /** Money status of every completed time entry, across all jobs. */
@@ -95,7 +128,8 @@ export function allHours(store: MoneyStore): Map<string, HourMoney> {
 
 /** How much of each deposit has been worked against (oldest deposit used first). */
 export function depositUsage(store: MoneyStore, jobId: string): Map<string, number> {
-  let used = sum(jobHours(store, jobId).map(h => h.covered))
+  const c = jobCharges(store, jobId)
+  let used = sum(c.hours.map(h => h.covered)) + sum(c.items.map(i => i.covered))
   const out = new Map<string, number>()
   for (const d of store.deposits.filter(d => d.job_id === jobId)) {
     const u = Math.min(d.amount, used)
@@ -109,9 +143,11 @@ export interface JobBilling {
   job: Job
   fee: number | null
   loggedHours: number
-  workValue: number        // all hours × their rates
+  hoursValue: number       // hours × their rates
+  itemsValue: number       // charges (expenses, fees...)
+  workValue: number        // hours + charges
   deposits: number         // deposits received
-  depositUsed: number      // deposit money already used up by hours
+  depositUsed: number      // deposit money already used up by work
   depositRemaining: number // deposit money not yet worked against
   invoiced: number         // total of all invoices
   paid: number             // invoices that have been paid
@@ -119,32 +155,38 @@ export interface JobBilling {
   collected: number        // deposits + paid invoices (cash actually received)
   billedHours: number
   unbilledHours: number    // hours (or part-hours) nobody has paid or been billed for
-  unbilledAmount: number
+  unbilledItems: number    // $ of charges not billed
+  unbilledAmount: number   // $ of hours + charges not billed
   paidAmount: number       // work paid for (by deposit or paid invoice)
   waitingAmount: number    // work on unpaid invoices
   balance: number          // deposits + invoiced − work: drops as you work, rises when you bill
 }
 
 export function jobBilling(store: MoneyStore, job: Job): JobBilling {
-  const hours = jobHours(store, job.id)
+  const { hours, items } = jobCharges(store, job.id)
+  const all = [...hours, ...items]
   const deposits = sum(store.deposits.filter(d => d.job_id === job.id).map(d => d.amount))
   const inv = store.invoices.filter(i => i.job_id === job.id)
   const invoiced = sum(inv.map(i => i.amount))
   const paid = sum(inv.filter(i => i.paid_date).map(i => i.amount))
-  const workValue = sum(hours.map(h => h.amount))
-  const depositUsed = sum(hours.map(h => h.covered))
-  const unbilled = hours.filter(h => h.status === 'unbilled' || h.status === 'partial')
-  const unbilledAmount = sum(unbilled.map(h => h.amount - h.covered))
+  const hoursValue = sum(hours.map(h => h.amount))
+  const itemsValue = sum(items.map(i => i.amount))
+  const workValue = hoursValue + itemsValue
+  const depositUsed = sum(all.map(h => h.covered))
+  const open = (s: HourStatus) => s === 'unbilled' || s === 'partial'
+  const unbilledH = hours.filter(h => open(h.status))
+  const unbilledItems = sum(items.filter(i => open(i.status)).map(i => i.amount - i.covered))
   return {
     job, fee: job.fee,
     loggedHours: sum(hours.map(h => entryHours(h.entry))),
-    workValue, deposits, depositUsed, depositRemaining: deposits - depositUsed,
+    hoursValue, itemsValue, workValue, deposits, depositUsed, depositRemaining: deposits - depositUsed,
     invoiced, paid, outstanding: invoiced - paid, collected: deposits + paid,
     billedHours: sum(hours.filter(h => h.status === 'billed' || h.status === 'paid').map(h => entryHours(h.entry))),
-    unbilledHours: sum(unbilled.map(h => entryHours(h.entry) * (h.amount > 0 ? (h.amount - h.covered) / h.amount : 1))),
-    unbilledAmount,
-    paidAmount: sum(hours.map(h => h.status === 'paid' ? h.amount : h.covered)),
-    waitingAmount: sum(hours.filter(h => h.status === 'billed').map(h => h.amount)),
+    unbilledHours: sum(unbilledH.map(h => entryHours(h.entry) * (h.amount > 0 ? (h.amount - h.covered) / h.amount : 1))),
+    unbilledItems,
+    unbilledAmount: sum(unbilledH.map(h => h.amount - h.covered)) + unbilledItems,
+    paidAmount: sum(all.map(h => h.status === 'paid' ? h.amount : h.covered)),
+    waitingAmount: sum(all.filter(h => h.status === 'billed').map(h => h.amount)),
     balance: deposits + invoiced - workValue,
   }
 }
@@ -154,7 +196,9 @@ export interface BalancePoint { date: string; balance: number; work: number; dep
 
 export function balanceHistory(store: MoneyStore, jobId: string): BalancePoint[] {
   const events: { date: string; delta: number; kind: 'work' | 'deposit' | 'billed'; note: string }[] = []
-  for (const h of jobHours(store, jobId)) if (h.entry.date) events.push({ date: h.entry.date, delta: -h.amount, kind: 'work', note: '' })
+  const { hours, items } = jobCharges(store, jobId)
+  for (const h of hours) if (h.entry.date) events.push({ date: h.entry.date, delta: -h.amount, kind: 'work', note: '' })
+  for (const i of items) if (i.item.date) events.push({ date: i.item.date, delta: -i.amount, kind: 'work', note: `Charge: ${i.item.description || i.item.category} ${fmtMoneyPlain(i.amount)}` })
   for (const d of store.deposits.filter(d => d.job_id === jobId)) events.push({ date: d.received_date, delta: d.amount, kind: 'deposit', note: `Deposit ${fmtMoneyPlain(d.amount)}` })
   for (const i of store.invoices.filter(i => i.job_id === jobId)) events.push({ date: i.issued_date, delta: i.amount, kind: 'billed', note: `Invoice ${i.number} ${fmtMoneyPlain(i.amount)}` })
   events.sort((a, b) => (a.date ?? '').localeCompare(b.date ?? ''))

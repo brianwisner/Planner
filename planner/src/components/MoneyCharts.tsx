@@ -132,7 +132,7 @@ export function BalanceChart({ points }: { points: BalancePoint[] }) {
         <div className="chart-tip bal-tip" style={{ left: Math.min(Math.max(X(h.date), 90), w - 90) }}>
           <span>{format(parseISO(h.date), 'EEE, MMM d')}</span>
           <b className={h.balance < 0 ? 'danger-text' : 'ok-text'}>{fmtSigned(h.balance)}</b>
-          {h.work > 0 && <span>Hours worked: −{fmtMoney(h.work)}</span>}
+          {h.work > 0 && <span>Work logged: −{fmtMoney(h.work)}</span>}
           {h.notes.filter(n => n !== 'Today').map(n => <span key={n}>{n}</span>)}
         </div>
       )}

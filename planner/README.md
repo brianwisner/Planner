@@ -6,11 +6,11 @@ A project planning app for a small structural engineering firm. It runs in any b
 
 ## What it does
 
-- **Clients → Jobs → Phases → Tasks.** Every job automatically gets the four phases: Original design, County / plan-check comments, Construction changes, Client-requested changes. Each phase has its own hour estimate, start and due dates, status and assignee.
+- **Clients → Jobs → Phases → Tasks.** Every job automatically gets six phases: Bidding, Queued, Original design, County / plan-check comments, Construction changes, Client-requested changes. Each phase has its own hour estimate, start and due dates, status and assignee.
 - **Jobs page with four views:** a prioritized **Table** (drag the ≡ handle to reorder the queue), a **Board** (drag task cards between To do / In progress / Waiting / Done), a **Gantt** timeline for long-range planning, and a **Calendar**.
 - **Dashboard:** team workload, how far out each person is booked, overdue items, what's due this week, your open tasks.
 - **Time tracking:** start/stop timer or type hours against a job, phase and task. Timesheet by week. Actual vs. estimate on every phase.
-- **Billing:** per job, see unbilled hours (× hourly rate), invoiced, paid and outstanding. Select hours → record an invoice → they're marked billed.
+- **Billing:** per job, see unbilled hours (× hourly rate) and other charges (mileage, printing, fees…), invoiced, paid and outstanding. Select hours and charges → record an invoice → they're marked billed.
 - **Reports:** hours by job, client and person; estimate vs. actual; all exportable to CSV.
 - **Google Calendar:** a private calendar feed that Google Calendar subscribes to, plus "Download .ics" and per-item "Add to Google Calendar" links.
 - **Also:** notes on each job, global search (press `/`), filters, due-date reminders, recurring tasks, quick-add (press `n`), keyboard shortcuts (press `?`), CSV export.
@@ -66,15 +66,17 @@ In the app go to **Settings → Google Calendar sync**, click **Copy link**, the
 
 ## Everyday use
 
-- **Start a job:** Jobs → **New job**. Pick the client, give it a name, optional fee and due date. The four phases are created for you. Then open the job and fill in each phase's estimate, dates and who's doing it.
+- **Start a job:** Jobs → **New job**. Pick the client, give it a name, optional fee and due date. The six phases are created for you, starting with Bidding. Then open the job and fill in each phase's estimate, dates and who's doing it.
 - **Plan hours in the table:** Jobs → Table with **Plan hours** on. Each job has a box for every day of the week; type hours to schedule them on the job's current phase and clear a box to remove them. Use the arrows to change weeks and **Weekends** to show Saturday and Sunday. The bottom row is your total per day.
 - **Plan hours on the Gantt:** Jobs → Gantt. Drag across days on a phase row (or tap a day on a phone) and enter hours for each day, e.g. 4 on Wednesday and 2 on Thursday. The top row shows how many hours you have scheduled each day (yellow = more than a full day). Click the arrow beside a job to roll its phases up.
+- **Bidding and queue:** while you're pricing a job, keep the Bidding phase in progress. When the client says yes, mark Bidding complete and set Queued to in progress; the job's **Entered queue** date fills in with today (change it in **Edit job** if it was earlier). The job page and Jobs table show how many days it has been waiting, and the Gantt shows a teal diamond on that date.
 - **Prioritize:** on the Jobs table, drag the **≡** handle to reorder. Number 1 is the top of the queue.
 - **Daily list:** Dashboard → *My open tasks*, or Jobs → Board.
 - **Log time:** press **t** anywhere, or click **Start timer** on a job. Stop it from the green pill at the top.
 - **Take a deposit:** on the job page click **Deposit** (or Billing → **Record deposit**), enter the amount and date.
-- **Job balance:** every job shows deposits + billed − the value of hours worked (hours × billing rate). It goes down as hours are logged and back up when a deposit comes in or an invoice goes out. Red means you've done work nobody has paid for or been billed for yet.
-- **Bill a job:** Billing → click the job → **Bill unbilled hours** (or tick specific hours → **Invoice selected**) → enter the invoice number. Later, click **Mark paid**.
+- **Add a charge (not hours):** on the job page click **Charge** (or Billing → the job → **Add charge**). Pick a type (expense, mileage, printing, permit fee, site visit, fixed fee, other), the quantity and price. Charges are billed, paid by deposits and counted in the balance just like hours.
+- **Job balance:** every job shows deposits + billed − the value of work (hours × billing rate, plus charges). It goes down as hours are logged and back up when a deposit comes in or an invoice goes out. Red means you've done work nobody has paid for or been billed for yet.
+- **Bill a job:** Billing → click the job → **Bill everything not billed** (or tick specific hours and charges → **Invoice selected**) → enter the invoice number. Later, click **Mark paid**.
 - **Which hours are paid:** every hour is marked *Paid by deposit*, *Not billed*, *Billed, not paid*, or *Paid*. Billing → **Hours** lists them across all jobs with filters and CSV export. Deposits pay for hours automatically, oldest first.
 - **Rates:** each time entry keeps the rate it was logged at, so changing someone's rate in Settings only affects new hours. You can change one entry's rate from the job's Billing page.
 - **Site visits:** make a task, tick **Site visit**, give it a date and time. It shows up purple on the calendar and in Google Calendar.

@@ -203,7 +203,7 @@ export function Gantt({ jobs }: { jobs: Job[] }) {
           {profiles.map(p => <option key={p.id} value={p.id}>{p.id === me?.id ? 'Me' : p.full_name}</option>)}
         </select>
       </div>
-      <p className="small muted" style={{ margin: '-4px 0 10px' }}><span className="hide-mobile">Drag across days on a row to schedule hours. Click a day to change it. Bars run from a phase's start to its due date; the red line is today.</span><span className="show-mobile">Tap a day on a row to schedule hours. Swipe to scroll.</span></p>
+      <p className="small muted" style={{ margin: '-4px 0 10px' }}><span className="hide-mobile">Drag across days on a row to schedule hours. Click a day to change it. Bars run from a phase's start to its due date; a teal diamond marks when a job entered the queue; the red line is today.</span><span className="show-mobile">Tap a day on a row to schedule hours. Swipe to scroll.</span></p>
 
       <div className="gantt2" ref={scroller}>
         <div className="ginner" style={{ width: `calc(var(--glabel) + ${width}px)` }}>
@@ -256,6 +256,7 @@ export function Gantt({ jobs }: { jobs: Job[] }) {
                     </div>
                     {timeline(`job:${j.id}`, j.id, null, <>
                       {jb && <div className="gbar2 job" style={jb} />}
+                      {j.queued_date && (() => { const i = idxOf(j.queued_date); return i >= 0 && i < days ? <div className="gqueue" style={{ left: i * dayW + dayW / 2 }} title={`Entered queue ${format(parseISO(j.queued_date), 'MMM d, yyyy')}`} /> : null })()}
                       {!isOpen && jp.map((p, k) => { const b = bar(p.start_date, p.due_date); return b && <div key={p.id} className={`gmini ${p.kind} ${p.status}`} style={{ ...b, top: 30 + (k % 2) * 5 }} title={`${p.name}: ${p.start_date ?? '?'} → ${p.due_date ?? '?'}`} /> })}
                       {cells(`job:${j.id}`, 'job')}
                     </>)}

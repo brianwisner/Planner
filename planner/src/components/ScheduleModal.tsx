@@ -5,13 +5,14 @@ import { useMemo, useState } from 'react'
 import { addDays, format, isWeekend, parseISO } from 'date-fns'
 import { useData } from '../lib/store'
 import { fmtHours, sum } from '../lib/utils'
+import { workPhase } from '../lib/calc'
 import { Modal, PersonSelect } from './ui'
 
 export function ScheduleModal({ jobId, phaseId, from, to, onClose }: { jobId: string; phaseId: string | null; from: string; to: string; onClose: () => void }) {
   const { jobs, phases, schedule, me, settings, profiles, insert, update, remove, toast } = useData()
   const job = jobs.find(j => j.id === jobId)
   const jobPhases = phases.filter(p => p.job_id === jobId)
-  const [phase, setPhase] = useState<string | null>(phaseId ?? jobPhases.find(p => p.status !== 'complete')?.id ?? jobPhases[0]?.id ?? null)
+  const [phase, setPhase] = useState<string | null>(phaseId ?? workPhase(phases, jobId)?.id ?? null)
   const ph = jobPhases.find(p => p.id === phase)
   const [who, setWho] = useState<string>(ph?.assignee_id ?? me?.id ?? '')
   const [start, setStart] = useState(from)

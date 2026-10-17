@@ -118,16 +118,17 @@ create table if not exists jobs (
   status text not null default 'active' check (status in ('active','on_hold','complete','archived')),
   priority int not null default 100,            -- lower number = higher in the queue
   fee numeric,                                  -- agreed fee, optional
+  queued_date date,                             -- when the job entered the queue
   start_date date,
   due_date date,
   created_at timestamptz not null default now()
 );
 
--- ---------- Phases (every job gets the same four) ----------
+-- ---------- Phases (every job gets the same six) ----------
 create table if not exists phases (
   id uuid primary key default gen_random_uuid(),
   job_id uuid not null references jobs(id) on delete cascade,
-  kind text not null check (kind in ('design','plan_check','construction','client_changes')),
+  kind text not null check (kind in ('bidding','queued','design','plan_check','construction','client_changes')),
   name text not null,
   sort_order int not null default 0,
   status text not null default 'not_started' check (status in ('not_started','in_progress','waiting','complete')),
@@ -138,15 +139,17 @@ create table if not exists phases (
   notes text default ''
 );
 
--- When a job is created, automatically add the four standard phases.
+-- When a job is created, automatically add the standard phases.
 create or replace function add_standard_phases() returns trigger
 language plpgsql security definer set search_path = public as $$
 begin
   insert into phases (job_id, kind, name, sort_order) values
-    (new.id, 'design',         'Original design',             1),
-    (new.id, 'plan_check',     'County / plan-check comments', 2),
-    (new.id, 'construction',   'Construction changes',        3),
-    (new.id, 'client_changes', 'Client-requested changes',    4);
+    (new.id, 'bidding',        'Bidding',                      1),
+    (new.id, 'queued',         'Queued',                       2),
+    (new.id, 'design',         'Original design',              3),
+    (new.id, 'plan_check',     'County / plan-check comments', 4),
+    (new.id, 'construction',   'Construction changes',         5),
+    (new.id, 'client_changes', 'Client-requested changes',     6);
   return new;
 end $$;
 
@@ -242,6 +245,21 @@ create table if not exists schedule_entries (
   created_at timestamptz not null default now()
 );
 
+-- ---------- Billable charges other than hours (expenses, mileage, fees...) ----------
+create table if not exists job_items (
+  id uuid primary key default gen_random_uuid(),
+  job_id uuid not null references jobs(id) on delete cascade,
+  date date not null default current_date,
+  category text not null default 'Expense',
+  description text not null default '',
+  quantity numeric not null default 1,
+  unit_price numeric not null default 0,
+  billed boolean not null default false,
+  invoice_id uuid references invoices(id) on delete set null,
+  created_by uuid references profiles(id) on delete set null,
+  created_at timestamptz not null default now()
+);
+
 -- ---------- Comments / notes on jobs ----------
 create table if not exists comments (
   id uuid primary key default gen_random_uuid(),
@@ -260,6 +278,7 @@ create index if not exists time_job_idx on time_entries(job_id);
 create index if not exists time_user_idx on time_entries(user_id);
 create index if not exists comments_job_idx on comments(job_id);
 create index if not exists deposits_job_idx on deposits(job_id);
+create index if not exists job_items_job_idx on job_items(job_id);
 create index if not exists schedule_date_idx on schedule_entries(date);
 create index if not exists schedule_job_idx on schedule_entries(job_id);
 
@@ -272,6 +291,7 @@ alter table phases       enable row level security;
 alter table tasks        enable row level security;
 alter table invoices     enable row level security;
 alter table deposits     enable row level security;
+alter table job_items    enable row level security;
 alter table schedule_entries enable row level security;
 alter table time_entries enable row level security;
 alter table comments     enable row level security;
@@ -279,7 +299,7 @@ alter table comments     enable row level security;
 do $$
 declare t text;
 begin
-  foreach t in array array['settings','profiles','clients','jobs','phases','tasks','invoices','deposits','schedule_entries','time_entries','comments'] loop
+  foreach t in array array['settings','profiles','clients','jobs','phases','tasks','invoices','deposits','job_items','schedule_entries','time_entries','comments'] loop
     execute format('drop policy if exists team_all on %I', t);
     execute format('create policy team_all on %I for all to authenticated using (true) with check (true)', t);
   end loop;
@@ -289,7 +309,7 @@ end $$;
 do $$
 declare t text;
 begin
-  foreach t in array array['settings','profiles','clients','jobs','phases','tasks','invoices','deposits','schedule_entries','time_entries','comments'] loop
+  foreach t in array array['settings','profiles','clients','jobs','phases','tasks','invoices','deposits','job_items','schedule_entries','time_entries','comments'] loop
     begin
       execute format('alter publication supabase_realtime add table %I', t);
     exception when duplicate_object then null;
@@ -351,6 +371,9 @@ begin
 
   update phases set estimate_hours = 5,  status = 'complete', start_date = current_date - 120, due_date = current_date - 100 where job_id = j4 and kind = 'design';
   update phases set status = 'complete' where job_id = j4;
+  -- Sample jobs are past bidding and the queue.
+  update phases set status = 'complete' where kind in ('bidding','queued') and job_id in (j1, j2, j3, j4);
+  update jobs set queued_date = start_date - 10 where id in (j1, j2, j3, j4);
 
   -- Tasks
   select id into p from phases where job_id = j1 and kind = 'design';
@@ -389,6 +412,12 @@ begin
     (j2, 'INV-1052', 2500, current_date - 4, null),
     (j3, 'INV-1033', 3000, current_date - 30, current_date - 12),
     (j4, 'INV-0998', 900,  current_date - 95, current_date - 80);
+
+  -- Charges other than hours
+  insert into job_items (job_id, date, category, description, quantity, unit_price) values
+    (j1, current_date - 6, 'Mileage', 'Site visit round trip', 42, 0.70),
+    (j2, current_date - 12, 'Permit / filing fee', 'County plan-check resubmittal fee', 1, 185),
+    (j2, current_date - 5, 'Printing / plotting', '24x36 sets for resubmittal', 4, 12.50);
 
   -- Deposits: one used up (Smith, now has unbilled work), one with money left (Industrial Way)
   insert into deposits (job_id, amount, received_date, method, notes) values

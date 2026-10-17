@@ -3,12 +3,14 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useData } from '../lib/store'
-import { entryHours, hoursForPhase, jobBilling, jobHours, timerHours } from '../lib/calc'
+import type { JobItem } from '../lib/types'
+import { entryHours, hoursForPhase, jobBilling, jobCharges, jobHours, timerHours, workPhase } from '../lib/calc'
+import { daysUntil } from '../lib/utils'
 import { StatusBadge } from './Billing'
 import type { Phase, Task } from '../lib/types'
 import { fmtDate, fmtDateTime, fmtHours, fmtMoney, fmtSigned, sum } from '../lib/utils'
 import { Avatar, Checkbox, DueBadge, Empty, Icon, JobStatusBadge, Person, PersonSelect, PhaseStatusSelect, Progress } from '../components/ui'
-import { DepositModal, JobModal, TaskModal, TimeModal, toggleTaskDone } from '../components/editors'
+import { DepositModal, ItemModal, JobModal, TaskModal, TimeModal, toggleTaskDone } from '../components/editors'
 
 export function JobDetail() {
   const { id } = useParams()
@@ -23,6 +25,8 @@ export function JobDetail() {
   const [comment, setComment] = useState('')
   const [showDone, setShowDone] = useState(false)
   const [deposit, setDeposit] = useState(false)
+  const [itemModal, setItemModal] = useState<{ item?: JobItem } | null>(null)
+  const itemRows = useMemo(() => id ? jobCharges(store, id).items : [], [store, id])
 
   // Deep link: /jobs/:id?task=... opens that task.
   useEffect(() => {
@@ -64,10 +68,12 @@ export function JobDetail() {
           <div className="small muted"><Link to="/jobs">Jobs</Link> › {client && <Link to={`/clients/${client.id}`}>{client.name}</Link>}</div>
           <h1>{job.job_number && <span className="muted">{job.job_number} · </span>}{job.name} <JobStatusBadge status={job.status} /></h1>
           {job.address && <div className="small muted"><Icon name="pin" size={12} /> {job.address}</div>}
+          {job.queued_date && <div className="small muted">Entered queue {fmtDate(job.queued_date)}{(() => { const d = -(daysUntil(job.queued_date) ?? 0); return d > 0 ? ` · ${d} day${d === 1 ? '' : 's'} ago` : ' · today' })()}</div>}
         </div>
         <div className="actions">
-          {running ? <button className="btn" onClick={stopTimer}><Icon name="stop" size={14} /> Stop timer</button> : <button className="btn" onClick={() => startTimer(jobPhases.find(p => p.status === 'in_progress')?.id ?? jobPhases[0]?.id ?? null, null)}><Icon name="play" size={14} /> Start timer</button>}
+          {running ? <button className="btn" onClick={stopTimer}><Icon name="stop" size={14} /> Stop timer</button> : <button className="btn" onClick={() => startTimer(workPhase(phases, job.id)?.id ?? null, null)}><Icon name="play" size={14} /> Start timer</button>}
           <button className="btn" onClick={() => setTimeModal({})}><Icon name="time" size={14} /> Log hours</button>
+          <button className="btn" onClick={() => setItemModal({})}><Icon name="plus" size={14} /> Charge</button>
           <button className="btn" onClick={() => setDeposit(true)}><Icon name="plus" size={14} /> Deposit</button>
           <button className="btn" onClick={() => setEditJob(true)}><Icon name="edit" size={14} /> Edit</button>
         </div>
@@ -134,6 +140,21 @@ export function JobDetail() {
             {jobEntries.length > 12 && <p className="small mt"><Link to={`/time?job=${job.id}`}>All {jobEntries.length} entries →</Link></p>}
           </div>
 
+          <div className="card">
+            <h2>Charges <span className="actions"><button className="btn sm" onClick={() => setItemModal({})}>+ Add</button></span></h2>
+            {itemRows.length === 0 && <p className="small muted">Expenses, mileage, printing, permit fees or flat fees you bill on this job.</p>}
+            {itemRows.length > 0 && <div className="table-wrap"><table><tbody>
+              {[...itemRows].reverse().map(i => (
+                <tr key={i.item.id} className="clickable" onClick={() => setItemModal({ item: i.item })}>
+                  <td className="nowrap small">{fmtDate(i.item.date)}</td>
+                  <td className="small">{i.item.description || i.item.category}<div className="tiny muted">{i.item.category}{i.item.quantity !== 1 ? ` · ${i.item.quantity} × ${fmtMoney(i.item.unit_price)}` : ''}</div></td>
+                  <td className="num nowrap">{fmtMoney(i.amount)}</td>
+                  <td><StatusBadge h={i} /></td>
+                </tr>
+              ))}
+            </tbody></table></div>}
+          </div>
+
           {client && (
             <div className="card">
               <h2>Client</h2>
@@ -148,6 +169,7 @@ export function JobDetail() {
 
       {editJob && <JobModal job={job} onClose={() => setEditJob(false)} />}
       {deposit && <DepositModal jobId={job.id} onClose={() => setDeposit(false)} />}
+      {itemModal && <ItemModal item={itemModal.item} jobId={job.id} onClose={() => setItemModal(null)} />}
       {taskModal && <TaskModal task={taskModal.task} defaults={{ job_id: job.id, phase_id: taskModal.phaseId ?? null }} onClose={() => setTaskModal(null)} />}
       {timeModal && <TimeModal defaults={{ job_id: job.id, phase_id: timeModal.phaseId ?? null, task_id: timeModal.taskId ?? null }} onClose={() => setTimeModal(null)} />}
     </div>
@@ -163,7 +185,12 @@ function PhaseCard({ phase, tasks, logged, onAddTask, onEditTask, onLog, onStart
     <div className="phase-card">
       <div className="phase-head">
         <h2>{phase.name}</h2>
-        <PhaseStatusSelect value={phase.status} onChange={s => update('phases', phase.id, { status: s })} />
+        <PhaseStatusSelect value={phase.status} onChange={s => {
+          void update('phases', phase.id, { status: s })
+          // Moving a job into the queue records the date it entered the queue (if not set yet).
+          const job = store.jobs.find(j => j.id === phase.job_id)
+          if (phase.kind === 'queued' && s !== 'not_started' && job && !job.queued_date) void update('jobs', job.id, { queued_date: new Date().toISOString().slice(0, 10) })
+        }} />
         <div className="inline-edit"><PersonSelect value={phase.assignee_id} onChange={v => update('phases', phase.id, { assignee_id: v })} /></div>
       </div>
       <div className="phase-meta">

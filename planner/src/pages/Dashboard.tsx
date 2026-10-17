@@ -75,7 +75,7 @@ export function Dashboard() {
             <ul className="list">
               {toBill.slice(0, 6).map(b => (
                 <li key={b.job.id}>
-                  <div className="title"><Link to={`/billing?job=${b.job.id}`}>{b.job.name}</Link><div className="meta">{fmtHours(b.unbilledHours)} not billed{b.deposits > 0 ? ' · deposit used up' : ''}</div></div>
+                  <div className="title"><Link to={`/billing?job=${b.job.id}`}>{b.job.name}</Link><div className="meta">{[b.unbilledHours > 0.01 ? `${fmtHours(b.unbilledHours)} not billed` : '', b.unbilledItems > 0.5 ? `${fmtMoney(b.unbilledItems)} in charges` : '', b.deposits > 0 ? 'deposit used up' : ''].filter(Boolean).join(' · ')}</div></div>
                   <div className="right"><div className="bold danger-text">{fmtMoney(b.unbilledAmount)}</div><div className="tiny muted">balance {fmtSigned(b.balance)}</div></div>
                 </li>
               ))}
