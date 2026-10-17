@@ -4,7 +4,7 @@
 //  - Header: month · date · weekday letter (M T W R F S U) · your scheduled hours that day.
 //  - Phase bars run start → due. Drag across days on a row to schedule hours
 //    (opens a form listing each day); click a single day to change it.
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent as RPointerEvent } from 'react'
+import { useLayoutEffect, useMemo, useRef, useState, type PointerEvent as RPointerEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { addDays, differenceInCalendarDays, format, parseISO, startOfDay, startOfWeek } from 'date-fns'
 import { useData } from '../lib/store'
@@ -12,7 +12,7 @@ import { hoursForPhase } from '../lib/calc'
 import type { Job, Phase } from '../lib/types'
 import { PHASE_KIND_SHORT } from '../lib/types'
 import { fmtHours, sum } from '../lib/utils'
-import { Avatar, Empty, Icon } from '../components/ui'
+import { Empty, Icon } from '../components/ui'
 import { ScheduleModal } from '../components/ScheduleModal'
 
 const DAY_PX = { detailed: 40, normal: 28, zoomed: 10 }
@@ -31,7 +31,7 @@ export function Gantt({ jobs }: { jobs: Job[] }) {
   const nav = useNavigate()
   const [zoom, setZoom] = useState<Zoom>(() => (typeof window !== 'undefined' && window.innerWidth < 760 ? 'normal' : 'detailed'))
   const [collapsed, setCollapsed] = useState<Set<string>>(loadCollapsed)
-  const [who, setWho] = useState<string>(me?.id ?? '')
+  const ownerId = me?.id ?? ''
   const [drag, setDrag] = useState<{ rowKey: string; jobId: string; phaseId: string | null; a: number; b: number } | null>(null)
   const [modal, setModal] = useState<{ jobId: string; phaseId: string | null; from: string; to: string } | null>(null)
   const scroller = useRef<HTMLDivElement>(null)
@@ -62,16 +62,13 @@ export function Gantt({ jobs }: { jobs: Job[] }) {
     if (scroller.current) scroller.current.scrollLeft = Math.max(0, (todayIdx - 7) * dayW)
   }, [zoom]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  useEffect(() => { if (!who && me) setWho(me.id) }, [me, who])
-
-  // Daily schedule totals for the header (the chosen person, across ALL jobs).
-  const person = profiles.find(p => p.id === who)
-  const dailyCap = (person?.weekly_hours || settings.weekly_capacity || 40) / 5
+  // Daily schedule totals for the header (your hours, across ALL jobs).
+  const dailyCap = (me?.weekly_hours || settings.weekly_capacity || 40) / 5
   const perDay = useMemo(() => {
     const m = new Map<string, number>()
-    for (const s of schedule) if (!who || s.user_id === who) m.set(s.date, (m.get(s.date) ?? 0) + s.hours)
+    for (const s of schedule) if (s.user_id === ownerId) m.set(s.date, (m.get(s.date) ?? 0) + s.hours)
     return m
-  }, [schedule, who])
+  }, [schedule, ownerId])
 
   // Schedule totals per row: key = phase id (or `job:<id>` for the whole job) → date → hours
   const rowSched = useMemo(() => {
@@ -196,12 +193,6 @@ export function Gantt({ jobs }: { jobs: Job[] }) {
         <button className="btn sm" onClick={() => scroller.current?.scrollTo({ left: Math.max(0, (todayIdx - 7) * dayW), behavior: 'smooth' })}>Today</button>
         <button className="btn sm ghost" onClick={() => setAll(true)}>Collapse all</button>
         <button className="btn sm ghost" onClick={() => setAll(false)}>Expand all</button>
-        <span className="grow" />
-        <label className="small muted" style={{ margin: 0 }}>Daily hours for</label>
-        <select value={who} onChange={e => setWho(e.target.value)} style={{ width: 'auto' }}>
-          <option value="">Everyone</option>
-          {profiles.map(p => <option key={p.id} value={p.id}>{p.id === me?.id ? 'Me' : p.full_name}</option>)}
-        </select>
       </div>
       <p className="small muted" style={{ margin: '-4px 0 10px' }}><span className="hide-mobile">Drag across days on a row to schedule hours. Click a day to change it. Bars run from a phase's start to its due date; a teal diamond marks when a job entered the queue; the red line is today.</span><span className="show-mobile">Tap a day on a row to schedule hours. Swipe to scroll.</span></p>
 
@@ -211,7 +202,7 @@ export function Gantt({ jobs }: { jobs: Job[] }) {
           <div className="ghead">
             <div className="glabel ghead-corner">
               <span>Job / phase</span>
-              <span className="tiny muted">{who ? (who === me?.id ? 'Your' : (person?.full_name.split(' ')[0] ?? '') + "'s") : 'Team'} hours ↓</span>
+              <span className="tiny muted">Your hours ↓</span>
             </div>
             <div className="gscale" style={{ width }}>
               <div className="gmonths">{months.map(m => <div key={m.left} style={{ left: m.left, width: m.width }}><span>{m.label}</span></div>)}</div>
@@ -219,14 +210,14 @@ export function Gantt({ jobs }: { jobs: Job[] }) {
                 <div className="gdates">{weekIdx.map(i => <div key={i} style={{ left: i * dayW, width: 7 * dayW }}>{format(addDays(start, i), 'MMM d')}</div>)}</div>
                 <div className="ghours">{weekIdx.map(i => {
                   const t = sum(Array.from({ length: 7 }, (_, k) => perDay.get(dateAt(i + k)) ?? 0))
-                  return t ? <div key={i} style={{ left: i * dayW, width: 7 * dayW }} className={t > dailyCap * 5 && who ? 'over' : ''} title={`${fmtHours(t)} scheduled that week`}>{fmtHours(t)}</div> : null
+                  return t ? <div key={i} style={{ left: i * dayW, width: 7 * dayW }} className={t > dailyCap * 5 ? 'over' : ''} title={`${fmtHours(t)} of your hours scheduled that week`}>{fmtHours(t)}</div> : null
                 })}</div>
               </> : <>
                 <div className="gdates">{dayIdx.map(i => <div key={i} style={{ left: i * dayW, width: dayW }} className={i === todayIdx ? 'today' : ''}>{addDays(start, i).getDate()}</div>)}</div>
                 <div className="gdow">{dayIdx.map(i => { const d = addDays(start, i); return <div key={i} style={{ left: i * dayW, width: dayW }} className={d.getDay() === 0 || d.getDay() === 6 ? 'we' : ''}>{LETTER[d.getDay()]}</div> })}</div>
                 <div className="ghours">{dayIdx.map(i => {
                   const t = perDay.get(dateAt(i)) ?? 0
-                  return t ? <div key={i} style={{ left: i * dayW, width: dayW }} className={t > dailyCap && who ? 'over' : ''} title={`${fmtHours(t)} scheduled`}>{fmtHours(t).replace('h', '')}</div> : null
+                  return t ? <div key={i} style={{ left: i * dayW, width: dayW }} className={t > dailyCap ? 'over' : ''} title={`${fmtHours(t)} of your hours scheduled`}>{fmtHours(t).replace('h', '')}</div> : null
                 })}</div>
               </>}
             </div>
@@ -288,7 +279,6 @@ function PhaseRow({ p, logged, sched, children }: { p: Phase; logged: number; sc
           <div className="gclip">{PHASE_KIND_SHORT[p.kind]}</div>
           <div className="tiny muted gclip">{fmtHours(sched)} sched · {fmtHours(logged)}/{fmtHours(p.estimate_hours)} est</div>
         </div>
-        <Avatar userId={p.assignee_id} size="sm" />
       </div>
       {children}
     </div>

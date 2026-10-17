@@ -1,5 +1,5 @@
 // Due-date reminders: once a day (per device) show a browser notification for
-// anything of yours that is overdue or due today. Also exposes a helper to
+// any business deadline that is overdue or due today. Also exposes a helper to
 // ask for permission from Settings.
 import { useEffect } from 'react'
 import { useData } from './store'
@@ -14,7 +14,7 @@ export function useReminders() {
     const key = `reminded-${me.id}-${todayISO()}`
     try { if (localStorage.getItem(key)) return } catch { return }
     const today = todayISO()
-    const mine = calendarItems(store).filter(i => !i.done && i.date <= today && (i.assigneeId === me.id || i.assigneeId == null))
+    const mine = calendarItems(store).filter(i => !i.done && i.date <= today)
     if (mine.length === 0) return
     const overdue = mine.filter(i => i.date < today).length
     const dueToday = mine.length - overdue

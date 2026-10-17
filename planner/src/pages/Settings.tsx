@@ -1,4 +1,4 @@
-// Settings: company name, rates, your profile, team list, Google Calendar
+// Settings: company name, rates, your profile, Google Calendar
 // feed link, reminders, and sample-data cleanup.
 import { useState } from 'react'
 import { useData } from '../lib/store'
@@ -7,7 +7,7 @@ import { enableNotifications } from '../lib/reminders'
 import { Avatar } from '../components/ui'
 
 export function Settings() {
-  const { settings, me, profiles, clients, update, remove, signOut, toast, refresh } = useData()
+  const { settings, me, clients, update, remove, signOut, toast, refresh } = useData()
   const [company, setCompany] = useState(settings.company_name)
   const [rate, setRate] = useState(String(settings.default_rate))
   const [cap, setCap] = useState(String(settings.weekly_capacity))
@@ -43,7 +43,7 @@ export function Settings() {
   }
 
   return (
-    <div>
+    <div className="settings-page">
       <div className="page-header"><h1>Settings</h1><div className="actions"><button className="btn" onClick={signOut}>Sign out</button></div></div>
       <div className="grid cols-2">
         <div>
@@ -71,11 +71,6 @@ export function Settings() {
             <button className="btn primary" onClick={saveCompany}>Save</button>
           </div>
 
-          <div className="card">
-            <h2>Team</h2>
-            <ul className="list">{profiles.map(p => <li key={p.id}><Avatar userId={p.id} /><div className="title"><div className="bold">{p.full_name}</div><div className="meta">{p.email} · {p.weekly_hours} h/wk{p.hourly_rate != null && ` · $${p.hourly_rate}/h`}</div></div></li>)}</ul>
-            <p className="small muted mt">To add a staff member: in your Supabase dashboard go to <b>Authentication → Users → Add user → Invite</b>, enter their email, and they will receive a link to set a password. See the README.</p>
-          </div>
         </div>
 
         <div>
@@ -91,7 +86,6 @@ export function Settings() {
                 <li>Click the Google Calendar button. On the page that opens, paste the link into the <b>URL of calendar</b> box and click <b>Add calendar</b>.</li>
                 <li>It appears under "Other calendars" on every device signed into your Google account.</li>
               </ol>
-              <p className="small muted">Add <code>&amp;mine=1</code> to the end of the link to include only items assigned to you.</p>
             </> : <p className="small muted">Available once connected to Supabase.</p>}
           </div>
 

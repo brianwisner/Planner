@@ -2,6 +2,13 @@
 
 This repository belongs to Wisner Engineering, a small structural engineering firm. The owner is not a programmer: explain changes in plain English, make design decisions yourself, and keep things simple.
 
+**Current product direction:** the owner works alone. The UI has no assignment
+controls, staff list, person filters, or person reports. New tasks, hours, and
+schedules use the signed-in owner. Existing ownership fields remain in the schema
+for historical records, and all business work stays visible regardless of those
+fields. `soloWorkload()` includes all active-job phases, including unassigned work,
+and uses the owner's weekly capacity. See `AGENTS.md` for current working guidance.
+
 It contains two separate things:
 
 | Folder | What it is |
@@ -86,6 +93,7 @@ Conventions:
 - Routing uses `HashRouter` (`#/jobs/123`) so GitHub Pages never 404s. Deep links: `/jobs/:id?task=<id>` opens a task, `/billing?job=<id>` opens job billing, `/time?entry=<id>` opens a time entry.
 - Hours display in quarter hours (`fmtHours`). Money via `fmtMoney`.
 - Keep touch targets ≥ 40px; `hide-mobile` class hides non-essential columns on phones.
+- Phone navigation has Dashboard, Jobs, Calendar, Time, and a More menu for Clients, Billing, Reports, and Settings. Log hours and Add task are visible in the top bar.
 - No CSS framework, no icon library (icons are inline SVG paths in `ui.tsx`).
 
 ### Google Calendar

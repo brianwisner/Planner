@@ -6,15 +6,15 @@ import { addDays, format, isWeekend, parseISO } from 'date-fns'
 import { useData } from '../lib/store'
 import { fmtHours, sum } from '../lib/utils'
 import { workPhase } from '../lib/calc'
-import { Modal, PersonSelect } from './ui'
+import { Modal } from './ui'
 
 export function ScheduleModal({ jobId, phaseId, from, to, onClose }: { jobId: string; phaseId: string | null; from: string; to: string; onClose: () => void }) {
-  const { jobs, phases, schedule, me, settings, profiles, insert, update, remove, toast } = useData()
+  const { jobs, phases, schedule, me, settings, insert, update, remove, toast } = useData()
   const job = jobs.find(j => j.id === jobId)
   const jobPhases = phases.filter(p => p.job_id === jobId)
   const [phase, setPhase] = useState<string | null>(phaseId ?? workPhase(phases, jobId)?.id ?? null)
   const ph = jobPhases.find(p => p.id === phase)
-  const [who, setWho] = useState<string>(ph?.assignee_id ?? me?.id ?? '')
+  const who = me?.id ?? ''
   const [start, setStart] = useState(from)
   const [end, setEnd] = useState(to < from ? from : to)
   const [skipWeekends, setSkipWeekends] = useState(!(from === to && isWeekend(parseISO(from))))
@@ -32,8 +32,7 @@ export function ScheduleModal({ jobId, phaseId, from, to, onClose }: { jobId: st
 
   const existing = (date: string) => schedule.find(s => s.job_id === jobId && s.phase_id === phase && s.user_id === who && s.date === date)
   const otherWork = (date: string) => sum(schedule.filter(s => s.user_id === who && s.date === date && !(s.job_id === jobId && s.phase_id === phase)).map(s => s.hours))
-  const person = profiles.find(p => p.id === who)
-  const dailyCap = (person?.weekly_hours || settings.weekly_capacity || 40) / 5
+  const dailyCap = (me?.weekly_hours || settings.weekly_capacity || 40) / 5
 
   // Suggested hours for new days: spread what's left of the phase estimate, max 8 a day.
   const scheduledElsewhere = sum(schedule.filter(s => s.phase_id === phase && s.phase_id && !(s.user_id === who && days.includes(s.date))).map(s => s.hours))
@@ -45,7 +44,7 @@ export function ScheduleModal({ jobId, phaseId, from, to, onClose }: { jobId: st
   const total = sum(days.map(d => Number(value(d)) || 0))
 
   async function save() {
-    if (!who) { toast('Pick a person', 'error'); return }
+    if (!who) { toast('Your account is still loading. Try again in a moment.', 'error'); return }
     setSaving(true)
     for (const date of days) {
       const hrs = Number(value(date)) || 0
@@ -81,7 +80,6 @@ export function ScheduleModal({ jobId, phaseId, from, to, onClose }: { jobId: st
             <option value="">General (no phase)</option>
           </select>
         </div>
-        <div className="field"><label>Who</label><PersonSelect value={who} onChange={v => { setWho(v ?? ''); setEdits({}) }} allowNone={false} /></div>
       </div>
       <div className="row">
         <div className="field"><label>From</label><input type="date" value={start} onChange={e => { if (e.target.value) { setStart(e.target.value); if (e.target.value > end) setEnd(e.target.value) } }} /></div>

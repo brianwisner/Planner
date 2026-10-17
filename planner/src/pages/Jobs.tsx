@@ -16,30 +16,28 @@ type View = 'table' | 'board' | 'gantt' | 'calendar'
 
 export function Jobs() {
   const store = useData()
-  const { jobs, tasks, clients, profiles, phases, me } = store
+  const { jobs, tasks, clients } = store
   const [params, setParams] = useSearchParams()
   const view = (params.get('view') as View) || 'table'
   const [status, setStatus] = useState<JobStatus | 'open'>('open')
   const [client, setClient] = useState('')
-  const [who, setWho] = useState('')
   const [q, setQ] = useState('')
   const [newJob, setNewJob] = useState(false)
 
   const filteredJobs = useMemo(() => jobs.filter(j => {
     if (status === 'open' ? (j.status !== 'active' && j.status !== 'on_hold') : j.status !== status) return false
     if (client && j.client_id !== client) return false
-    if (who && !phases.some(p => p.job_id === j.id && p.assignee_id === who && p.status !== 'complete') && !tasks.some(t => t.job_id === j.id && t.assignee_id === who && t.status !== 'done')) return false
     if (q) {
       const n = q.toLowerCase()
       const c = clients.find(c => c.id === j.client_id)?.name ?? ''
       if (!j.name.toLowerCase().includes(n) && !j.job_number.toLowerCase().includes(n) && !c.toLowerCase().includes(n) && !j.address.toLowerCase().includes(n)) return false
     }
     return true
-  }), [jobs, status, client, who, q, phases, tasks, clients])
+  }), [jobs, status, client, q, clients])
 
   const jobIds = new Set(filteredJobs.map(j => j.id))
-  const filteredTasks = tasks.filter(t => jobIds.has(t.job_id) && (!who || t.assignee_id === who) && (!q || t.title.toLowerCase().includes(q.toLowerCase()) || jobIds.has(t.job_id)))
-  const calItems = useMemo(() => calendarItems({ ...store, jobs: filteredJobs }).filter(i => !who || i.assigneeId === who || i.assigneeId == null), [store, filteredJobs, who])
+  const filteredTasks = tasks.filter(t => jobIds.has(t.job_id))
+  const calItems = useMemo(() => calendarItems({ ...store, jobs: filteredJobs }), [store, filteredJobs])
 
   return (
     <div>
@@ -68,11 +66,7 @@ export function Jobs() {
           <option value="">All clients</option>
           {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
         </select>
-        <select value={who} onChange={e => setWho(e.target.value)}>
-          <option value="">Everyone</option>
-          {profiles.map(p => <option key={p.id} value={p.id}>{p.id === me?.id ? 'Me' : p.full_name}</option>)}
-        </select>
-        {(q || client || who || status !== 'open') && <button className="btn sm ghost" onClick={() => { setQ(''); setClient(''); setWho(''); setStatus('open') }}>Clear</button>}
+        {(q || client || status !== 'open') && <button className="btn sm ghost" onClick={() => { setQ(''); setClient(''); setStatus('open') }}>Clear</button>}
         <span className="grow" />
         <span className="small muted">{filteredJobs.length} job{filteredJobs.length === 1 ? '' : 's'}</span>
       </div>

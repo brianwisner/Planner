@@ -9,10 +9,8 @@ import { Link } from 'react-router-dom'
 
 export function CalendarPage() {
   const store = useData()
-  const { me, profiles } = store
-  const [who, setWho] = useState('')
   const [kinds, setKinds] = useState({ phase: true, task: true, site_visit: true, job: true })
-  const items = useMemo(() => calendarItems(store).filter(i => kinds[i.kind] && (!who || i.assigneeId === who || i.assigneeId == null)), [store, who, kinds])
+  const items = useMemo(() => calendarItems(store).filter(i => kinds[i.kind]), [store, kinds])
 
   return (
     <div>
@@ -24,10 +22,6 @@ export function CalendarPage() {
         </div>
       </div>
       <div className="filters">
-        <select value={who} onChange={e => setWho(e.target.value)}>
-          <option value="">Everyone</option>
-          {profiles.map(p => <option key={p.id} value={p.id}>{p.id === me?.id ? 'Me' : p.full_name}</option>)}
-        </select>
         {(['phase', 'task', 'site_visit', 'job'] as const).map(k => (
           <button key={k} className={`chip ${kinds[k] ? 'on' : ''}`} onClick={() => setKinds(x => ({ ...x, [k]: !x[k] }))}>{k === 'phase' ? 'Phase deadlines' : k === 'task' ? 'Tasks' : k === 'site_visit' ? 'Site visits' : 'Job deadlines'}</button>
         ))}

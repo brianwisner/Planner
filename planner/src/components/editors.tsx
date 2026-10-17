@@ -7,7 +7,7 @@ import { ITEM_CATEGORIES } from '../lib/types'
 import { rateFor, workPhase } from '../lib/calc'
 import { JOB_STATUS_LABEL, RECURRENCE_LABEL, TASK_STATUS_LABEL } from '../lib/types'
 import { fmtMoney, nextOccurrence, todayISO } from '../lib/utils'
-import { Modal, PersonSelect } from './ui'
+import { Modal } from './ui'
 
 /* =============== Task =============== */
 export interface TaskDraft {
@@ -34,7 +34,7 @@ export function TaskModal({ task, defaults, onClose }: { task?: Task; defaults?:
     estimate_hours: task.estimate_hours, recurrence: task.recurrence,
   } : {
     job_id: defaults?.job_id ?? activeJobs[0]?.id ?? '', phase_id: defaults?.phase_id ?? null, title: defaults?.title ?? '', description: '',
-    status: 'todo', assignee_id: defaults?.assignee_id ?? me?.id ?? null, due_date: defaults?.due_date ?? null, scheduled_at: null,
+    status: 'todo', assignee_id: me?.id ?? null, due_date: defaults?.due_date ?? null, scheduled_at: null,
     is_site_visit: defaults?.is_site_visit ?? false, estimate_hours: null, recurrence: 'none',
   })
   const [saving, setSaving] = useState(false)
@@ -93,10 +93,6 @@ export function TaskModal({ task, defaults, onClose }: { task?: Task; defaults?:
       </div>
       <div className="row">
         <div className="field">
-          <label>Assigned to</label>
-          <PersonSelect value={d.assignee_id} onChange={v => set('assignee_id', v)} />
-        </div>
-        <div className="field">
           <label>Status</label>
           <select value={d.status} onChange={e => set('status', e.target.value as TaskStatus)}>
             {(Object.keys(TASK_STATUS_LABEL) as TaskStatus[]).map(s => <option key={s} value={s}>{TASK_STATUS_LABEL[s]}</option>)}
@@ -153,7 +149,7 @@ export async function toggleTaskDone(store: ReturnType<typeof useData>, task: Ta
     if (next) {
       await store.insert('tasks', {
         job_id: task.job_id, phase_id: task.phase_id, title: task.title, description: task.description, status: 'todo',
-        assignee_id: task.assignee_id, due_date: next, is_site_visit: task.is_site_visit, estimate_hours: task.estimate_hours,
+        assignee_id: store.me?.id ?? null, due_date: next, is_site_visit: task.is_site_visit, estimate_hours: task.estimate_hours,
         recurrence: task.recurrence, sort_order: task.sort_order, created_by: task.created_by,
         scheduled_at: task.scheduled_at ? new Date(`${next}T${localTime(task.scheduled_at)}:00`).toISOString() : null,
       })
@@ -252,7 +248,7 @@ export function JobModal({ job, defaultClientId, onClose, onCreated }: { job?: J
       </div>
       <div className="field">
         <label>Description</label>
-        <textarea value={d.description} onChange={e => set('description', e.target.value)} placeholder="Scope, structure type, anything the team should know" />
+        <textarea value={d.description} onChange={e => set('description', e.target.value)} placeholder="Scope, structure type, and other job details" />
       </div>
       {!job && <p className="small muted">The standard phases (Bidding, Queued, Original design, County / plan-check comments, Construction changes, Client-requested changes) are added automatically. New jobs start in Bidding.</p>}
     </Modal>
@@ -311,11 +307,11 @@ export function TimeModal({ entry, defaults, onClose }: { entry?: TimeEntry; def
     job_id: entry?.job_id ?? defaults?.job_id ?? activeJobs[0]?.id ?? '',
     phase_id: entry?.phase_id ?? defaults?.phase_id ?? null as string | null,
     task_id: entry?.task_id ?? defaults?.task_id ?? null as string | null,
-    user_id: entry?.user_id ?? defaults?.user_id ?? me?.id ?? '',
+    user_id: entry?.user_id ?? me?.id ?? '',
     date: entry?.date ?? defaults?.date ?? todayISO(),
     hours: entry?.hours ?? defaults?.hours ?? null as number | null,
     notes: entry?.notes ?? defaults?.notes ?? '',
-    rate: entry?.rate ?? personRate(entry?.user_id ?? defaults?.user_id ?? me?.id ?? '') as number | null,
+    rate: entry ? entry.rate : personRate(me?.id ?? '') as number | null,
   })
   const set = <K extends keyof typeof d>(k: K, v: (typeof d)[K]) => setD(x => ({ ...x, [k]: v }))
   const jobPhases = phases.filter(p => p.job_id === d.job_id)
@@ -361,7 +357,6 @@ export function TimeModal({ entry, defaults, onClose }: { entry?: TimeEntry; def
         </div>
       </div>
       <div className="row">
-        <div className="field"><label>Person</label><PersonSelect value={d.user_id} onChange={v => setD(x => ({ ...x, user_id: v ?? '', rate: personRate(v ?? '') }))} allowNone={false} /></div>
         <div className="field"><label>Date</label><input type="date" value={d.date} onChange={e => set('date', e.target.value)} /></div>
         <div className="field"><label>Hours</label><input autoFocus type="number" step="0.25" min="0" value={d.hours ?? ''} onChange={e => set('hours', e.target.value === '' ? null : Number(e.target.value))} /></div>
       </div>

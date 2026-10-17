@@ -1,4 +1,4 @@
-// One job: its phases (estimate, due date, status, assignee), the tasks in
+// One job: its phases (estimate, due date and status), the tasks in
 // each phase, hours logged, billing summary and the comment thread.
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
@@ -9,7 +9,7 @@ import { daysUntil } from '../lib/utils'
 import { StatusBadge } from './Billing'
 import type { Phase, Task } from '../lib/types'
 import { fmtDate, fmtDateTime, fmtHours, fmtMoney, fmtSigned, sum } from '../lib/utils'
-import { Avatar, Checkbox, DueBadge, Empty, Icon, JobStatusBadge, Person, PersonSelect, PhaseStatusSelect, Progress } from '../components/ui'
+import { Avatar, Checkbox, DueBadge, Empty, Icon, JobStatusBadge, PhaseStatusSelect, Progress } from '../components/ui'
 import { DepositModal, ItemModal, JobModal, TaskModal, TimeModal, toggleTaskDone } from '../components/editors'
 
 export function JobDetail() {
@@ -128,7 +128,6 @@ export function JobDetail() {
                   {jobEntries.slice(0, 12).map(e => (
                     <tr key={e.id} className="clickable" onClick={() => nav(`/time?entry=${e.id}`)}>
                       <td className="nowrap small">{fmtDate(e.date)}</td>
-                      <td><Person userId={e.user_id} hideName /></td>
                       <td className="small">{phases.find(p => p.id === e.phase_id)?.name ?? 'General'}{e.notes && <div className="tiny muted">{e.notes}</div>}</td>
                       <td className="num nowrap">{e.started_at && e.hours == null ? <span className="timer-pill"><span className="dot" />running</span> : fmtHours(e.hours)}</td>
                       <td>{hourMap.get(e.id) && <StatusBadge h={hourMap.get(e.id)!} />}</td>
@@ -191,7 +190,6 @@ function PhaseCard({ phase, tasks, logged, onAddTask, onEditTask, onLog, onStart
           const job = store.jobs.find(j => j.id === phase.job_id)
           if (phase.kind === 'queued' && s !== 'not_started' && job && !job.queued_date) void update('jobs', job.id, { queued_date: new Date().toISOString().slice(0, 10) })
         }} />
-        <div className="inline-edit"><PersonSelect value={phase.assignee_id} onChange={v => update('phases', phase.id, { assignee_id: v })} /></div>
       </div>
       <div className="phase-meta">
         <span className="inline-edit">Est. <input type="number" step="1" min="0" style={{ width: 70 }} value={phase.estimate_hours} onChange={e => update('phases', phase.id, { estimate_hours: Number(e.target.value) || 0 })} /> h</span>
@@ -211,7 +209,6 @@ function PhaseCard({ phase, tasks, logged, onAddTask, onEditTask, onLog, onStart
                 <div className="meta">{t.scheduled_at ? fmtDateTime(t.scheduled_at) : ''}{t.estimate_hours ? ` · ${fmtHours(t.estimate_hours)} est` : ''}{t.recurrence !== 'none' ? ' · repeats' : ''}</div>
               </div>
               <span className={`badge ${t.status}`}>{t.status === 'doing' ? 'In progress' : t.status === 'waiting' ? 'Waiting' : t.status === 'done' ? 'Done' : 'To do'}</span>
-              <Person userId={t.assignee_id} hideName />
               <DueBadge date={t.due_date} done={t.status === 'done'} />
             </li>
           ))}
@@ -238,7 +235,6 @@ function GeneralTasks({ tasks, onAdd, onEdit }: { tasks: Task[]; onAdd: () => vo
           <li key={t.id} className={t.status === 'done' ? 'done' : ''}>
             <Checkbox on={t.status === 'done'} onToggle={() => void toggleTaskDone(store, t)} />
             <div className="title"><a href="#" onClick={e => { e.preventDefault(); onEdit(t) }}>{t.title}</a>{t.recurrence !== 'none' && <div className="meta">repeats</div>}</div>
-            <Person userId={t.assignee_id} hideName />
             <DueBadge date={t.due_date} done={t.status === 'done'} />
           </li>
         ))}
