@@ -31,7 +31,8 @@ export function ScheduleModal({ jobId, phaseId, from, to, onClose }: { jobId: st
   }, [start, end, skipWeekends])
 
   const existing = (date: string) => schedule.find(s => s.job_id === jobId && s.phase_id === phase && s.user_id === who && s.date === date)
-  const otherWork = (date: string) => sum(schedule.filter(s => s.user_id === who && s.date === date && !(s.job_id === jobId && s.phase_id === phase)).map(s => s.hours))
+  const cancelledJobIds = new Set(jobs.filter(j => j.status === 'cancelled').map(j => j.id))
+  const otherWork = (date: string) => sum(schedule.filter(s => s.user_id === who && s.date === date && !cancelledJobIds.has(s.job_id) && !(s.job_id === jobId && s.phase_id === phase)).map(s => s.hours))
   const dailyCap = (me?.weekly_hours || settings.weekly_capacity || 40) / 5
 
   // Suggested hours for new days: spread what's left of the phase estimate, max 8 a day.

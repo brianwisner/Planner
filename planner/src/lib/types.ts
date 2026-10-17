@@ -1,6 +1,6 @@
 // Shapes of the rows in each database table. Keep in sync with supabase/setup.sql.
 
-export type JobStatus = 'active' | 'on_hold' | 'complete' | 'archived'
+export type JobStatus = 'active' | 'on_hold' | 'complete' | 'cancelled' | 'archived'
 export type PhaseKind = 'bidding' | 'queued' | 'design' | 'plan_check' | 'construction' | 'client_changes'
 export type PhaseStatus = 'not_started' | 'in_progress' | 'waiting' | 'complete'
 export type TaskStatus = 'todo' | 'doing' | 'waiting' | 'done'
@@ -163,6 +163,7 @@ export const JOB_STATUS_LABEL: Record<JobStatus, string> = {
   active: 'Active',
   on_hold: 'On hold',
   complete: 'Complete',
+  cancelled: 'Cancelled',
   archived: 'Archived',
 }
 
