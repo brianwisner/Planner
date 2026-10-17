@@ -96,6 +96,7 @@ Conventions:
 - Routing uses `HashRouter` (`#/jobs/123`) so GitHub Pages never 404s. Deep links: `/jobs/:id?task=<id>` opens a task, `/billing?job=<id>` opens job billing, `/time?entry=<id>` opens a time entry.
 - Hours display in quarter hours (`fmtHours`). Money via `fmtMoney`.
 - Keep touch targets ≥ 40px; `hide-mobile` class hides non-essential columns on phones.
+- The owner specifically prefers compact job-status dropdowns: 28px high on desktop, 30px on phones, with an inset chevron and room between the label and arrow. Preserve this sizing when editing the shared control.
 - Phone navigation has Dashboard, Jobs, Calendar, Time, and a More menu for Clients, Billing, Reports, and Settings. Log hours and Add task are visible in the top bar.
 - No CSS framework, no icon library (icons are inline SVG paths in `ui.tsx`).
 
