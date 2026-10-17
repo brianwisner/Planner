@@ -67,16 +67,20 @@ export function Dashboard() {
           </div>
           {openTasks.length === 0 && <Empty>No open tasks. <Link to="/jobs?view=board">Open the task board →</Link></Empty>}
           <ul className="list">
-            {openTasks.slice(0, 8).map(t => (
-              <li key={t.id} className={t.status === 'done' ? 'done' : ''}>
-                <Checkbox on={t.status === 'done'} onToggle={() => void toggleTaskDone(store, t)} />
-                <div className="title">
-                  <a href="#" onClick={e => { e.preventDefault(); setEditing(t.id) }}>{t.is_site_visit && <Icon name="pin" size={12} />} {t.title}</a>
-                  <div className="meta">{jobs.find(j => j.id === t.job_id)?.name}</div>
-                </div>
-                <DueBadge date={t.due_date} />
-              </li>
-            ))}
+            {openTasks.slice(0, 8).map(t => {
+              const job = jobs.find(j => j.id === t.job_id)
+              const client = clients.find(c => c.id === job?.client_id)
+              return (
+                <li key={t.id} className={t.status === 'done' ? 'done' : ''}>
+                  <Checkbox on={t.status === 'done'} onToggle={() => void toggleTaskDone(store, t)} />
+                  <div className="title">
+                    <a href="#" onClick={e => { e.preventDefault(); setEditing(t.id) }}>{t.is_site_visit && <Icon name="pin" size={12} />} {t.title}</a>
+                    <div className="meta">{[client?.name, job?.name].filter(Boolean).join(' · ')}</div>
+                  </div>
+                  <DueBadge date={t.due_date} />
+                </li>
+              )
+            })}
           </ul>
         </div>
 
