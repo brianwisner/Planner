@@ -47,7 +47,7 @@ It contains two separate things:
 
 **Changing the schema:** edit `setup.sql` so a fresh project still works, AND give the owner a small separate SQL snippet (`alter table … add column …`) to paste into the Supabase SQL Editor for their existing project. Then update `src/lib/types.ts`.
 
-The existing-project migration for Cancelled is `planner/supabase/migrations/20261017183000_add_cancelled_job_status.sql`. Apply it before publishing the new status option; deploy the updated `ics` Edge Function too so subscribed calendars omit cancelled work.
+The existing-project migration for Cancelled is `planner/supabase/migrations/20261017182411_add_cancelled_job_status.sql`. It is applied to the live project, and the updated `ics` Edge Function is deployed so subscribed calendars omit cancelled work. Keep migration filenames aligned with the live migration history.
 
 ### Frontend layout — `planner/src/`
 
