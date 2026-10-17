@@ -1,5 +1,5 @@
 // Small reusable building blocks used across every page.
-import { useEffect, type ReactNode } from 'react'
+import { useEffect, useId, useRef, type ReactNode } from 'react'
 import { useData } from '../lib/store'
 import type { JobStatus, PhaseStatus, TaskStatus } from '../lib/types'
 import { JOB_STATUS_LABEL, PHASE_STATUS_LABEL, TASK_STATUS_LABEL } from '../lib/types'
@@ -101,18 +101,89 @@ export function Progress({ value, max }: { value: number; max: number }) {
 }
 
 /* ---------- Modal ---------- */
+const openModals: HTMLElement[] = []
+let previousBodyOverflow = ''
+
+function modalControls(container: HTMLElement) {
+  return Array.from(container.querySelectorAll<HTMLElement>('a[href], button, input, select, textarea, [tabindex], [contenteditable="true"]'))
+    .filter(el => el.tabIndex >= 0 && !el.matches(':disabled') && !el.closest('[inert]') && el.getClientRects().length > 0 && getComputedStyle(el).visibility !== 'hidden')
+}
+
 export function Modal({ title, onClose, children, footer, wide, className }: { title: ReactNode; onClose: () => void; children: ReactNode; footer?: ReactNode; wide?: boolean; className?: string }) {
+  const titleId = useId()
+  const dialogRef = useRef<HTMLDivElement>(null)
+  const closeRef = useRef(onClose)
+  const invokerRef = useRef(document.activeElement instanceof HTMLElement ? document.activeElement : null)
+  useEffect(() => { closeRef.current = onClose }, [onClose])
+
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.stopPropagation(); onClose() } }
+    const dialog = dialogRef.current!
+    const invoker = invokerRef.current
+    if (openModals.length === 0) {
+      previousBodyOverflow = document.body.style.overflow
+      document.body.style.overflow = 'hidden'
+    }
+    // A nested dialog's effect may run before its parent's effect.
+    const descendant = openModals.findIndex(other => dialog.contains(other))
+    if (descendant === -1) openModals.push(dialog)
+    else openModals.splice(descendant, 0, dialog)
+
+    const isTopmost = () => openModals.at(-1) === dialog
+    const firstControl = () => {
+      const body = dialog.querySelector<HTMLElement>('.body')
+      return (body && modalControls(body)[0]) || modalControls(dialog)[0] || dialog
+    }
+    let lastFocused: HTMLElement | null = null
+    const onFocus = (e: FocusEvent) => {
+      if (!isTopmost()) return
+      if (e.target instanceof HTMLElement && dialog.contains(e.target)) lastFocused = e.target
+      else (lastFocused?.isConnected && dialog.contains(lastFocused) ? lastFocused : firstControl()).focus({ preventScroll: true })
+    }
+    const onKey = (e: KeyboardEvent) => {
+      if (!isTopmost()) return
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        e.stopImmediatePropagation()
+        closeRef.current()
+      } else if (e.key === 'Tab') {
+        const controls = modalControls(dialog)
+        const index = controls.indexOf(document.activeElement as HTMLElement)
+        if (controls.length === 0 || index === -1 || (e.shiftKey ? index === 0 : index === controls.length - 1)) {
+          e.preventDefault()
+          const target = controls.length ? controls[e.shiftKey ? controls.length - 1 : 0] : dialog
+          target.focus({ preventScroll: true })
+        }
+      }
+    }
     window.addEventListener('keydown', onKey, true)
-    return () => window.removeEventListener('keydown', onKey, true)
-  }, [onClose])
+    document.addEventListener('focusin', onFocus, true)
+    if (isTopmost()) {
+      if (dialog.contains(document.activeElement)) lastFocused = document.activeElement as HTMLElement
+      else firstControl().focus({ preventScroll: true })
+    }
+    return () => {
+      window.removeEventListener('keydown', onKey, true)
+      document.removeEventListener('focusin', onFocus, true)
+      const index = openModals.indexOf(dialog)
+      if (index !== -1) openModals.splice(index, 1)
+      if (openModals.length === 0) document.body.style.overflow = previousBodyOverflow
+      // Wait for any nested dialogs to finish unmounting before restoring focus.
+      queueMicrotask(() => {
+        const top = openModals.at(-1)
+        if (invoker?.isConnected && (!top || top.contains(invoker))) invoker.focus({ preventScroll: true })
+        else if (top && !top.contains(document.activeElement)) {
+          const target = modalControls(top.querySelector<HTMLElement>('.body') ?? top)[0] || top
+          target.focus({ preventScroll: true })
+        }
+      })
+    }
+  }, [])
   return (
-    <div className="modal-backdrop" onMouseDown={e => { if (e.target === e.currentTarget) onClose() }}>
-      <div className={`modal ${wide ? 'wide' : ''} ${className ?? ''}`} role="dialog" aria-modal="true">
+    <div className="modal-backdrop" onMouseDown={e => { if (e.target === e.currentTarget && openModals.at(-1) === dialogRef.current) closeRef.current() }}>
+      <div ref={dialogRef} className={`modal ${wide ? 'wide' : ''} ${className ?? ''}`} role="dialog" aria-modal="true" aria-labelledby={title !== null ? titleId : undefined} aria-label={title === null ? 'Search' : undefined} tabIndex={-1}>
         {title !== null && (
           <header>
-            <h2>{title}</h2>
+            <h2 id={titleId}>{title}</h2>
             <button className="btn ghost icon" onClick={onClose} aria-label="Close"><Icon name="close" /></button>
           </header>
         )}

@@ -244,6 +244,19 @@ export function teamWorkload(store: Pick<Store, 'profiles' | 'phases' | 'jobs' |
   })
 }
 
+/** The owner's full workload, including phases with legacy or no assignments. */
+export function soloWorkload(store: Pick<Store, 'me' | 'phases' | 'jobs' | 'timeEntries' | 'settings'>): Omit<Workload, 'user'> {
+  const openJobs = new Set(store.jobs.filter(j => j.status === 'active').map(j => j.id))
+  const openPhases = store.phases.filter(p => p.status !== 'complete' && openJobs.has(p.job_id))
+  const remainingHours = sum(openPhases.map(p => Math.max(0, p.estimate_hours - hoursForPhase(store.timeEntries, p.id))))
+  const capacity = store.me?.weekly_hours || store.settings.weekly_capacity || 40
+  const weeksOut = capacity > 0 ? remainingHours / capacity : 0
+  const bookedUntil = remainingHours > 0 ? addDays(new Date(), Math.ceil(weeksOut * 7)) : null
+  const weekStart = startOfWeekISO()
+  const thisWeekLogged = sum(store.timeEntries.filter(e => e.date >= weekStart).map(entryHours))
+  return { remainingHours, openPhases, bookedUntil, weeksOut, thisWeekLogged }
+}
+
 export function startOfWeekISO(): string {
   const d = new Date()
   const day = d.getDay() // 0 = Sunday

@@ -87,7 +87,7 @@ export function SetPassword({ onDone }: { onDone: () => void }) {
     <div className="login">
       <form className="card" onSubmit={submit}>
         <div className="brand"><h1>Welcome</h1><div className="muted small">Choose a password to finish setting up your account</div></div>
-        <div className="field"><label>Your name (as the team will see it)</label><input value={name} onChange={e => setName(e.target.value)} placeholder="Optional" /></div>
+        <div className="field"><label>Your name</label><input value={name} onChange={e => setName(e.target.value)} placeholder="Optional" /></div>
         <div className="field"><label>New password</label><input type="password" autoComplete="new-password" value={pw} onChange={e => setPw(e.target.value)} required minLength={6} autoFocus /></div>
         <div className="field"><label>Repeat password</label><input type="password" autoComplete="new-password" value={pw2} onChange={e => setPw2(e.target.value)} required /></div>
         {msg && <p className="small danger-text">{msg}</p>}

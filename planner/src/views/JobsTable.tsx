@@ -2,7 +2,7 @@
 // click a column header to sort, click a row to open the job.
 // With "Plan hours" on, each row also gets one box per day of the chosen week:
 // typing hours there schedules them on the job's current phase (same data as
-// dragging on the Gantt chart). The bottom row is the person's total per day.
+// dragging on the Gantt chart). The bottom row is your total per day.
 import { useEffect, useMemo, useState } from 'react'
 import { addDays, addWeeks, format, isWeekend, startOfWeek } from 'date-fns'
 import { useNavigate } from 'react-router-dom'
@@ -16,9 +16,9 @@ import { PHASE_KIND_SHORT } from '../lib/types'
 import { daysUntil, downloadCSV, fmtDate, fmtHours, sum, todayISO } from '../lib/utils'
 import type { ScheduleEntry } from '../lib/types'
 import { ScheduleModal } from '../components/ScheduleModal'
-import { DueBadge, Empty, Icon, JobStatusBadge, Person, Progress } from '../components/ui'
+import { DueBadge, Empty, Icon, JobStatusBadge, Progress } from '../components/ui'
 
-type SortKey = 'priority' | 'name' | 'client' | 'due' | 'assignee'
+type SortKey = 'priority' | 'name' | 'client' | 'due'
 
 function readPref(key: string, fallback: boolean) {
   try { const v = localStorage.getItem(key); return v == null ? fallback : v === '1' } catch { return fallback }
@@ -33,13 +33,11 @@ export function JobsTable({ jobs, showExport = true, schedulable = false }: { jo
   const [plan, setPlan] = useState(() => schedulable && readPref('table-plan', true))
   const [weekends, setWeekends] = useState(() => readPref('table-plan-weekends', false))
   const [weekStart, setWeekStart] = useState(() => startOfWeek(new Date(), { weekStartsOn: 1 }))
-  const [who, setWho] = useState(me?.id ?? '')
+  const ownerId = me?.id ?? ''
   const [modal, setModal] = useState<{ jobId: string; phaseId: string | null; from: string; to: string } | null>(null)
-  useEffect(() => { if (!who && me) setWho(me.id) }, [me, who])
   const days = useMemo(() => Array.from({ length: 7 }, (_, i) => addDays(weekStart, i)).filter(d => weekends || !isWeekend(d)).map(d => format(d, 'yyyy-MM-dd')), [weekStart, weekends])
-  const mine = useMemo(() => schedule.filter(s => s.user_id === who && days.includes(s.date)), [schedule, who, days])
-  const person = profiles.find(p => p.id === who)
-  const dailyCap = (person?.weekly_hours || settings.weekly_capacity || 40) / 5
+  const mine = useMemo(() => schedule.filter(s => s.user_id === ownerId && days.includes(s.date)), [schedule, ownerId, days])
+  const dailyCap = (me?.weekly_hours || settings.weekly_capacity || 40) / 5
   const nav = useNavigate()
   const [sort, setSort] = useState<SortKey>('priority')
   const [asc, setAsc] = useState(true)
@@ -62,7 +60,6 @@ export function JobsTable({ jobs, showExport = true, schedulable = false }: { jo
       switch (sort) {
         case 'name': return dir * a.j.name.localeCompare(b.j.name)
         case 'client': return dir * a.client.localeCompare(b.client)
-        case 'assignee': return dir * a.assignee.localeCompare(b.assignee)
         case 'due': return dir * ((a.nextDue ?? '9999').localeCompare(b.nextDue ?? '9999'))
         default: return dir * (a.j.priority - b.j.priority)
       }
@@ -112,15 +109,10 @@ export function JobsTable({ jobs, showExport = true, schedulable = false }: { jo
             <button className="btn sm icon" onClick={() => setWeekStart(w => addWeeks(w, 1))} aria-label="Next week"><Icon name="chevronR" size={16} /></button>
             <button className="btn sm" onClick={() => setWeekStart(startOfWeek(new Date(), { weekStartsOn: 1 }))}>This week</button>
             <button className={`chip ${weekends ? 'on' : ''}`} onClick={() => { setWeekends(!weekends); writePref('table-plan-weekends', !weekends) }}>Weekends</button>
-            <span className="grow" />
-            <label className="small muted" style={{ margin: 0 }}>Hours for</label>
-            <select value={who} onChange={e => setWho(e.target.value)} style={{ width: 'auto' }}>
-              {profiles.map(p => <option key={p.id} value={p.id}>{p.id === me?.id ? 'Me' : p.full_name}</option>)}
-            </select>
           </>}
         </div>
       )}
-      {showPlan && <p className="small muted" style={{ margin: '-4px 0 8px' }}>Type hours in a day's box to schedule them on the job's current phase (a queued job's hours go to Original design). Clear the box to remove them. The bottom row is the total for each day (yellow = more than a full day).</p>}
+      {showPlan && <p className="small muted" style={{ margin: '-4px 0 8px' }}>Type your hours in a day's box to schedule them on the job's current phase (a queued job's hours go to Original design). Clear the box to remove them. The bottom row is your total for each day (yellow = more than a full day).</p>}
       <div className="table-wrap">
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
           <SortableContext items={sorted.map(r => r.j.id)} strategy={verticalListSortingStrategy}>
@@ -131,7 +123,6 @@ export function JobsTable({ jobs, showExport = true, schedulable = false }: { jo
                   {header('name', 'Job')}
                   {!showPlan && header('client', 'Client', 'hide-mobile')}
                   <th className="plan-hide-mobile">Phase</th>
-                  {header('assignee', 'Who', 'hide-mobile')}
                   {header('due', 'Due', 'plan-hide-mobile')}
                   {!showPlan && <th className="hide-mobile" style={{ width: 140 }}>Hours</th>}
                   {showPlan && days.map(d => <th key={d} className={`plan-col ${d === today ? 'is-today' : ''}`}>{format(new Date(d + 'T00:00:00'), 'EEE')}<div><span>{format(new Date(d + 'T00:00:00'), 'd')}</span></div></th>)}
@@ -140,13 +131,13 @@ export function JobsTable({ jobs, showExport = true, schedulable = false }: { jo
               </thead>
               <tbody>
                 {sorted.map(r => <Row key={r.j.id} r={r} onOpen={() => nav(`/jobs/${r.j.id}`)} draggable={sort === 'priority'} phaseLogged={r.cp ? hoursForPhase(timeEntries, r.cp.id) : 0}
-                  plan={showPlan ? { days, who, entries: mine.filter(s => s.job_id === r.j.id), onComplex: (d: string) => setModal({ jobId: r.j.id, phaseId: r.wp?.id ?? null, from: d, to: d }) } : null} />)}
+                  plan={showPlan ? { days, who: ownerId, entries: mine.filter(s => s.job_id === r.j.id), onComplex: (d: string) => setModal({ jobId: r.j.id, phaseId: r.wp?.id ?? null, from: d, to: d }) } : null} />)}
               </tbody>
               {showPlan && (
                 <tfoot>
                   <tr>
-                    <td colSpan={2}>{who === me?.id ? 'Your' : `${person?.full_name ?? ''}'s`} total <span className="tiny muted" style={{ fontWeight: 400 }}>(all jobs)</span></td>
-                    <td className="plan-hide-mobile" /><td className="hide-mobile" /><td className="plan-hide-mobile" />
+                    <td colSpan={2}>Your total <span className="tiny muted" style={{ fontWeight: 400 }}>(all jobs)</span></td>
+                    <td className="plan-hide-mobile" /><td className="plan-hide-mobile" />
                     {days.map(d => { const t = dayTotal(d); return <td key={d} className={`plan-col num ${t > dailyCap ? 'plan-over' : ''}`}>{t ? fmtHours(t) : <span className="muted">–</span>}</td> })}
                     <td className="plan-col num plan-hide-mobile">{fmtHours(sum(days.map(dayTotal)))}</td>
                   </tr>
@@ -181,7 +172,6 @@ function Row({ r, onOpen, draggable, phaseLogged, plan }: { r: RowData; onOpen: 
       </td>
       {!plan && <td className="hide-mobile">{r.client}</td>}
       <td className={plan ? 'plan-hide-mobile' : ''}>{r.cp ? <span className={`badge ${r.cp.status}`}>{PHASE_KIND_SHORT[r.cp.kind]}</span> : <span className="muted">–</span>}{plan && r.cp && <div className="tiny muted nowrap">{fmtHours(phaseLogged)} / {fmtHours(r.cp.estimate_hours)}</div>}</td>
-      <td className="hide-mobile"><Person userId={r.cp?.assignee_id} /></td>
       <td className={`nowrap ${plan ? 'plan-hide-mobile' : ''}`}><DueBadge date={r.nextDue} done={r.j.status === 'complete'} />{overdue && ''}</td>
       {!plan && <td className="hide-mobile">
         <div className="tiny muted">{fmtHours(phaseLogged)} / {fmtHours(r.cp?.estimate_hours ?? 0)} phase · {fmtHours(r.logged)} / {fmtHours(r.est)} job</div>
@@ -220,7 +210,7 @@ function DayCell({ date, jobId, phaseId, who, entries, onComplex }: { date: stri
       <input
         className={`plan-cell ${total ? 'filled' : ''}`}
         type="number" inputMode="decimal" min="0" max="24" step="0.5"
-        value={val} placeholder="–" readOnly={multi}
+        value={val} placeholder="–" readOnly={multi} disabled={!who}
         title={multi ? 'Hours on more than one phase. Click to edit.' : 'Hours scheduled'}
         aria-label={`Hours on ${date}`}
         onFocus={() => { if (multi) onComplex(); else setFocused(true) }}

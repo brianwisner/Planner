@@ -6,7 +6,7 @@ import { DndContext, DragOverlay, PointerSensor, TouchSensor, useDraggable, useD
 import { useData } from '../lib/store'
 import type { Task, TaskStatus } from '../lib/types'
 import { TASK_STATUS_LABEL } from '../lib/types'
-import { Avatar, DueBadge, Icon } from '../components/ui'
+import { DueBadge, Icon } from '../components/ui'
 import { TaskModal } from '../components/editors'
 
 const COLS: TaskStatus[] = ['todo', 'doing', 'waiting', 'done']
@@ -59,7 +59,6 @@ function Card({ task, jobName, onOpen, overlay }: { task: Task; jobName: string;
     <div ref={overlay ? undefined : setNodeRef} className={`kcard ${isDragging ? 'dragging' : ''}`} {...attributes} {...listeners} onClick={onOpen}>
       <div className="t">{task.is_site_visit && <span className="badge site" style={{ marginRight: 6 }}><Icon name="pin" size={11} /> Site</span>}{task.title}</div>
       <div className="m">
-        <Avatar userId={task.assignee_id} size="sm" />
         <Link className="job" to={`/jobs/${task.job_id}`} onClick={e => e.stopPropagation()}>{jobName}</Link>
         <span className="grow" />
         {task.recurrence !== 'none' && <Icon name="repeat" size={12} />}

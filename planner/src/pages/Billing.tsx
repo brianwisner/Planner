@@ -10,7 +10,7 @@ import type { Deposit, Invoice } from '../lib/types'
 import { downloadCSV, fmtDate, fmtHours, fmtMoney, fmtSigned, sum } from '../lib/utils'
 import { DepositModal, InvoiceModal, ItemModal, TimeModal } from '../components/editors'
 import { BalanceChart, WorkStatusBar } from '../components/MoneyCharts'
-import { Empty, Icon, Person } from '../components/ui'
+import { Empty, Icon } from '../components/ui'
 import type { JobItem, TimeEntry } from '../lib/types'
 
 type Tab = 'jobs' | 'deposits' | 'hours'
@@ -157,10 +157,9 @@ function HoursTab() {
   const { jobs, phases, profiles, clients } = store
   const nav = useNavigate()
   const [filter, setFilter] = useState<(typeof FILTERS)[number]['key']>('unbilled')
-  const [who, setWho] = useState('')
   const [jobId, setJobId] = useState('')
   const map = useMemo(() => allHours(store), [store])
-  const base = [...map.values()].filter(h => (!who || h.entry.user_id === who) && (!jobId || h.entry.job_id === jobId))
+  const base = [...map.values()].filter(h => !jobId || h.entry.job_id === jobId)
     .sort((a, b) => b.entry.date.localeCompare(a.entry.date))
   const f = FILTERS.find(x => x.key === filter)!
   const rows = base.filter(h => f.match(h.status))
@@ -170,22 +169,20 @@ function HoursTab() {
     <div className="card">
       <div className="filters">
         {FILTERS.map(x => <button key={x.key} className={`chip ${filter === x.key ? 'on' : ''}`} onClick={() => setFilter(x.key)}>{x.label} · {fmtMoney(totalFor(x.key))}</button>)}
-        <select value={jobId} onChange={e => setJobId(e.target.value)}><option value="">All jobs</option>{jobs.filter(j => j.status !== 'archived').map(j => <option key={j.id} value={j.id}>{j.name}</option>)}</select>
-        <select value={who} onChange={e => setWho(e.target.value)}><option value="">Everyone</option>{profiles.map(p => <option key={p.id} value={p.id}>{p.full_name}</option>)}</select>
+        <select aria-label="Filter billed hours by job" value={jobId} onChange={e => setJobId(e.target.value)}><option value="">All jobs</option>{jobs.filter(j => j.status !== 'archived').map(j => <option key={j.id} value={j.id}>{j.name}</option>)}</select>
         <span className="grow" />
         <button className="btn sm" onClick={() => downloadCSV(`hours-${filter}.csv`, ['Date', 'Person', 'Client', 'Job #', 'Job', 'Phase', 'Hours', 'Rate', 'Amount $', 'Status', 'Paid by deposit $', 'Invoice', 'Notes'],
           rows.map(h => { const j = jobs.find(j => j.id === h.entry.job_id); return [h.entry.date, profiles.find(p => p.id === h.entry.user_id)?.full_name, clients.find(c => c.id === j?.client_id)?.name, j?.job_number, j?.name, phases.find(p => p.id === h.entry.phase_id)?.name ?? 'General', entryHours(h.entry), entryRate(store, h.entry), round2(h.amount), HOUR_STATUS_LABEL[h.status], round2(h.covered), store.invoices.find(i => i.id === h.entry.invoice_id)?.number ?? '', h.entry.notes] }))}><Icon name="download" size={14} /> CSV</button>
       </div>
       {rows.length === 0 && <Empty>No hours in this list.</Empty>}
       {rows.length > 0 && <div className="table-wrap"><table>
-        <thead><tr><th>Date</th><th>Who</th><th>Job</th><th className="num hide-mobile">Hours × rate</th><th className="num">Amount</th><th>Status</th></tr></thead>
+        <thead><tr><th>Date</th><th>Job</th><th className="num hide-mobile">Hours × rate</th><th className="num">Amount</th><th>Status</th></tr></thead>
         <tbody>
           {rows.slice(0, 400).map(h => {
             const j = jobs.find(j => j.id === h.entry.job_id)
             return (
               <tr key={h.entry.id} className="clickable" onClick={() => nav(`/billing?job=${h.entry.job_id}`)}>
                 <td className="nowrap">{fmtDate(h.entry.date)}</td>
-                <td><Person userId={h.entry.user_id} hideName /></td>
                 <td>{j?.name}<div className="tiny muted">{phases.find(p => p.id === h.entry.phase_id)?.name ?? 'General'}{h.entry.notes && ` · ${h.entry.notes}`}</div></td>
                 <td className="num hide-mobile nowrap">{fmtHours(h.entry.hours)} × ${entryRate(store, h.entry)}</td>
                 <td className="num">{fmtMoney(h.amount)}</td>
@@ -194,7 +191,7 @@ function HoursTab() {
             )
           })}
         </tbody>
-        <tfoot><tr><td colSpan={3}>{rows.length} entries{filter === 'unbilled' ? ' · amount not billed' : filter === 'paid' ? ' · amount paid' : ''}</td><td className="num hide-mobile">{fmtHours(sum(rows.map(h => entryHours(h.entry))))}</td><td className="num">{fmtMoney(totalFor(filter))}</td><td /></tr></tfoot>
+        <tfoot><tr><td colSpan={2}>{rows.length} entries{filter === 'unbilled' ? ' · amount not billed' : filter === 'paid' ? ' · amount paid' : ''}</td><td className="num hide-mobile">{fmtHours(sum(rows.map(h => entryHours(h.entry))))}</td><td className="num">{fmtMoney(totalFor(filter))}</td><td /></tr></tfoot>
       </table></div>}
     </div>
   )
@@ -321,12 +318,11 @@ function JobMoney({ jobId, onBack }: { jobId: string; onBack: () => void }) {
         </div>
         {list.length === 0 && <p className="small muted">No hours in this list.</p>}
         {list.length > 0 && <div className="table-wrap"><table>
-          <thead><tr><th></th><th>Date</th><th className="hide-mobile">Who</th><th className="hide-mobile">Phase</th><th className="num hide-mobile">Hours × rate</th><th className="num">Amount</th><th>Status</th><th></th></tr></thead>
+          <thead><tr><th></th><th>Date</th><th className="hide-mobile">Phase</th><th className="num hide-mobile">Hours × rate</th><th className="num">Amount</th><th>Status</th><th></th></tr></thead>
           <tbody>{list.map(h => (
             <tr key={h.entry.id} className={selectable(h.status) ? 'clickable' : ''} onClick={() => selectable(h.status) && toggle(h.entry.id)}>
               <td>{selectable(h.status) && <input type="checkbox" style={{ width: 18, minHeight: 0 }} checked={sel.has(h.entry.id)} onChange={() => toggle(h.entry.id)} onClick={e => e.stopPropagation()} />}</td>
               <td className="nowrap">{fmtDate(h.entry.date)}</td>
-              <td className="hide-mobile"><Person userId={h.entry.user_id} hideName /></td>
               <td className="small hide-mobile">{phases.find(p => p.id === h.entry.phase_id)?.name ?? 'General'}{h.entry.notes && <div className="tiny muted">{h.entry.notes}</div>}</td>
               <td className="num hide-mobile nowrap">{fmtHours(h.entry.hours)} × ${entryRate(store, h.entry)}</td>
               <td className="num">{fmtMoney(h.amount)}</td>
