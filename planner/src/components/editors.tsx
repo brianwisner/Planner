@@ -2,8 +2,9 @@
 // time entries and invoices. Every page reuses these.
 import { useEffect, useState } from 'react'
 import { useData } from '../lib/store'
-import type { Client, Deposit, Invoice, Job, JobStatus, Recurrence, Task, TaskStatus, TimeEntry } from '../lib/types'
-import { rateFor } from '../lib/calc'
+import type { Client, Deposit, Invoice, Job, JobItem, JobStatus, Recurrence, Task, TaskStatus, TimeEntry } from '../lib/types'
+import { ITEM_CATEGORIES } from '../lib/types'
+import { rateFor, workPhase } from '../lib/calc'
 import { JOB_STATUS_LABEL, RECURRENCE_LABEL, TASK_STATUS_LABEL } from '../lib/types'
 import { fmtMoney, nextOccurrence, todayISO } from '../lib/utils'
 import { Modal, PersonSelect } from './ui'
@@ -170,7 +171,8 @@ export function JobModal({ job, defaultClientId, onClose, onCreated }: { job?: J
     name: job?.name ?? '', description: job?.description ?? '', address: job?.address ?? '',
     status: (job?.status ?? 'active') as JobStatus,
     fee: job?.fee ?? null as number | null,
-    start_date: job?.start_date ?? todayISO() as string | null,
+    queued_date: job?.queued_date ?? null as string | null,
+    start_date: job?.start_date ?? null as string | null,
     due_date: job?.due_date ?? null as string | null,
   }))
   const [saving, setSaving] = useState(false)
@@ -183,7 +185,7 @@ export function JobModal({ job, defaultClientId, onClose, onCreated }: { job?: J
     else {
       const maxPriority = Math.max(0, ...jobs.filter(j => j.status === 'active').map(j => j.priority))
       const created = await insert('jobs', { ...d, name: d.name.trim(), priority: maxPriority + 1 })
-      if (created) { toast('Job created with its four phases'); onCreated?.(created) }
+      if (created) { toast('Job created with its phases (starts in Bidding)'); onCreated?.(created) }
       onClose()
     }
     setSaving(false)
@@ -230,6 +232,10 @@ export function JobModal({ job, defaultClientId, onClose, onCreated }: { job?: J
       </div>
       <div className="row">
         <div className="field">
+          <label>Entered queue</label>
+          <input type="date" value={d.queued_date ?? ''} onChange={e => set('queued_date', e.target.value || null)} />
+        </div>
+        <div className="field">
           <label>Start date</label>
           <input type="date" value={d.start_date ?? ''} onChange={e => set('start_date', e.target.value || null)} />
         </div>
@@ -237,7 +243,9 @@ export function JobModal({ job, defaultClientId, onClose, onCreated }: { job?: J
           <label>Overall due date</label>
           <input type="date" value={d.due_date ?? ''} onChange={e => set('due_date', e.target.value || null)} />
         </div>
-        <div className="field">
+      </div>
+      <div className="row">
+        <div className="field" style={{ flex: '0 1 200px' }}>
           <label>Fee ($)</label>
           <input type="number" min="0" step="50" value={d.fee ?? ''} onChange={e => set('fee', e.target.value === '' ? null : Number(e.target.value))} />
         </div>
@@ -246,7 +254,7 @@ export function JobModal({ job, defaultClientId, onClose, onCreated }: { job?: J
         <label>Description</label>
         <textarea value={d.description} onChange={e => set('description', e.target.value)} placeholder="Scope, structure type, anything the team should know" />
       </div>
-      {!job && <p className="small muted">The four standard phases (Original design, County / plan-check comments, Construction changes, Client-requested changes) are added automatically.</p>}
+      {!job && <p className="small muted">The standard phases (Bidding, Queued, Original design, County / plan-check comments, Construction changes, Client-requested changes) are added automatically. New jobs start in Bidding.</p>}
     </Modal>
   )
 }
@@ -312,7 +320,7 @@ export function TimeModal({ entry, defaults, onClose }: { entry?: TimeEntry; def
   const set = <K extends keyof typeof d>(k: K, v: (typeof d)[K]) => setD(x => ({ ...x, [k]: v }))
   const jobPhases = phases.filter(p => p.job_id === d.job_id)
   const jobTasks = tasks.filter(t => t.job_id === d.job_id && (!d.phase_id || t.phase_id === d.phase_id))
-  useEffect(() => { if (!jobPhases.some(p => p.id === d.phase_id)) setD(x => ({ ...x, phase_id: jobPhases[0]?.id ?? null })) }, [d.job_id]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (!jobPhases.some(p => p.id === d.phase_id)) setD(x => ({ ...x, phase_id: workPhase(phases, d.job_id)?.id ?? null })) }, [d.job_id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   async function save() {
     if (!d.job_id || d.hours == null || d.hours <= 0) { toast('Enter the job and the hours', 'error'); return }
@@ -368,8 +376,8 @@ export function TimeModal({ entry, defaults, onClose }: { entry?: TimeEntry; def
 }
 
 /* =============== Invoice =============== */
-export function InvoiceModal({ invoice, jobId, entryIds, defaultAmount, onClose }: { invoice?: Invoice; jobId: string; entryIds?: string[]; defaultAmount?: number; onClose: () => void }) {
-  const { invoices, timeEntries, insert, update, remove, toast } = useData()
+export function InvoiceModal({ invoice, jobId, entryIds, itemIds, defaultAmount, onClose }: { invoice?: Invoice; jobId: string; entryIds?: string[]; itemIds?: string[]; defaultAmount?: number; onClose: () => void }) {
+  const { invoices, timeEntries, items, insert, update, remove, toast } = useData()
   const [d, setD] = useState({
     number: invoice?.number ?? suggestInvoiceNumber(invoices),
     amount: invoice?.amount ?? Math.round(defaultAmount ?? 0),
@@ -382,9 +390,11 @@ export function InvoiceModal({ invoice, jobId, entryIds, defaultAmount, onClose 
     if (invoice) await update('invoices', invoice.id, d)
     else {
       const created = await insert('invoices', { ...d, job_id: jobId })
-      if (created && entryIds?.length) {
-        await Promise.all(entryIds.map(id => update('time_entries', id, { billed: true, invoice_id: created.id })))
-        toast(`${entryIds.length} time entries marked as billed`)
+      if (created && (entryIds?.length || itemIds?.length)) {
+        await Promise.all((entryIds ?? []).map(id => update('time_entries', id, { billed: true, invoice_id: created.id })))
+        await Promise.all((itemIds ?? []).map(id => update('job_items', id, { billed: true, invoice_id: created.id })))
+        const parts = [entryIds?.length ? `${entryIds.length} time entr${entryIds.length === 1 ? 'y' : 'ies'}` : '', itemIds?.length ? `${itemIds.length} charge${itemIds.length === 1 ? '' : 's'}` : ''].filter(Boolean)
+        toast(`${parts.join(' and ')} marked as billed`)
       }
     }
     onClose()
@@ -392,6 +402,7 @@ export function InvoiceModal({ invoice, jobId, entryIds, defaultAmount, onClose 
   async function del() {
     if (!invoice || !confirm('Delete this invoice? Hours on it will become unbilled again.')) return
     await Promise.all(timeEntries.filter(e => e.invoice_id === invoice.id).map(e => update('time_entries', e.id, { billed: false, invoice_id: null })))
+    await Promise.all(items.filter(i => i.invoice_id === invoice.id).map(i => update('job_items', i.id, { billed: false, invoice_id: null })))
     await remove('invoices', invoice.id); onClose()
   }
   return (
@@ -400,7 +411,7 @@ export function InvoiceModal({ invoice, jobId, entryIds, defaultAmount, onClose 
       <button className="btn" onClick={onClose}>Cancel</button>
       <button className="btn primary" onClick={save}>Save</button>
     </>}>
-      {entryIds && entryIds.length > 0 && <p className="small muted">{entryIds.length} unbilled time entries will be marked as billed on this invoice.</p>}
+      {((entryIds?.length ?? 0) + (itemIds?.length ?? 0)) > 0 && <p className="small muted">{[entryIds?.length ? `${entryIds.length} time entr${entryIds.length === 1 ? 'y' : 'ies'}` : '', itemIds?.length ? `${itemIds.length} charge${itemIds.length === 1 ? '' : 's'}` : ''].filter(Boolean).join(' and ')} will be marked as billed on this invoice.</p>}
       <div className="row">
         <div className="field"><label>Invoice #</label><input value={d.number} onChange={e => set('number', e.target.value)} /></div>
         <div className="field"><label>Amount ($)</label><input autoFocus type="number" min="0" step="1" value={d.amount} onChange={e => set('amount', Number(e.target.value))} /></div>
@@ -462,6 +473,62 @@ export function DepositModal({ deposit, jobId, onClose }: { deposit?: Deposit; j
       </div>
       <div className="field"><label>Notes</label><input value={d.notes} onChange={e => set('notes', e.target.value)} placeholder="e.g. Retainer at signing, check #1043" /></div>
       <p className="small muted">The deposit pays for hours on this job as they are logged, oldest first. Once it is used up, new hours show as "Not billed" until you send an invoice.</p>
+    </Modal>
+  )
+}
+
+/* =============== Charge (billable item other than hours) =============== */
+export function ItemModal({ item, jobId, onClose }: { item?: JobItem; jobId?: string; onClose: () => void }) {
+  const { jobs, clients, me, insert, update, remove, toast } = useData()
+  const openJobs = jobs.filter(j => j.status !== 'archived')
+  const [d, setD] = useState({
+    job_id: item?.job_id ?? jobId ?? openJobs[0]?.id ?? '',
+    date: item?.date ?? todayISO(),
+    category: item?.category ?? 'Expense',
+    description: item?.description ?? '',
+    quantity: item?.quantity ?? 1 as number | null,
+    unit_price: item?.unit_price ?? (null as number | null),
+  })
+  const set = <K extends keyof typeof d>(k: K, v: (typeof d)[K]) => setD(x => ({ ...x, [k]: v }))
+  const amount = (d.quantity ?? 0) * (d.unit_price ?? 0)
+  const miles = d.category === 'Mileage'
+  async function save() {
+    if (!d.job_id || !d.unit_price || !d.quantity) { toast('Enter the amount', 'error'); return }
+    const row = { ...d, quantity: d.quantity, unit_price: d.unit_price, description: d.description.trim() }
+    if (item) await update('job_items', item.id, row)
+    else { await insert('job_items', { ...row, created_by: me?.id ?? null }); toast('Charge added') }
+    onClose()
+  }
+  async function del() { if (item && confirm('Delete this charge?')) { await remove('job_items', item.id); onClose() } }
+  return (
+    <Modal title={item ? 'Edit charge' : 'Add charge'} onClose={onClose} footer={<>
+      {item && <button className="btn danger left" onClick={del}>Delete</button>}
+      <button className="btn" onClick={onClose}>Cancel</button>
+      <button className="btn primary" onClick={save}>Save {amount > 0 ? fmtMoney(amount) : ''}</button>
+    </>}>
+      <div className="field">
+        <label>Job</label>
+        <select value={d.job_id} onChange={e => set('job_id', e.target.value)} disabled={Boolean(jobId && !item)}>
+          {openJobs.map(j => <option key={j.id} value={j.id}>{j.job_number ? `${j.job_number} · ` : ''}{j.name} ({clients.find(c => c.id === j.client_id)?.name})</option>)}
+        </select>
+      </div>
+      <div className="row">
+        <div className="field">
+          <label>Type</label>
+          <select value={d.category} onChange={e => set('category', e.target.value)}>
+            {ITEM_CATEGORIES.map(c => <option key={c}>{c}</option>)}
+          </select>
+        </div>
+        <div className="field"><label>Date</label><input type="date" value={d.date} onChange={e => set('date', e.target.value)} /></div>
+      </div>
+      <div className="field"><label>Description</label><input autoFocus value={d.description} onChange={e => set('description', e.target.value)} placeholder={miles ? 'e.g. Site visit round trip' : 'e.g. County plan-check fee, plotting 24x36 sets'} /></div>
+      <div className="row">
+        <div className="field"><label>{miles ? 'Miles' : 'Quantity'}</label><input type="number" min="0" step={miles ? '1' : '0.5'} value={d.quantity ?? ''} onChange={e => set('quantity', e.target.value === '' ? null : Number(e.target.value))} /></div>
+        <div className="field"><label>{miles ? '$ per mile' : 'Price each ($)'}</label><input type="number" min="0" step="0.01" value={d.unit_price ?? ''} onChange={e => set('unit_price', e.target.value === '' ? null : Number(e.target.value))} /></div>
+        <div className="field"><label>Amount</label><input readOnly value={fmtMoney(amount)} /></div>
+      </div>
+      {item?.billed && <p className="small muted">This charge is already on an invoice. Changing it won't change the invoice amount.</p>}
+      <p className="small muted">Charges count against the job balance like hours do: a deposit pays for them first, otherwise they show as "Not billed" until you put them on an invoice.</p>
     </Modal>
   )
 }

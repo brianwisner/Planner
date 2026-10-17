@@ -1,7 +1,7 @@
 // Shapes of the rows in each database table. Keep in sync with supabase/setup.sql.
 
 export type JobStatus = 'active' | 'on_hold' | 'complete' | 'archived'
-export type PhaseKind = 'design' | 'plan_check' | 'construction' | 'client_changes'
+export type PhaseKind = 'bidding' | 'queued' | 'design' | 'plan_check' | 'construction' | 'client_changes'
 export type PhaseStatus = 'not_started' | 'in_progress' | 'waiting' | 'complete'
 export type TaskStatus = 'todo' | 'doing' | 'waiting' | 'done'
 export type Recurrence = 'none' | 'daily' | 'weekly' | 'biweekly' | 'monthly'
@@ -46,6 +46,7 @@ export interface Job {
   status: JobStatus
   priority: number
   fee: number | null
+  queued_date: string | null      // when the job entered the queue
   start_date: string | null
   due_date: string | null
   created_at: string
@@ -133,6 +134,23 @@ export interface ScheduleEntry {
   created_at: string
 }
 
+/** A billable charge on a job other than hours (expense, mileage, fee...). */
+export interface JobItem {
+  id: string
+  job_id: string
+  date: string
+  category: string
+  description: string
+  quantity: number
+  unit_price: number
+  billed: boolean
+  invoice_id: string | null
+  created_by: string | null
+  created_at: string
+}
+
+export const ITEM_CATEGORIES = ['Expense', 'Mileage', 'Printing / plotting', 'Permit / filing fee', 'Site visit', 'Fixed fee', 'Other'] as const
+
 export interface Comment {
   id: string
   job_id: string
@@ -163,6 +181,8 @@ export const TASK_STATUS_LABEL: Record<TaskStatus, string> = {
 }
 
 export const PHASE_KIND_LABEL: Record<PhaseKind, string> = {
+  bidding: 'Bidding',
+  queued: 'Queued',
   design: 'Original design',
   plan_check: 'County / plan-check comments',
   construction: 'Construction changes',
@@ -170,6 +190,8 @@ export const PHASE_KIND_LABEL: Record<PhaseKind, string> = {
 }
 
 export const PHASE_KIND_SHORT: Record<PhaseKind, string> = {
+  bidding: 'Bidding',
+  queued: 'Queued',
   design: 'Design',
   plan_check: 'Plan check',
   construction: 'Construction',

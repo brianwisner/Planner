@@ -10,10 +10,10 @@ import { DndContext, PointerSensor, TouchSensor, closestCenter, useSensor, useSe
 import { SortableContext, arrayMove, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { useData } from '../lib/store'
-import { hoursForJob, hoursForPhase } from '../lib/calc'
+import { hoursForJob, hoursForPhase, workPhase } from '../lib/calc'
 import type { Job, Phase } from '../lib/types'
 import { PHASE_KIND_SHORT } from '../lib/types'
-import { daysUntil, downloadCSV, fmtHours, sum, todayISO } from '../lib/utils'
+import { daysUntil, downloadCSV, fmtDate, fmtHours, sum, todayISO } from '../lib/utils'
 import type { ScheduleEntry } from '../lib/types'
 import { ScheduleModal } from '../components/ScheduleModal'
 import { DueBadge, Empty, Icon, JobStatusBadge, Person, Progress } from '../components/ui'
@@ -51,7 +51,8 @@ export function JobsTable({ jobs, showExport = true, schedulable = false }: { jo
     const est = sum(phases.filter(p => p.job_id === j.id).map(p => p.estimate_hours))
     const logged = hoursForJob(timeEntries, j.id)
     const nextDue = cp?.due_date ?? j.due_date
-    return { j, cp, est, logged, nextDue, client: clients.find(c => c.id === j.client_id)?.name ?? '', assignee: profiles.find(p => p.id === cp?.assignee_id)?.full_name ?? '' }
+    const wp = workPhase(phases, j.id)
+    return { j, cp, wp, est, logged, nextDue, client: clients.find(c => c.id === j.client_id)?.name ?? '', assignee: profiles.find(p => p.id === cp?.assignee_id)?.full_name ?? '' }
   }), [jobs, phases, timeEntries, clients, profiles]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const sorted = useMemo(() => {
@@ -90,8 +91,8 @@ export function JobsTable({ jobs, showExport = true, schedulable = false }: { jo
   }
 
   function exportCSV() {
-    downloadCSV('jobs.csv', ['Priority', 'Job #', 'Job', 'Client', 'Status', 'Current phase', 'Phase status', 'Assignee', 'Next due', 'Estimate h', 'Logged h', 'Fee'],
-      sorted.map(r => [r.j.priority, r.j.job_number, r.j.name, r.client, r.j.status, r.cp ? PHASE_KIND_SHORT[r.cp.kind] : '', r.cp?.status ?? '', r.assignee, r.nextDue ?? '', r.est, Math.round(r.logged * 100) / 100, r.j.fee]))
+    downloadCSV('jobs.csv', ['Priority', 'Job #', 'Job', 'Client', 'Status', 'Current phase', 'Phase status', 'Assignee', 'Entered queue', 'Next due', 'Estimate h', 'Logged h', 'Fee'],
+      sorted.map(r => [r.j.priority, r.j.job_number, r.j.name, r.client, r.j.status, r.cp ? PHASE_KIND_SHORT[r.cp.kind] : '', r.cp?.status ?? '', r.assignee, r.j.queued_date ?? '', r.nextDue ?? '', r.est, Math.round(r.logged * 100) / 100, r.j.fee]))
   }
 
   if (jobs.length === 0) return <Empty>No jobs match.</Empty>
@@ -119,7 +120,7 @@ export function JobsTable({ jobs, showExport = true, schedulable = false }: { jo
           </>}
         </div>
       )}
-      {showPlan && <p className="small muted" style={{ margin: '-4px 0 8px' }}>Type hours in a day's box to schedule them on the job's current phase. Clear the box to remove them. The bottom row is the total for each day (yellow = more than a full day).</p>}
+      {showPlan && <p className="small muted" style={{ margin: '-4px 0 8px' }}>Type hours in a day's box to schedule them on the job's current phase (a queued job's hours go to Original design). Clear the box to remove them. The bottom row is the total for each day (yellow = more than a full day).</p>}
       <div className="table-wrap">
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
           <SortableContext items={sorted.map(r => r.j.id)} strategy={verticalListSortingStrategy}>
@@ -139,7 +140,7 @@ export function JobsTable({ jobs, showExport = true, schedulable = false }: { jo
               </thead>
               <tbody>
                 {sorted.map(r => <Row key={r.j.id} r={r} onOpen={() => nav(`/jobs/${r.j.id}`)} draggable={sort === 'priority'} phaseLogged={r.cp ? hoursForPhase(timeEntries, r.cp.id) : 0}
-                  plan={showPlan ? { days, who, entries: mine.filter(s => s.job_id === r.j.id), onComplex: (d: string) => setModal({ jobId: r.j.id, phaseId: r.cp?.id ?? null, from: d, to: d }) } : null} />)}
+                  plan={showPlan ? { days, who, entries: mine.filter(s => s.job_id === r.j.id), onComplex: (d: string) => setModal({ jobId: r.j.id, phaseId: r.wp?.id ?? null, from: d, to: d }) } : null} />)}
               </tbody>
               {showPlan && (
                 <tfoot>
@@ -161,7 +162,7 @@ export function JobsTable({ jobs, showExport = true, schedulable = false }: { jo
   )
 }
 
-type RowData = { j: Job; cp: Phase | undefined; est: number; logged: number; nextDue: string | null; client: string; assignee: string }
+type RowData = { j: Job; cp: Phase | undefined; wp: Phase | undefined; est: number; logged: number; nextDue: string | null; client: string; assignee: string }
 type PlanProps = { days: string[]; who: string; entries: ScheduleEntry[]; onComplex: (date: string) => void }
 
 function Row({ r, onOpen, draggable, phaseLogged, plan }: { r: RowData; onOpen: () => void; draggable: boolean; phaseLogged: number; plan: PlanProps | null }) {
@@ -176,6 +177,7 @@ function Row({ r, onOpen, draggable, phaseLogged, plan }: { r: RowData; onOpen: 
       <td>
         <div className="bold">{r.j.name}</div>
         <div className="tiny muted">{r.j.job_number}{r.j.job_number && ' · '}<span className={plan ? '' : 'hide-mobile'}>{r.client}</span>{r.j.status !== 'active' && <> <JobStatusBadge status={r.j.status} /></>}</div>
+        {r.j.queued_date && r.cp?.kind === 'queued' && <div className="tiny muted">In queue since {fmtDate(r.j.queued_date)}{(() => { const d = -(daysUntil(r.j.queued_date) ?? 0); return d > 0 ? ` (${d}d)` : '' })()}</div>}
       </td>
       {!plan && <td className="hide-mobile">{r.client}</td>}
       <td className={plan ? 'plan-hide-mobile' : ''}>{r.cp ? <span className={`badge ${r.cp.status}`}>{PHASE_KIND_SHORT[r.cp.kind]}</span> : <span className="muted">–</span>}{plan && r.cp && <div className="tiny muted nowrap">{fmtHours(phaseLogged)} / {fmtHours(r.cp.estimate_hours)}</div>}</td>
@@ -185,7 +187,7 @@ function Row({ r, onOpen, draggable, phaseLogged, plan }: { r: RowData; onOpen: 
         <div className="tiny muted">{fmtHours(phaseLogged)} / {fmtHours(r.cp?.estimate_hours ?? 0)} phase · {fmtHours(r.logged)} / {fmtHours(r.est)} job</div>
         <Progress value={r.logged} max={r.est} />
       </td>}
-      {plan && plan.days.map(d => <DayCell key={d} date={d} jobId={r.j.id} phaseId={r.cp?.id ?? null} who={plan.who} entries={plan.entries.filter(e => e.date === d)} onComplex={() => plan.onComplex(d)} />)}
+      {plan && plan.days.map(d => <DayCell key={d} date={d} jobId={r.j.id} phaseId={r.wp?.id ?? null} who={plan.who} entries={plan.entries.filter(e => e.date === d)} onComplex={() => plan.onComplex(d)} />)}
       {plan && <td className="plan-col num bold plan-hide-mobile">{(() => { const t = sum(plan.entries.map(e => e.hours)); return t ? fmtHours(t) : <span className="muted">–</span> })()}</td>}
     </tr>
   )

@@ -263,6 +263,8 @@ tfoot td { font-weight: 600; background: var(--surface-2); }
 .gclip { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .gphase { padding-left: 34px; font-size: 13px; }
 .gdot { width: 10px; height: 10px; border-radius: 3px; flex-shrink: 0; }
+.gdot.bidding, .gbar2.bidding, .gmini.bidding { background: #6e7781; }
+.gdot.queued, .gbar2.queued, .gmini.queued { background: #0e7490; }
 .gdot.design, .gbar2.design, .gmini.design { background: #1f6feb; }
 .gdot.plan_check, .gbar2.plan_check, .gmini.plan_check { background: #9a6700; }
 .gdot.construction, .gbar2.construction, .gmini.construction { background: #1a7f37; }
@@ -270,8 +272,11 @@ tfoot td { font-weight: 600; background: var(--surface-2); }
 .gbar2 { position: absolute; top: 50%; height: 8px; margin-top: -4px; border-radius: 4px; opacity: 0.35; pointer-events: none; }
 .gbar2.job { background: var(--navy); height: 6px; margin-top: -3px; top: 14px; opacity: 0.8; }
 .gbar2.complete, .gmini.complete { opacity: 0.15; }
+.gqueue { position: absolute; top: 9px; width: 10px; height: 10px; margin-left: -5px; background: #0e7490; transform: rotate(45deg); border: 2px solid #fff; z-index: 1; pointer-events: auto; }
 .gmini { position: absolute; height: 4px; border-radius: 2px; opacity: 0.6; pointer-events: none; }
 .gsched { position: absolute; top: 50%; height: 22px; margin-top: -11px; border-radius: 4px; color: #fff; font-size: 11px; font-weight: 700; display: flex; align-items: center; justify-content: center; font-variant-numeric: tabular-nums; z-index: 1; box-shadow: 0 0 0 1px #fff; pointer-events: auto; }
+.gsched.bidding { background: #6e7781; }
+.gsched.queued { background: #0e7490; }
 .gsched.design { background: #1f6feb; }
 .gsched.plan_check { background: #9a6700; }
 .gsched.construction { background: #1a7f37; }

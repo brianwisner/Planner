@@ -17,17 +17,19 @@ It contains two separate things:
 
 ### Data model (Supabase / Postgres) — `planner/supabase/setup.sql`
 
-`clients → jobs → phases → tasks`, plus `time_entries`, `invoices`, `comments`, `profiles` (one per login), and a single-row `settings` table.
+`clients → jobs → phases → tasks`, plus `time_entries`, `job_items`, `invoices`, `comments`, `profiles` (one per login), and a single-row `settings` table.
 
-- Every job gets **four phases automatically** via a database trigger (`add_standard_phases`): `design`, `plan_check`, `construction`, `client_changes`. Phase `kind` is fixed; `name` is the label.
+- Every job gets **six phases automatically** via a database trigger (`add_standard_phases`): `bidding`, `queued`, `design`, `plan_check`, `construction`, `client_changes`. Phase `kind` is fixed; `name` is the label. `calc.ts` `workPhase()` picks the phase new hours/schedules default to (first unfinished phase that isn't `queued`).
+- `jobs.queued_date` = when the job entered the queue (separate from `start_date`). Auto-filled with today when the Queued phase is first moved off "not started" (`pages/JobDetail.tsx` PhaseCard); editable in JobModal. Shown as a teal diamond on the Gantt.
 - `jobs.priority` (integer, lower = higher in queue) drives the prioritized job table.
 - `time_entries.hours` is null while a timer is running (`started_at` set). Stopping the timer fills `hours` (rounded to quarter hours).
 - `time_entries.billed` + `invoice_id` link hours to invoices. `time_entries.rate` is the $/hour saved on insert by the `time_entry_rate` trigger (person's `hourly_rate`, else `settings.default_rate`), so rate changes never rewrite past hours.
 - `schedule_entries` (job_id, phase_id, user_id, date, hours): **planned** hours (not worked time), created by dragging on the Gantt chart via `components/ScheduleModal.tsx`. The app merges by (job, phase, person, date): editing updates the row, 0/blank deletes it.
-- `deposits` (job_id, amount, received_date, method, notes): retainers. The app (not the DB) applies them to a job's **un-invoiced** hours oldest-first.
+- `job_items` (job_id, date, category, description, quantity, unit_price, billed, invoice_id): billable **charges** that aren't hours (expenses, mileage, fees). Amount = quantity × unit_price. Edited in `ItemModal` (`editors.tsx`); invoiced alongside hours.
+- `deposits` (job_id, amount, received_date, method, notes): retainers. The app (not the DB) applies them to a job's **un-invoiced** hours and charges oldest-first (`jobCharges()`).
 - Money model lives in `src/lib/calc.ts`:
   - `jobHours()` gives each entry a status: `deposit` (paid by deposit), `partial`, `unbilled`, `billed` (on an unpaid invoice), `paid` (invoice paid).
-  - `jobBilling()` totals per job; **balance = deposits + invoiced − work value** (the owner's definition of job profitability: drops as hours are logged, rises when a deposit arrives or an invoice is sent). `collected` = deposits + paid invoices.
+  - `jobBilling()` totals per job; **balance = deposits + invoiced − work value** (work value = hours value + charges value) (the owner's definition of job profitability: drops as hours are logged, rises when a deposit arrives or an invoice is sent). `collected` = deposits + paid invoices.
   - `balanceHistory()` feeds the step chart; `depositUsage()` splits usage across deposits; `allHours()` is the cross-job status map.
   - UI: `pages/Billing.tsx` (tabs Jobs / Deposits / Hours, and `?job=<id>` job money view), `components/MoneyCharts.tsx` (work-status bar + balance chart, status palette good #0ca30c / warning #fab219 / critical #d03b3b, always with text labels).
 - `profiles` rows are created by a trigger on `auth.users` (`handle_new_user`). The first-ever user also gets the sample data assigned to them.
