@@ -24,7 +24,7 @@ Deno.serve(async (req) => {
   if (!profile) return new Response('Unknown calendar', { status: 404 })
 
   const [{ data: jobs }, { data: phases }, { data: tasks }] = await Promise.all([
-    db.from('jobs').select('id, name, due_date, status').neq('status', 'archived'),
+    db.from('jobs').select('id, name, due_date, status').neq('status', 'archived').neq('status', 'cancelled'),
     db.from('phases').select('id, job_id, kind, name, due_date, status, assignee_id'),
     db.from('tasks').select('id, job_id, title, due_date, scheduled_at, is_site_visit, status, assignee_id'),
   ])

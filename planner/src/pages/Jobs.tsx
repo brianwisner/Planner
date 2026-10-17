@@ -5,6 +5,7 @@ import { useSearchParams } from 'react-router-dom'
 import { useData } from '../lib/store'
 import { calendarItems } from '../lib/calendar'
 import type { JobStatus } from '../lib/types'
+import { JOB_STATUS_LABEL } from '../lib/types'
 import { JobsTable } from '../views/JobsTable'
 import { Kanban } from '../views/Kanban'
 import { Gantt } from '../views/Gantt'
@@ -55,12 +56,9 @@ export function Jobs() {
 
       <div className="filters">
         <input type="search" placeholder="Filter…" value={q} onChange={e => setQ(e.target.value)} />
-        <select value={status} onChange={e => setStatus(e.target.value as JobStatus | 'open')}>
+        <select aria-label="Filter jobs by status" value={status} onChange={e => setStatus(e.target.value as JobStatus | 'open')}>
           <option value="open">Open (active + on hold)</option>
-          <option value="active">Active</option>
-          <option value="on_hold">On hold</option>
-          <option value="complete">Complete</option>
-          <option value="archived">Archived</option>
+          {Object.entries(JOB_STATUS_LABEL).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
         </select>
         <select value={client} onChange={e => setClient(e.target.value)}>
           <option value="">All clients</option>
@@ -71,7 +69,7 @@ export function Jobs() {
         <span className="small muted">{filteredJobs.length} job{filteredJobs.length === 1 ? '' : 's'}</span>
       </div>
 
-      {view === 'table' && <div className="card"><JobsTable jobs={filteredJobs} schedulable /></div>}
+      {view === 'table' && <div className="card"><JobsTable jobs={filteredJobs} schedulable={status === 'open' || status === 'active' || status === 'on_hold'} /></div>}
       {view === 'board' && <Kanban tasks={filteredTasks} />}
       {view === 'gantt' && <Gantt jobs={filteredJobs} />}
       {view === 'calendar' && <CalendarView items={calItems} />}

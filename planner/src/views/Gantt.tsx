@@ -27,7 +27,7 @@ function saveCollapsed(s: Set<string>) {
 }
 
 export function Gantt({ jobs }: { jobs: Job[] }) {
-  const { phases, timeEntries, schedule, profiles, me, settings, clients } = useData()
+  const { jobs: allJobs, phases, timeEntries, schedule, profiles, me, settings, clients } = useData()
   const nav = useNavigate()
   const [zoom, setZoom] = useState<Zoom>(() => (typeof window !== 'undefined' && window.innerWidth < 760 ? 'normal' : 'detailed'))
   const [collapsed, setCollapsed] = useState<Set<string>>(loadCollapsed)
@@ -62,13 +62,14 @@ export function Gantt({ jobs }: { jobs: Job[] }) {
     if (scroller.current) scroller.current.scrollLeft = Math.max(0, (todayIdx - 7) * dayW)
   }, [zoom]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Daily schedule totals for the header (your hours, across ALL jobs).
+  // Daily capacity totals omit cancelled work; its saved schedule stays intact.
   const dailyCap = (me?.weekly_hours || settings.weekly_capacity || 40) / 5
   const perDay = useMemo(() => {
     const m = new Map<string, number>()
-    for (const s of schedule) if (s.user_id === ownerId) m.set(s.date, (m.get(s.date) ?? 0) + s.hours)
+    const cancelledJobIds = new Set(allJobs.filter(j => j.status === 'cancelled').map(j => j.id))
+    for (const s of schedule) if (s.user_id === ownerId && !cancelledJobIds.has(s.job_id)) m.set(s.date, (m.get(s.date) ?? 0) + s.hours)
     return m
-  }, [schedule, ownerId])
+  }, [schedule, ownerId, allJobs])
 
   // Schedule totals per row: key = phase id (or `job:<id>` for the whole job) → date → hours
   const rowSched = useMemo(() => {

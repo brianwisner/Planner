@@ -115,7 +115,7 @@ create table if not exists jobs (
   name text not null,
   description text default '',
   address text default '',
-  status text not null default 'active' check (status in ('active','on_hold','complete','archived')),
+  status text not null default 'active' check (status in ('active','on_hold','complete','cancelled','archived')),
   priority int not null default 100,            -- lower number = higher in the queue
   fee numeric,                                  -- agreed fee, optional
   queued_date date,                             -- when the job entered the queue

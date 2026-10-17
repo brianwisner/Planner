@@ -21,20 +21,20 @@ export function calendarItems(store: Pick<Store, 'jobs' | 'phases' | 'tasks' | '
   const items: CalItem[] = []
   const jobName = (id: string) => store.jobs.find(j => j.id === id)?.name ?? ''
   for (const j of store.jobs) {
-    if (j.due_date && j.status !== 'archived') {
+    if (j.due_date && j.status !== 'archived' && j.status !== 'cancelled') {
       items.push({ id: `job-${j.id}`, date: j.due_date, time: null, title: `Job due: ${j.name}`, kind: 'job', jobId: j.id, jobName: j.name, assigneeId: null, done: j.status === 'complete', link: `/jobs/${j.id}` })
     }
   }
   for (const p of store.phases) {
     const job = store.jobs.find(j => j.id === p.job_id)
-    if (!p.due_date || !job || job.status === 'archived') continue
+    if (!p.due_date || !job || job.status === 'archived' || job.status === 'cancelled') continue
     items.push({ id: `phase-${p.id}`, date: p.due_date, time: null, title: `${PHASE_KIND_SHORT[p.kind]} due — ${job.name}`, kind: 'phase', jobId: p.job_id, jobName: job.name, assigneeId: p.assignee_id, done: p.status === 'complete', link: `/jobs/${p.job_id}` })
   }
   for (const t of store.tasks) {
     const date = t.scheduled_at ? format(new Date(t.scheduled_at), 'yyyy-MM-dd') : t.due_date
     if (!date) continue
     const job = store.jobs.find(j => j.id === t.job_id)
-    if (!job || job.status === 'archived') continue
+    if (!job || job.status === 'archived' || job.status === 'cancelled') continue
     items.push({ id: `task-${t.id}`, date, time: t.scheduled_at, title: t.title, kind: t.is_site_visit ? 'site_visit' : 'task', jobId: t.job_id, jobName: jobName(t.job_id), assigneeId: t.assignee_id, done: t.status === 'done', link: `/jobs/${t.job_id}?task=${t.id}` })
   }
   return items.sort((a, b) => a.date.localeCompare(b.date) || (a.time ?? '').localeCompare(b.time ?? ''))

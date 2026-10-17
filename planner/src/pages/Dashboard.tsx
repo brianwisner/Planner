@@ -24,7 +24,8 @@ export function Dashboard() {
   const overdue = open.filter(i => i.date < today)
   const week = open.filter(i => i.date >= today && (daysUntil(i.date) ?? 99) <= 7)
   const activeJobs = jobs.filter(j => j.status === 'active')
-  const openTasks = tasks.filter(t => t.status !== 'done').sort((a, b) => (a.due_date ?? '9999').localeCompare(b.due_date ?? '9999'))
+  const cancelledJobIds = new Set(jobs.filter(j => j.status === 'cancelled').map(j => j.id))
+  const openTasks = tasks.filter(t => t.status !== 'done' && !cancelledJobIds.has(t.job_id)).sort((a, b) => (a.due_date ?? '9999').localeCompare(b.due_date ?? '9999'))
 
   return (
     <div>

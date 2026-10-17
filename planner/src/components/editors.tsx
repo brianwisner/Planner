@@ -27,7 +27,7 @@ export interface TaskDraft {
 
 export function TaskModal({ task, defaults, onClose }: { task?: Task; defaults?: Partial<TaskDraft>; onClose: () => void }) {
   const { jobs, phases, clients, insert, update, remove, me, toast } = useData()
-  const activeJobs = jobs.filter(j => j.status !== 'archived')
+  const activeJobs = jobs.filter(j => (j.status !== 'archived' && j.status !== 'cancelled') || j.id === task?.job_id || j.id === defaults?.job_id)
   const [d, setD] = useState<TaskDraft>(() => task ? {
     id: task.id, job_id: task.job_id, phase_id: task.phase_id, title: task.title, description: task.description, status: task.status,
     assignee_id: task.assignee_id, due_date: task.due_date, scheduled_at: task.scheduled_at, is_site_visit: task.is_site_visit,

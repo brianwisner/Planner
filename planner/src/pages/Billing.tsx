@@ -68,7 +68,7 @@ function JobsTab() {
       <div className="filters">
         <span className="small muted">Job balance = deposits + billed − value of hours worked and charges. It drops as you log hours and goes back up when you take a deposit or send an invoice. Jobs most in the red are at the top.</span>
         <span className="grow" />
-        <button className={`chip ${showClosed ? 'on' : ''}`} onClick={() => setShowClosed(!showClosed)}>Include complete jobs</button>
+        <button className={`chip ${showClosed ? 'on' : ''}`} onClick={() => setShowClosed(!showClosed)}>Include closed jobs</button>
         <button className="btn sm" onClick={() => downloadCSV('job-balances.csv', ['Job #', 'Job', 'Client', 'Fee', 'Hours', 'Hours $', 'Charges $', 'Work & charges $', 'Deposits $', 'Deposit left $', 'Billed $', 'Paid $', 'Waiting $', 'Not billed $', 'Balance $'],
           rows.map(r => [r.job.job_number, r.job.name, clients.find(c => c.id === r.job.client_id)?.name, r.fee, round2(r.loggedHours), Math.round(r.hoursValue), Math.round(r.itemsValue), Math.round(r.workValue), r.deposits, Math.round(r.depositRemaining), r.invoiced, r.paid, r.outstanding, Math.round(r.unbilledAmount), Math.round(r.balance)]))}><Icon name="download" size={14} /> CSV</button>
       </div>

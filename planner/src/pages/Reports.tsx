@@ -26,7 +26,7 @@ export function Reports() {
   const byClient = clients.map(c => { const ids = new Set(jobs.filter(j => j.client_id === c.id).map(j => j.id)); const es = entries.filter(e => ids.has(e.job_id)); return { key: c.id, label: c.name, sub: `${ids.size} jobs`, hours: sum(es.map(entryHours)), billed: sum(es.map(covered)), link: `/clients/${c.id}` } }).filter(r => r.hours > 0).sort((a, b) => b.hours - a.hours)
   const rows = tab === 'client' ? byClient : byJob
 
-  const estimateRows = jobs.filter(j => j.status === 'active' || j.status === 'on_hold' || j.status === 'complete').flatMap(j => phases.filter(p => p.job_id === j.id && (p.estimate_hours > 0 || hoursForPhase(timeEntries, p.id) > 0)).map(p => ({ job: j, phase: p, logged: hoursForPhase(timeEntries, p.id) })))
+  const estimateRows = jobs.filter(j => j.status !== 'archived').flatMap(j => phases.filter(p => p.job_id === j.id && (p.estimate_hours > 0 || hoursForPhase(timeEntries, p.id) > 0)).map(p => ({ job: j, phase: p, logged: hoursForPhase(timeEntries, p.id) })))
 
   function exportCSV() {
     if (tab === 'estimate') downloadCSV('estimate-vs-actual.csv', ['Job #', 'Job', 'Phase', 'Status', 'Estimate h', 'Actual h', 'Variance h', '% used'], estimateRows.map(r => [r.job.job_number, r.job.name, r.phase.name, r.phase.status, r.phase.estimate_hours, Math.round(r.logged * 100) / 100, Math.round((r.logged - r.phase.estimate_hours) * 100) / 100, r.phase.estimate_hours ? Math.round(r.logged / r.phase.estimate_hours * 100) : '']))

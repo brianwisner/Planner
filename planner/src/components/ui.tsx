@@ -1,5 +1,5 @@
 // Small reusable building blocks used across every page.
-import { useEffect, useId, useRef, type ReactNode } from 'react'
+import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
 import { useData } from '../lib/store'
 import type { JobStatus, PhaseStatus, TaskStatus } from '../lib/types'
 import { JOB_STATUS_LABEL, PHASE_STATUS_LABEL, TASK_STATUS_LABEL } from '../lib/types'
@@ -71,6 +71,21 @@ export function PersonSelect({ value, onChange, allowNone = true }: { value: str
 /* ---------- Status badges & selects ---------- */
 export function JobStatusBadge({ status }: { status: JobStatus }) {
   return <span className={`badge ${status}`}>{JOB_STATUS_LABEL[status]}</span>
+}
+export function JobStatusSelect({ value, onChange, label = 'Job status' }: { value: JobStatus; onChange: (status: JobStatus) => Promise<void>; label?: string }) {
+  const [saving, setSaving] = useState(false)
+  return (
+    <select className={`status-select job-status-select badge ${value}`} value={value} aria-label={label} aria-busy={saving} disabled={saving}
+      onClick={e => e.stopPropagation()} onKeyDown={e => e.stopPropagation()}
+      onChange={async e => {
+        const status = e.target.value as JobStatus
+        if (status === value) return
+        setSaving(true)
+        try { await onChange(status) } finally { setSaving(false) }
+      }}>
+      {(Object.keys(JOB_STATUS_LABEL) as JobStatus[]).map(status => <option key={status} value={status}>{JOB_STATUS_LABEL[status]}</option>)}
+    </select>
+  )
 }
 export function PhaseStatusSelect({ value, onChange }: { value: PhaseStatus; onChange: (s: PhaseStatus) => void }) {
   return (

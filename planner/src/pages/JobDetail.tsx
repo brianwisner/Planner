@@ -9,7 +9,7 @@ import { daysUntil } from '../lib/utils'
 import { StatusBadge } from './Billing'
 import type { Phase, Task } from '../lib/types'
 import { fmtDate, fmtDateTime, fmtHours, fmtMoney, fmtSigned, sum } from '../lib/utils'
-import { Avatar, Checkbox, DueBadge, Empty, Icon, JobStatusBadge, PhaseStatusSelect, Progress } from '../components/ui'
+import { Avatar, Checkbox, DueBadge, Empty, Icon, JobStatusSelect, PhaseStatusSelect, Progress } from '../components/ui'
 import { DepositModal, ItemModal, JobModal, TaskModal, TimeModal, toggleTaskDone } from '../components/editors'
 
 export function JobDetail() {
@@ -66,7 +66,7 @@ export function JobDetail() {
       <div className="page-header">
         <div>
           <div className="small muted"><Link to="/jobs">Jobs</Link> › {client && <Link to={`/clients/${client.id}`}>{client.name}</Link>}</div>
-          <h1>{job.job_number && <span className="muted">{job.job_number} · </span>}{job.name} <JobStatusBadge status={job.status} /></h1>
+          <h1 className="job-heading"><span>{job.job_number && <span className="muted">{job.job_number} · </span>}{job.name}</span><JobStatusSelect value={job.status} label={`Status for ${job.name}`} onChange={status => update('jobs', job.id, { status })} /></h1>
           {job.address && <div className="small muted"><Icon name="pin" size={12} /> {job.address}</div>}
           {job.queued_date && <div className="small muted">Entered queue {fmtDate(job.queued_date)}{(() => { const d = -(daysUntil(job.queued_date) ?? 0); return d > 0 ? ` · ${d} day${d === 1 ? '' : 's'} ago` : ' · today' })()}</div>}
         </div>
@@ -81,7 +81,7 @@ export function JobDetail() {
 
       <div className="stats mb">
         <div className="stat"><div className="label">Hours</div><div className="value">{fmtHours(logged)}<span className="muted" style={{ fontSize: 14 }}> / {fmtHours(est)}</span></div><Progress value={logged} max={est} /></div>
-        <div className="stat"><div className="label">Due</div><div className="value" style={{ fontSize: 20 }}>{job.due_date ? fmtDate(job.due_date) : '–'}</div><div className="sub"><DueBadge date={job.due_date} done={job.status === 'complete'} /></div></div>
+        <div className="stat"><div className="label">Due</div><div className="value" style={{ fontSize: 20 }}>{job.due_date ? fmtDate(job.due_date) : '–'}</div><div className="sub">{job.status !== 'cancelled' && <DueBadge date={job.due_date} done={job.status === 'complete'} />}</div></div>
         <div className="stat"><div className="label">Job balance</div><div className={`value ${billing && billing.balance < 0 ? 'money-neg' : 'money-pos'}`} style={{ fontSize: 20 }}>{billing && fmtSigned(billing.balance)}</div><div className="sub">{billing && `${fmtMoney(billing.deposits)} deposits · ${fmtMoney(billing.invoiced)} billed`}</div></div>
         <div className="stat"><div className="label">Not billed yet</div><div className={`value ${billing && billing.unbilledAmount > 0.5 ? 'danger-text' : ''}`} style={{ fontSize: 20 }}>{billing && fmtMoney(billing.unbilledAmount)}</div><div className="sub">{billing && `${fmtHours(billing.unbilledHours)} · `}<Link to={`/billing?job=${job.id}`}>money details →</Link></div></div>
       </div>

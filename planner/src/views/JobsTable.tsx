@@ -16,7 +16,7 @@ import { PHASE_KIND_SHORT } from '../lib/types'
 import { daysUntil, downloadCSV, fmtDate, fmtHours, sum, todayISO } from '../lib/utils'
 import type { ScheduleEntry } from '../lib/types'
 import { ScheduleModal } from '../components/ScheduleModal'
-import { DueBadge, Empty, Icon, JobStatusBadge, Progress } from '../components/ui'
+import { DueBadge, Empty, Icon, JobStatusSelect, Progress } from '../components/ui'
 
 type SortKey = 'priority' | 'name' | 'client' | 'due'
 
@@ -37,6 +37,7 @@ export function JobsTable({ jobs, showExport = true, schedulable = false }: { jo
   const [modal, setModal] = useState<{ jobId: string; phaseId: string | null; from: string; to: string } | null>(null)
   const days = useMemo(() => Array.from({ length: 7 }, (_, i) => addDays(weekStart, i)).filter(d => weekends || !isWeekend(d)).map(d => format(d, 'yyyy-MM-dd')), [weekStart, weekends])
   const mine = useMemo(() => schedule.filter(s => s.user_id === ownerId && days.includes(s.date)), [schedule, ownerId, days])
+  const cancelledJobIds = useMemo(() => new Set(store.jobs.filter(j => j.status === 'cancelled').map(j => j.id)), [store.jobs])
   const dailyCap = (me?.weekly_hours || settings.weekly_capacity || 40) / 5
   const nav = useNavigate()
   const [sort, setSort] = useState<SortKey>('priority')
@@ -95,7 +96,7 @@ export function JobsTable({ jobs, showExport = true, schedulable = false }: { jo
   if (jobs.length === 0) return <Empty>No jobs match.</Empty>
 
   const showPlan = schedulable && plan
-  const dayTotal = (d: string) => sum(mine.filter(s => s.date === d).map(s => s.hours))
+  const dayTotal = (d: string) => sum(mine.filter(s => s.date === d && !cancelledJobIds.has(s.job_id)).map(s => s.hours))
   const today = todayISO()
 
   return (
@@ -157,6 +158,7 @@ type RowData = { j: Job; cp: Phase | undefined; wp: Phase | undefined; est: numb
 type PlanProps = { days: string[]; who: string; entries: ScheduleEntry[]; onComplex: (date: string) => void }
 
 function Row({ r, onOpen, draggable, phaseLogged, plan }: { r: RowData; onOpen: () => void; draggable: boolean; phaseLogged: number; plan: PlanProps | null }) {
+  const { update } = useData()
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: r.j.id, disabled: !draggable })
   const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1 }
   const overdue = daysUntil(r.nextDue) != null && (daysUntil(r.nextDue) as number) < 0 && r.j.status === 'active'
@@ -166,13 +168,13 @@ function Row({ r, onOpen, draggable, phaseLogged, plan }: { r: RowData; onOpen: 
         <span className="muted" style={{ cursor: draggable ? 'grab' : 'default', touchAction: 'none', padding: '6px 4px', display: 'inline-block' }} {...attributes} {...listeners}>{draggable ? '≡ ' : ''}{r.j.priority}</span>
       </td>
       <td>
-        <div className="bold">{r.j.name}</div>
-        <div className="tiny muted">{r.j.job_number}{r.j.job_number && ' · '}<span className={plan ? '' : 'hide-mobile'}>{r.client}</span>{r.j.status !== 'active' && <> <JobStatusBadge status={r.j.status} /></>}</div>
+        <div className="job-row-heading"><span className="bold">{r.j.name}</span><JobStatusSelect value={r.j.status} label={`Status for ${r.j.name}`} onChange={status => update('jobs', r.j.id, { status })} /></div>
+        <div className="tiny muted">{r.j.job_number}{r.j.job_number && ' · '}<span className={plan ? '' : 'hide-mobile'}>{r.client}</span></div>
         {r.j.queued_date && r.cp?.kind === 'queued' && <div className="tiny muted">In queue since {fmtDate(r.j.queued_date)}{(() => { const d = -(daysUntil(r.j.queued_date) ?? 0); return d > 0 ? ` (${d}d)` : '' })()}</div>}
       </td>
       {!plan && <td className="hide-mobile">{r.client}</td>}
       <td className={plan ? 'plan-hide-mobile' : ''}>{r.cp ? <span className={`badge ${r.cp.status}`}>{PHASE_KIND_SHORT[r.cp.kind]}</span> : <span className="muted">–</span>}{plan && r.cp && <div className="tiny muted nowrap">{fmtHours(phaseLogged)} / {fmtHours(r.cp.estimate_hours)}</div>}</td>
-      <td className={`nowrap ${plan ? 'plan-hide-mobile' : ''}`}><DueBadge date={r.nextDue} done={r.j.status === 'complete'} />{overdue && ''}</td>
+      <td className={`nowrap ${plan ? 'plan-hide-mobile' : ''}`}>{r.j.status === 'cancelled' ? <span className="small muted">{fmtDate(r.nextDue)}</span> : <DueBadge date={r.nextDue} done={r.j.status === 'complete'} />}{overdue && ''}</td>
       {!plan && <td className="hide-mobile">
         <div className="tiny muted">{fmtHours(phaseLogged)} / {fmtHours(r.cp?.estimate_hours ?? 0)} phase · {fmtHours(r.logged)} / {fmtHours(r.est)} job</div>
         <Progress value={r.logged} max={r.est} />

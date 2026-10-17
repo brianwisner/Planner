@@ -29,6 +29,7 @@ It contains two separate things:
 - Every job gets **six phases automatically** via a database trigger (`add_standard_phases`): `bidding`, `queued`, `design`, `plan_check`, `construction`, `client_changes`. Phase `kind` is fixed; `name` is the label. `calc.ts` `workPhase()` picks the phase new hours/schedules default to (first unfinished phase that isn't `queued`).
 - `jobs.queued_date` = when the job entered the queue (separate from `start_date`). Auto-filled with today when the Queued phase is first moved off "not started" (`pages/JobDetail.tsx` PhaseCard); editable in JobModal. Shown as a teal diamond on the Gantt.
 - `jobs.priority` (integer, lower = higher in queue) drives the prioritized job table.
+- Job statuses are Active, On hold, Complete, Cancelled, and Archived. The job-title and Jobs-table status selectors save directly. Cancelled keeps all history and money records but removes pending deadlines/tasks and planned hours from capacity totals; changing back to Active restores them.
 - `time_entries.hours` is null while a timer is running (`started_at` set). Stopping the timer fills `hours` (rounded to quarter hours).
 - `time_entries.billed` + `invoice_id` link hours to invoices. `time_entries.rate` is the $/hour saved on insert by the `time_entry_rate` trigger (person's `hourly_rate`, else `settings.default_rate`), so rate changes never rewrite past hours.
 - `schedule_entries` (job_id, phase_id, user_id, date, hours): **planned** hours (not worked time), created by dragging on the Gantt chart via `components/ScheduleModal.tsx`. The app merges by (job, phase, person, date): editing updates the row, 0/blank deletes it.
@@ -45,6 +46,8 @@ It contains two separate things:
 - `clients.is_sample` marks seed data so Settings → "Remove sample data" can delete it.
 
 **Changing the schema:** edit `setup.sql` so a fresh project still works, AND give the owner a small separate SQL snippet (`alter table … add column …`) to paste into the Supabase SQL Editor for their existing project. Then update `src/lib/types.ts`.
+
+The existing-project migration for Cancelled is `planner/supabase/migrations/20261017182411_add_cancelled_job_status.sql`. It is applied to the live project, and the updated `ics` Edge Function is deployed so subscribed calendars omit cancelled work. Keep migration filenames aligned with the live migration history.
 
 ### Frontend layout — `planner/src/`
 
