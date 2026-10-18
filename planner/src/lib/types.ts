@@ -108,6 +108,7 @@ export interface TimeEntry {
   started_at: string | null
   rate: number | null           // $/hour saved when the entry was created
   notes: string
+  billable: boolean           // false records internal/rework hours without charging the client
   billed: boolean
   invoice_id: string | null
   deposit_applied: number | null // deposit credit preserved when the remainder is invoiced

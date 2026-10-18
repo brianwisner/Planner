@@ -8,11 +8,26 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { format, parseISO } from 'date-fns'
 import type { BalancePoint, JobBilling } from '../lib/calc'
-import { fmtMoney, fmtSigned, todayISO } from '../lib/utils'
+import { fmtHourlyRate, fmtHours, fmtMoney, fmtSigned, todayISO } from '../lib/utils'
 
 export const STATUS_COLOR = { good: '#0ca30c', warning: '#fab219', critical: '#d03b3b' }
 
 interface Segment { key: string; label: string; value: number; color: string; dashed?: boolean }
+
+export function FeesSummary({ b }: { b: JobBilling }) {
+  return (
+    <div className="card">
+      <h2>Fees and hourly rate</h2>
+      <div className="fee-summary">
+        <div><div className="small muted">Fees recorded</div><div className="fee-value">{fmtMoney(b.feeRevenue)}</div></div>
+        <div><div className="small muted">Effective hourly rate</div><div className="fee-value">{fmtHourlyRate(b.effectiveHourlyRate)}</div></div>
+      </div>
+      <p className="small muted">{fmtHours(b.loggedHours)} completed · {fmtHours(b.billableHours)} billable · {fmtHours(b.nonBillableHours)} nonbillable</p>
+      <p className="small">Nonbillable time value: <b>{fmtMoney(b.nonBillableValue)}</b><span className="muted"> at saved rates, already counted once in job work value.</span></p>
+      <p className="tiny muted">Recorded deposits and invoices counted once, less amounts funding separate charges. Each invoice funds its linked charges before fees. Includes unused deposits. The rate divides these fees by all completed hours, including nonbillable time, before overhead and tax.</p>
+    </div>
+  )
+}
 
 export function WorkStatusBar({ b, compact }: { b: JobBilling; compact?: boolean }) {
   const [hover, setHover] = useState<string | null>(null)
@@ -23,7 +38,7 @@ export function WorkStatusBar({ b, compact }: { b: JobBilling; compact?: boolean
     { key: 'ahead', label: 'Deposit not used yet', value: b.depositRemaining, color: STATUS_COLOR.good, dashed: true },
   ]
   const total = sum(segs.map(s => s.value))
-  if (total <= 0.5) return <div className="small muted">No hours or deposits yet.</div>
+  if (total <= 0.5) return <div className="small muted">No billable work or deposits yet.</div>
   const shown = segs.filter(s => s.value > 0.5)
   return (
     <div className="wsb">

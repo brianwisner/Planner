@@ -14,7 +14,7 @@ function entry(patch: Partial<TimeEntry> = {}): TimeEntry {
   return {
     id: 'hours', job_id: job.id, phase_id: null, task_id: null, user_id: 'owner',
     date: '2026-01-02', hours: 1, started_at: null, rate: 150, notes: '',
-    billed: false, invoice_id: null, deposit_applied: null,
+    billed: false, billable: true, invoice_id: null, deposit_applied: null,
     created_at: '2026-01-02T00:00:00Z', ...patch,
   }
 }
@@ -179,5 +179,147 @@ describe('deposit allocation across invoicing', () => {
     expect(jobCharges(s, job.id).hours.find(h => h.entry.id === 'hours')).toMatchObject({ covered: 100, status: 'billed' })
     expect(jobCharges(s, job.id).hours.find(h => h.entry.id === 'new-hours')).toMatchObject({ covered: 0, status: 'unbilled' })
     expect(jobBilling(s, job)).toMatchObject({ depositUsed: 100, depositRemaining: 0, unbilledAmount: 60, waitingAmount: 50 })
+  })
+})
+
+describe('billable time and effective hourly fees', () => {
+  it('divides $1,000 of fees by all 10 hours, including 2 non-billable hours', () => {
+    const s = store({
+      deposits: [], invoices: [invoice({ amount: 1000 })],
+      timeEntries: [entry({ hours: 8 }), entry({ id: 'non-billable', hours: 2, billable: false })],
+    })
+    expect(jobBilling(s, job)).toMatchObject({
+      loggedHours: 10, billableHours: 8, nonBillableHours: 2, nonBillableValue: 300,
+      hoursValue: 1500, workValue: 1500, feeRevenue: 1000, effectiveHourlyRate: 100,
+      balance: -500,
+    })
+    expect(balanceHistory(s, job.id).at(-1)?.balance).toBe(-500)
+  })
+
+  it('keeps non-billable effort in the balance without consuming deposits or creating work to invoice', () => {
+    const s = store({ timeEntries: [
+      entry({ id: 'non-billable', date: '2026-01-01', hours: 2, billable: false }),
+      entry({ id: 'billable', date: '2026-01-02' }),
+    ] })
+    const hours = jobCharges(s, job.id).hours
+    expect(hours.find(h => h.entry.id === 'non-billable')).toMatchObject({ amount: 300, covered: 0, status: 'nonbillable' })
+    expect(hours.find(h => h.entry.id === 'billable')).toMatchObject({ amount: 150, covered: 100, status: 'partial' })
+    const b = jobBilling(s, job)
+    expect(b).toMatchObject({
+      nonBillableValue: 300, workValue: 450, depositUsed: 100, depositRemaining: 0,
+      unbilledHours: 1 / 3, unbilledAmount: 50, paidAmount: 100, waitingAmount: 0, balance: -350,
+    })
+    expect(b.paidAmount + b.waitingAmount + b.unbilledAmount + b.nonBillableValue).toBe(b.workValue)
+  })
+
+  it('releases dynamic deposit coverage when uninvoiced time becomes non-billable', () => {
+    const s = store({ timeEntries: [entry(), entry({ id: 'later', date: '2026-01-03' })] })
+    expect(jobCharges(s, job.id).hours[0].covered).toBe(100)
+    s.timeEntries[0].billable = false
+    const hours = jobCharges(s, job.id).hours
+    expect(hours[0]).toMatchObject({ status: 'nonbillable', covered: 0 })
+    expect(hours[1]).toMatchObject({ status: 'partial', covered: 100 })
+    expect(jobBilling(s, job).depositUsed).toBe(100)
+  })
+
+  it('leaves charges out of fees using only their funded invoice portion', () => {
+    const s = store({
+      timeEntries: [entry({ hours: 10 })], deposits: [], invoices: [invoice({ amount: 1200 })],
+      items: [charge({ unit_price: 200, billed: true, invoice_id: 'invoice', deposit_applied: 0 })],
+    })
+    expect(jobBilling(s, job)).toMatchObject({
+      invoiced: 1200, itemsValue: 200, feeRevenue: 1000, effectiveHourlyRate: 100,
+      workValue: 1700, balance: -500,
+    })
+    s.items[0].category = 'Fixed fee'
+    expect(jobBilling(s, job).feeRevenue).toBe(1000)
+  })
+
+  it('counts deposits and invoices once and excludes deposit-funded charges without double subtraction', () => {
+    const s = store({
+      deposits: [deposit({ amount: 500 })], invoices: [invoice({ amount: 700 })],
+      timeEntries: [billedEntry({ hours: 10, rate: 100, deposit_applied: 300 })],
+      items: [charge({ unit_price: 200, billed: true, invoice_id: 'invoice', deposit_applied: 200 })],
+    })
+    expect(jobBilling(s, job)).toMatchObject({
+      deposits: 500, invoiced: 700, feeRevenue: 1000, effectiveHourlyRate: 100,
+      workValue: 1200, depositUsed: 500, balance: 0,
+    })
+    s.invoices[0].paid_date = '2026-01-05'
+    expect(jobBilling(s, job)).toMatchObject({ collected: 1200, feeRevenue: 1000, effectiveHourlyRate: 100 })
+  })
+
+  it('allocates custom invoice amounts to linked charges first and treats standalone invoices as fees', () => {
+    const s = store({
+      timeEntries: [entry({ hours: 10 })], deposits: [], invoices: [invoice({ amount: 50 })],
+      items: [charge({ billed: true, invoice_id: 'invoice', deposit_applied: 0 })],
+    })
+    expect(jobBilling(s, job)).toMatchObject({ feeRevenue: 0, effectiveHourlyRate: 0 })
+    s.invoices[0].amount = 250
+    expect(jobBilling(s, job)).toMatchObject({ feeRevenue: 150, effectiveHourlyRate: 15 })
+    s.invoices.push(invoice({ id: 'standalone', amount: 75 }))
+    expect(jobBilling(s, job)).toMatchObject({ feeRevenue: 225, effectiveHourlyRate: 22.5 })
+  })
+
+  it('does not subtract unfunded charges from the fee revenue of unrelated invoices', () => {
+    const s = store({
+      timeEntries: [entry({ hours: 10 })], deposits: [], invoices: [invoice({ amount: 1000 })],
+      items: [charge({ unit_price: 200 })],
+    })
+    expect(jobBilling(s, job)).toMatchObject({ feeRevenue: 1000, effectiveHourlyRate: 100, unbilledItems: 200 })
+  })
+
+  it('excludes charge portions funded partly by deposit and partly by invoice', () => {
+    const s = store({
+      deposits: [deposit()], invoices: [invoice({ amount: 1050 })],
+      timeEntries: [entry({ hours: 10 })],
+      items: [charge({ unit_price: 150, billed: true, invoice_id: 'invoice', deposit_applied: 100 })],
+    })
+    expect(jobBilling(s, job)).toMatchObject({
+      feeRevenue: 1000, effectiveHourlyRate: 100, depositUsed: 100, depositRemaining: 0,
+    })
+  })
+
+  it('keeps all-non-billable time in the hourly denominator for a fixed-fee job', () => {
+    const s = store({
+      timeEntries: [entry({ hours: 10, billable: false })], deposits: [], invoices: [invoice({ amount: 1000 })],
+    })
+    expect(jobBilling(s, job)).toMatchObject({
+      loggedHours: 10, billableHours: 0, nonBillableHours: 10,
+      unbilledAmount: 0, unbilledHours: 0, feeRevenue: 1000, effectiveHourlyRate: 100,
+      nonBillableValue: 1500, workValue: 1500, balance: -500,
+    })
+  })
+
+  it('excludes running timers from both hourly revenue denominators and monetary work values', () => {
+    const s = store({
+      timeEntries: [entry({ hours: 2, billable: false }), entry({ id: 'running', hours: null, started_at: '2026-01-01T00:00:00Z' })],
+      deposits: [], invoices: [invoice({ amount: 1000 })],
+    })
+    expect(jobBilling(s, job)).toMatchObject({
+      loggedHours: 2, billableHours: 0, nonBillableHours: 2,
+      workValue: 300, feeRevenue: 1000, effectiveHourlyRate: 500,
+    })
+    s.timeEntries = [s.timeEntries[1]]
+    expect(jobBilling(s, job)).toMatchObject({ loggedHours: 0, workValue: 0, feeRevenue: 1000, effectiveHourlyRate: null })
+  })
+
+  it('treats legacy missing billable flags as billable and preserves their saved rates', () => {
+    const oldEntry = entry({ hours: 4, rate: 150 })
+    Reflect.deleteProperty(oldEntry, 'billable')
+    const s = store({ timeEntries: [oldEntry], deposits: [], invoices: [invoice({ amount: 1000 })] })
+    s.settings.default_rate = 999
+    expect(jobBilling(s, job)).toMatchObject({
+      loggedHours: 4, billableHours: 4, nonBillableHours: 0, hoursValue: 600,
+      feeRevenue: 1000, effectiveHourlyRate: 250, balance: 400,
+    })
+  })
+
+  it('does not create negative fee revenue when old charge credits exceed deposits after a deletion', () => {
+    const s = store({
+      timeEntries: [entry()], deposits: [],
+      items: [charge({ billed: true, invoice_id: 'invoice', deposit_applied: 100 })], invoices: [invoice({ amount: 25 })],
+    })
+    expect(jobBilling(s, job)).toMatchObject({ feeRevenue: 0, effectiveHourlyRate: 0, invoiced: 25, depositUsed: 100 })
   })
 })

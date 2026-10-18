@@ -11,6 +11,7 @@ import type { Phase, Task } from '../lib/types'
 import { fmtDate, fmtDateTime, fmtHours, fmtMoney, fmtSigned, sum } from '../lib/utils'
 import { Avatar, Checkbox, DueBadge, Empty, Icon, JobStatusSelect, PhaseStatusSelect, Progress } from '../components/ui'
 import { DepositModal, ItemModal, JobModal, TaskModal, TimeModal, toggleTaskDone } from '../components/editors'
+import { FeesSummary } from '../components/MoneyCharts'
 
 export function JobDetail() {
   const { id } = useParams()
@@ -25,6 +26,7 @@ export function JobDetail() {
   const [comment, setComment] = useState('')
   const [showDone, setShowDone] = useState(false)
   const [deposit, setDeposit] = useState(false)
+  const [timerBillable, setTimerBillable] = useState(true)
   const [itemModal, setItemModal] = useState<{ item?: JobItem } | null>(null)
   const itemRows = useMemo(() => id ? jobCharges(store, id).items : [], [store, id])
 
@@ -48,8 +50,8 @@ export function JobDetail() {
   async function startTimer(phaseId: string | null, taskId: string | null) {
     if (!me) return
     const other = timeEntries.find(e => e.user_id === me.id && e.started_at && e.hours == null)
-    if (other) await update('time_entries', other.id, { hours: timerHours(other), started_at: null })
-    await insert('time_entries', { job_id: job!.id, phase_id: phaseId, task_id: taskId, user_id: me.id, started_at: new Date().toISOString(), hours: null })
+    if (other && !await update('time_entries', other.id, { hours: timerHours(other), started_at: null })) return
+    await insert('time_entries', { job_id: job!.id, phase_id: phaseId, task_id: taskId, user_id: me.id, billable: timerBillable, started_at: new Date().toISOString(), hours: null })
   }
   async function stopTimer() {
     if (!running) return
@@ -71,7 +73,10 @@ export function JobDetail() {
           {job.queued_date && <div className="small muted">Entered queue {fmtDate(job.queued_date)}{(() => { const d = -(daysUntil(job.queued_date) ?? 0); return d > 0 ? ` · ${d} day${d === 1 ? '' : 's'} ago` : ' · today' })()}</div>}
         </div>
         <div className="actions">
-          {running ? <button className="btn" onClick={stopTimer}><Icon name="stop" size={14} /> Stop timer</button> : <button className="btn" onClick={() => startTimer(workPhase(phases, job.id)?.id ?? null, null)}><Icon name="play" size={14} /> Start timer</button>}
+          {running ? <button className="btn" onClick={stopTimer}><Icon name="stop" size={14} /> Stop timer{running.billable === false ? ' · nonbillable' : ''}</button> : <>
+            <select className="timer-mode" aria-label="Timer billing mode" value={timerBillable ? 'billable' : 'nonbillable'} onChange={e => setTimerBillable(e.target.value === 'billable')}><option value="billable">Billable timer</option><option value="nonbillable">Nonbillable timer</option></select>
+            <button className="btn" onClick={() => startTimer(workPhase(phases, job.id)?.id ?? null, null)}><Icon name="play" size={14} /> Start timer</button>
+          </>}
           <button className="btn" onClick={() => setTimeModal({})}><Icon name="time" size={14} /> Log hours</button>
           <button className="btn" onClick={() => setItemModal({})}><Icon name="plus" size={14} /> Charge</button>
           <button className="btn" onClick={() => setDeposit(true)}><Icon name="plus" size={14} /> Deposit</button>
@@ -80,7 +85,7 @@ export function JobDetail() {
       </div>
 
       <div className="stats mb">
-        <div className="stat"><div className="label">Hours</div><div className="value">{fmtHours(logged)}<span className="muted" style={{ fontSize: 14 }}> / {fmtHours(est)}</span></div><Progress value={logged} max={est} /></div>
+        <div className="stat"><div className="label">Hours</div><div className="value">{fmtHours(logged)}<span className="muted" style={{ fontSize: 14 }}> / {fmtHours(est)}</span></div><Progress value={logged} max={est} /><div className="sub">{billing && `${fmtHours(billing.billableHours)} billable · ${fmtHours(billing.nonBillableHours)} nonbillable`}</div></div>
         <div className="stat"><div className="label">Due</div><div className="value" style={{ fontSize: 20 }}>{job.due_date ? fmtDate(job.due_date) : '–'}</div><div className="sub">{job.status !== 'cancelled' && <DueBadge date={job.due_date} done={job.status === 'complete'} />}</div></div>
         <div className="stat"><div className="label">Job balance</div><div className={`value ${billing && billing.balance < 0 ? 'money-neg' : 'money-pos'}`} style={{ fontSize: 20 }}>{billing && fmtSigned(billing.balance)}</div><div className="sub">{billing && `${fmtMoney(billing.deposits)} deposits · ${fmtMoney(billing.invoiced)} billed`}</div></div>
         <div className="stat"><div className="label">Not billed yet</div><div className={`value ${billing && billing.unbilledAmount > 0.5 ? 'danger-text' : ''}`} style={{ fontSize: 20 }}>{billing && fmtMoney(billing.unbilledAmount)}</div><div className="sub">{billing && `${fmtHours(billing.unbilledHours)} · `}<Link to={`/billing?job=${job.id}`}>money details →</Link></div></div>
@@ -95,12 +100,13 @@ export function JobDetail() {
           </div>
           {jobPhases.map(p => (
             <PhaseCard key={p.id} phase={p} tasks={jobTasks.filter(t => t.phase_id === p.id && (showDone || t.status !== 'done'))} logged={hoursForPhase(timeEntries, p.id)}
-              onAddTask={() => setTaskModal({ phaseId: p.id })} onEditTask={t => setTaskModal({ task: t })} onLog={() => setTimeModal({ phaseId: p.id })} onStart={() => startTimer(p.id, null)} />
+              onAddTask={() => setTaskModal({ phaseId: p.id })} onEditTask={t => setTaskModal({ task: t })} onLog={() => setTimeModal({ phaseId: p.id })} onStart={() => startTimer(p.id, null)} timerBillable={timerBillable} />
           ))}
           <GeneralTasks tasks={jobTasks.filter(t => !t.phase_id && (showDone || t.status !== 'done'))} onAdd={() => setTaskModal({ phaseId: null })} onEdit={t => setTaskModal({ task: t })} />
         </div>
 
         <div>
+          {billing && <FeesSummary b={billing} />}
           <div className="card">
             <h2>Notes &amp; comments</h2>
             {comments.filter(c => c.job_id === job.id).length === 0 && <p className="small muted">No notes yet.</p>}
@@ -175,7 +181,7 @@ export function JobDetail() {
   )
 }
 
-function PhaseCard({ phase, tasks, logged, onAddTask, onEditTask, onLog, onStart }: { phase: Phase; tasks: Task[]; logged: number; onAddTask: () => void; onEditTask: (t: Task) => void; onLog: () => void; onStart: () => void }) {
+function PhaseCard({ phase, tasks, logged, onAddTask, onEditTask, onLog, onStart, timerBillable }: { phase: Phase; tasks: Task[]; logged: number; onAddTask: () => void; onEditTask: (t: Task) => void; onLog: () => void; onStart: () => void; timerBillable: boolean }) {
   const store = useData()
   const { update } = store
   const [notes, setNotes] = useState(phase.notes)
@@ -216,7 +222,7 @@ function PhaseCard({ phase, tasks, logged, onAddTask, onEditTask, onLog, onStart
         <div className="row mt" style={{ gap: 6 }}>
           <button className="btn sm" onClick={onAddTask}><Icon name="plus" size={14} /> Task</button>
           <button className="btn sm ghost" onClick={onLog}><Icon name="time" size={14} /> Log hours</button>
-          <button className="btn sm ghost" onClick={onStart}><Icon name="play" size={12} /> Timer</button>
+          <button className="btn sm ghost" onClick={onStart} title={`Start a ${timerBillable ? 'billable' : 'nonbillable'} timer`}><Icon name="play" size={12} /> Timer{timerBillable ? '' : ' · nonbillable'}</button>
           <input className="grow" placeholder="Phase notes…" value={notes} onChange={e => setNotes(e.target.value)} onBlur={() => { if (notes !== phase.notes) void update('phases', phase.id, { notes }) }} style={{ minHeight: 32, padding: '4px 8px', fontSize: 13, minWidth: 140 }} />
         </div>
       </div>

@@ -32,6 +32,11 @@ export function fmtMoney(n: number | null | undefined): string {
   return n.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })
 }
 
+export function fmtHourlyRate(n: number | null | undefined): string {
+  if (n == null) return '–'
+  return `${n.toLocaleString('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 2 })}/h`
+}
+
 /** Days from today to the given date. Negative = overdue. */
 export function daysUntil(iso: string | null | undefined): number | null {
   if (!iso) return null

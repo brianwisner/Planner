@@ -1,5 +1,26 @@
 # Planner database changes
 
+For the billable-hours update, apply
+`migrations/20261018202556_add_billable_time_entries.sql` after the
+recurrence/deposit migration below and before deploying the matching frontend.
+The new migration is additive and runs in one transaction:
+
+- `time_entries.billable` is required and defaults to `true`, including all
+  existing records and inserts from older clients. It does not change saved
+  hours, rates, deposits, invoice amounts, ownership, or historical links.
+- Non-billable hours keep their actual hours and rate for tracking internal
+  effort, while remaining unbilled, without an invoice link or deposit credit.
+  A database constraint and trigger enforce this even for older clients that
+  do not know about the new flag.
+- Invoiced or historically billed hours must be explicitly unbilled before
+  becoming non-billable. Unbilled hours that currently have dynamic deposit
+  coverage may change directly; their deposit money is then available for
+  other billable work.
+- The existing `record_invoice` function is replaced without changing its
+  signature or access policies. It continues to lock allocation inputs and
+  save the invoice and all links atomically; non-billable hours cannot consume
+  deposits or be selected for an invoice.
+
 `setup.sql` creates a new Supabase project. The following migration was applied
 to the live project on 2026-10-18. Other existing projects must apply it once
 before deploying the matching app:
@@ -41,11 +62,13 @@ Apply this migration once through the Supabase SQL Editor or the project's
 normal migration process. Do not rerun the complete `setup.sql` on an existing
 project in place of this migration.
 
-Schema regression checks in `tests/recurrence_and_deposit.sql` and
-`tests/record_invoice.sql` use synthetic
+Schema regression checks in `tests/recurrence_and_deposit.sql`,
+`tests/record_invoice.sql`, and `tests/billable_hours.sql` use synthetic
 records and roll back their writes. Run them only against a disposable local
 database after applying either the fresh setup or the migration. They verify
 constraints, invoice-link cleanup, guarded work edits, atomic invoice rollback,
 allocation validation, and function access; they are not a production migration
-step. Historical billing fields and invoice amounts are preserved by the
+step. The billable-hours checks also cover defaults, reclassification guards,
+direct writes from older clients, and exclusion from invoice/deposit allocation.
+Historical billing fields and invoice amounts are preserved by the
 migration, with no guessed deposit-credit backfill.

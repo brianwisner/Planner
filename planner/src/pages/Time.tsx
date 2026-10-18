@@ -39,8 +39,8 @@ export function Time() {
   const running = timeEntries.find(e => e.user_id === me?.id && e.started_at && e.hours == null)
 
   function exportCSV() {
-    downloadCSV(`hours-${showAll ? 'all' : weekStart}.csv`, ['Date', 'Person', 'Client', 'Job #', 'Job', 'Phase', 'Hours', 'Notes', 'Billing status'],
-      listEntries.map(e => { const j = jobs.find(j => j.id === e.job_id); return [e.date, profiles.find(p => p.id === e.user_id)?.full_name, clients.find(c => c.id === j?.client_id)?.name, j?.job_number, j?.name, phases.find(p => p.id === e.phase_id)?.name ?? 'General', Math.round(entryHours(e) * 100) / 100, e.notes, hourMap.get(e.id)?.status ?? (e.started_at ? 'running' : '')] }))
+    downloadCSV(`hours-${showAll ? 'all' : weekStart}.csv`, ['Date', 'Person', 'Client', 'Job #', 'Job', 'Phase', 'Hours', 'Billable', 'Notes', 'Billing status'],
+      listEntries.map(e => { const j = jobs.find(j => j.id === e.job_id); return [e.date, profiles.find(p => p.id === e.user_id)?.full_name, clients.find(c => c.id === j?.client_id)?.name, j?.job_number, j?.name, phases.find(p => p.id === e.phase_id)?.name ?? 'General', Math.round(entryHours(e) * 100) / 100, e.billable !== false ? 'Yes' : 'No', e.notes, hourMap.get(e.id)?.status ?? (e.started_at ? 'running' : '')] }))
   }
 
   return (
@@ -52,7 +52,7 @@ export function Time() {
           <button className="btn" onClick={exportCSV}><Icon name="download" size={16} /> CSV</button>
         </div>
       </div>
-      {running && <div className="card mb row"><span className="timer-pill"><span className="dot" /> Timer running</span> <span>{jobName(running.job_id)} · {phases.find(p => p.id === running.phase_id)?.name ?? 'General'} · started {format(new Date(running.started_at!), 'h:mm a')}</span><span className="grow" /><button className="btn sm" onClick={() => update('time_entries', running.id, { hours: timerHours(running), started_at: null })}><Icon name="stop" size={12} /> Stop</button></div>}
+      {running && <div className="card mb row"><span className="timer-pill"><span className="dot" /> Timer running{running.billable === false ? ' · nonbillable' : ''}</span> <span>{jobName(running.job_id)} · {phases.find(p => p.id === running.phase_id)?.name ?? 'General'} · started {format(new Date(running.started_at!), 'h:mm a')}</span><span className="grow" /><button className="btn sm" onClick={() => update('time_entries', running.id, { hours: timerHours(running), started_at: null })}><Icon name="stop" size={12} /> Stop</button></div>}
       <div className="filters">
         <select aria-label="Filter time by job" value={jobFilter} onChange={e => setJobFilter(e.target.value)}>
           <option value="">All jobs</option>
@@ -66,6 +66,7 @@ export function Time() {
 
       <div className="card">
         <h2>Week at a glance <span className="muted small" style={{ fontWeight: 400 }}>{fmtHours(sum(inWeek.map(entryHours)))} total</span></h2>
+        <p className="small muted">{fmtHours(sum(inWeek.filter(e => e.billable !== false).map(entryHours)))} billable · {fmtHours(sum(inWeek.filter(e => e.billable === false).map(entryHours)))} nonbillable. Both count toward your total time.</p>
         <div className="table-wrap"><table>
           <thead><tr><th>Job</th>{days.map(d => <th key={d} className="num">{format(parseISO(d), 'EEE d')}</th>)}<th className="num">Total</th></tr></thead>
           <tbody>
@@ -90,7 +91,7 @@ export function Time() {
             {listEntries.slice(0, 300).map(e => (
               <tr key={e.id} className="clickable" onClick={() => setEditing(e)}>
                 <td className="nowrap">{fmtDate(e.date)}</td>
-                <td>{jobName(e.job_id)}<div className="tiny muted">{phases.find(p => p.id === e.phase_id)?.name ?? 'General'}</div></td>
+                <td>{jobName(e.job_id)}<div className="tiny muted">{phases.find(p => p.id === e.phase_id)?.name ?? 'General'}</div>{e.billable === false && <span className="badge h-nonbillable show-mobile">Nonbillable</span>}</td>
                 <td className="hide-mobile small muted">{e.notes}</td>
                 <td className="num">{e.started_at && e.hours == null ? '⏱' : fmtHours(e.hours)}</td>
                 <td className="hide-mobile">{hourMap.get(e.id) && <StatusBadge h={hourMap.get(e.id)!} />}</td>
