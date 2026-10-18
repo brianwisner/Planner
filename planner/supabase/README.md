@@ -1,9 +1,9 @@
 # Planner database changes
 
-For the billable-hours update, apply
-`migrations/20261018202556_add_billable_time_entries.sql` after the
-recurrence/deposit migration below and before deploying the matching frontend.
-The new migration is additive and runs in one transaction:
+The billable-hours migration was applied to the live project on 2026-10-18:
+`migrations/20261018203905_add_billable_time_entries.sql`. Other existing
+projects must apply it after the recurrence/deposit migration below and before
+deploying the matching frontend. The migration is additive and runs in one transaction:
 
 - `time_entries.billable` is required and defaults to `true`, including all
   existing records and inserts from older clients. It does not change saved

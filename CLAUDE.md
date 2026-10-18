@@ -55,7 +55,7 @@ The existing-project migration for Cancelled is `planner/supabase/migrations/202
 
 The recurrence/deposit migration was applied to the live project on 2026-10-18: `planner/supabase/migrations/20261018201758_preserve_deposit_credits_and_recurring_task_parent.sql`. It adds the columns, constraints, normalization trigger, and atomic invoicing RPC without backfilling financial history. See `planner/supabase/README.md` for rollout and disposable-database checks.
 
-The billable-hours feature requires `planner/supabase/migrations/20261018202556_add_billable_time_entries.sql` before its frontend is deployed. This pending migration adds the default-true field and financial-link constraint, updates the existing trigger/RPC to reject nonbillable invoice work, and preserves prior records. Its synthetic checks are `planner/supabase/tests/billable_hours.sql`.
+The billable-hours migration was applied to the live project on 2026-10-18: `planner/supabase/migrations/20261018203905_add_billable_time_entries.sql`. It adds the default-true field and financial-link constraint, updates the existing trigger/RPC to reject nonbillable invoice work, and preserves prior records. Other existing projects must apply it before deploying the matching frontend. Its synthetic checks are `planner/supabase/tests/billable_hours.sql`.
 
 ### Frontend layout — `planner/src/`
 
