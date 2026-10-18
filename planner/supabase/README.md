@@ -1,9 +1,10 @@
 # Planner database changes
 
-`setup.sql` creates a new Supabase project. For an existing project, apply the
-pending migration before deploying the matching app:
+`setup.sql` creates a new Supabase project. The following migration was applied
+to the live project on 2026-10-18. Other existing projects must apply it once
+before deploying the matching app:
 
-`migrations/20261018200639_preserve_deposit_credits_and_recurring_task_parent.sql`
+`migrations/20261018201758_preserve_deposit_credits_and_recurring_task_parent.sql`
 
 The migration runs in one transaction. It adds nullable columns, constraints,
 a trigger, and an invoice function; it does not update existing financial records, invoice amounts,

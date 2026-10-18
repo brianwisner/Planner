@@ -51,7 +51,7 @@ It contains two separate things:
 
 The existing-project migration for Cancelled is `planner/supabase/migrations/20261017182411_add_cancelled_job_status.sql`. It is applied to the live project, and the updated `ics` Edge Function is deployed so subscribed calendars omit cancelled work. Keep migration filenames aligned with the live migration history.
 
-Before deploying the recurrence/deposit fixes, apply `planner/supabase/migrations/20261018200639_preserve_deposit_credits_and_recurring_task_parent.sql`. It adds the columns, constraints, normalization trigger, and atomic invoicing RPC without backfilling financial history. See `planner/supabase/README.md` for rollout and disposable-database checks.
+The recurrence/deposit migration was applied to the live project on 2026-10-18: `planner/supabase/migrations/20261018201758_preserve_deposit_credits_and_recurring_task_parent.sql`. It adds the columns, constraints, normalization trigger, and atomic invoicing RPC without backfilling financial history. See `planner/supabase/README.md` for rollout and disposable-database checks.
 
 ### Frontend layout — `planner/src/`
 
