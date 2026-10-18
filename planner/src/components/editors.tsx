@@ -1,6 +1,7 @@
 // Pop-up forms for creating and editing things: tasks, jobs, clients,
 // time entries and invoices. Every page reuses these.
 import { useEffect, useRef, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { useData } from '../lib/store'
 import type { Client, Deposit, Invoice, Job, JobItem, JobStatus, Recurrence, Task, TaskStatus, TimeEntry } from '../lib/types'
 import { ITEM_CATEGORIES } from '../lib/types'
@@ -296,7 +297,7 @@ export function ClientModal({ client, onClose, onCreated }: { client?: Client; o
 
 /* =============== Time entry =============== */
 export function TimeModal({ entry, defaults, onClose }: { entry?: TimeEntry; defaults?: Partial<TimeEntry>; onClose: () => void }) {
-  const { jobs, phases, tasks, clients, me, profiles, settings, insert, update, remove, toast } = useData()
+  const { jobs, phases, tasks, timeEntries, clients, me, profiles, settings, insert, update, remove, toast } = useData()
   const activeJobs = jobs.filter(j => j.status !== 'archived')
   const personRate = (uid: string) => rateFor(profiles.find(p => p.id === uid), settings.default_rate)
   const [d, setD] = useState({
@@ -308,21 +309,31 @@ export function TimeModal({ entry, defaults, onClose }: { entry?: TimeEntry; def
     hours: entry?.hours ?? defaults?.hours ?? null as number | null,
     notes: entry?.notes ?? defaults?.notes ?? '',
     rate: entry ? entry.rate : personRate(me?.id ?? '') as number | null,
+    billable: entry ? entry.billable !== false : defaults?.billable !== false,
   })
+  const currentEntry = entry ? timeEntries.find(e => e.id === entry.id) ?? entry : undefined
+  const billingLocked = Boolean(currentEntry?.billed || currentEntry?.invoice_id || (currentEntry?.deposit_applied ?? 0) > 0)
+  const busy = useRef(false)
+  const [saving, setSaving] = useState(false)
   const set = <K extends keyof typeof d>(k: K, v: (typeof d)[K]) => setD(x => ({ ...x, [k]: v }))
   const jobPhases = phases.filter(p => p.job_id === d.job_id)
   const jobTasks = tasks.filter(t => t.job_id === d.job_id && (!d.phase_id || t.phase_id === d.phase_id))
   useEffect(() => { if (!jobPhases.some(p => p.id === d.phase_id)) setD(x => ({ ...x, phase_id: workPhase(phases, d.job_id)?.id ?? null })) }, [d.job_id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   async function save() {
+    if (busy.current) return
     if (!d.job_id || d.hours == null || d.hours <= 0) { toast('Enter the job and the hours', 'error'); return }
-    const credit = entry?.billed ? entry.deposit_applied ?? 0 : 0
-    if (entry && credit > 0 && (d.job_id !== entry.job_id || d.hours * (d.rate ?? personRate(d.user_id)) < credit)) {
+    if (!d.billable && billingLocked) { toast('Unbill these hours in Billing before making them nonbillable.', 'error'); return }
+    const credit = currentEntry?.billed ? currentEntry.deposit_applied ?? 0 : 0
+    if (currentEntry && credit > 0 && (d.job_id !== currentEntry.job_id || d.hours * (d.rate ?? personRate(d.user_id)) < credit)) {
       toast('Unbill these hours before moving them to another job or reducing their value below the applied deposit.', 'error'); return
     }
-    if (entry) { if (!await update('time_entries', entry.id, { ...d, started_at: null })) return }
-    else if (!await insert('time_entries', { ...d, started_at: null })) return
-    onClose()
+    busy.current = true; setSaving(true)
+    try {
+      if (entry) { if (!await update('time_entries', entry.id, { ...d, started_at: null })) return }
+      else if (!await insert('time_entries', { ...d, started_at: null })) return
+      onClose()
+    } finally { busy.current = false; setSaving(false) }
   }
   async function del() { if (entry && confirm('Delete this time entry?')) { await remove('time_entries', entry.id); onClose() } }
 
@@ -330,7 +341,7 @@ export function TimeModal({ entry, defaults, onClose }: { entry?: TimeEntry; def
     <Modal title={entry ? 'Edit hours' : 'Log hours'} onClose={onClose} footer={<>
       {entry && <button className="btn danger left" onClick={del}>Delete</button>}
       <button className="btn" onClick={onClose}>Cancel</button>
-      <button className="btn primary" onClick={save}>Save</button>
+      <button className="btn primary" onClick={save} disabled={saving}>{saving ? 'Saving…' : 'Save'}</button>
     </>}>
       <div className="row">
         <div className="field">
@@ -360,12 +371,17 @@ export function TimeModal({ entry, defaults, onClose }: { entry?: TimeEntry; def
         <div className="field"><label>Date</label><input type="date" value={d.date} onChange={e => set('date', e.target.value)} /></div>
         <div className="field"><label>Hours</label><input autoFocus type="number" step="0.25" min="0" value={d.hours ?? ''} onChange={e => set('hours', e.target.value === '' ? null : Number(e.target.value))} /></div>
       </div>
+      <div className="field time-billability">
+        <label className="chip"><input type="checkbox" checked={d.billable} disabled={billingLocked} onChange={e => set('billable', e.target.checked)} /> Billable</label>
+        <p className="small muted">{d.billable ? 'Eligible for invoices and deposit coverage.' : 'Nonbillable — counts toward job hours and effective hourly rate, excluded from invoices.'}</p>
+        {billingLocked && <p className="small muted">Unbill these hours in <Link to={`/billing?job=${currentEntry?.job_id}`} onClick={onClose}>Billing</Link> before changing this.</p>}
+      </div>
       <div className="row">
         <div className="field" style={{ flex: '0 1 140px' }}><label>Rate ($/hour)</label><input type="number" min="0" step="5" value={d.rate ?? ''} onChange={e => set('rate', e.target.value === '' ? null : Number(e.target.value))} /></div>
         <div className="field"><label>Notes</label><input value={d.notes} onChange={e => set('notes', e.target.value)} placeholder="What did you work on?" /></div>
       </div>
-      {d.hours != null && d.rate != null && <p className="small muted">Billed against the job at {fmtMoney(d.hours * d.rate)}.</p>}
-      {entry?.billed && <p className="small muted">These hours are already on an invoice. Changing them won't change the invoice amount.</p>}
+      {d.hours != null && d.rate != null && <p className="small muted">{d.billable ? `Billable value: ${fmtMoney(d.hours * d.rate)}.` : `Work value: ${fmtMoney(d.hours * d.rate)}. This time will not be invoiced.`}</p>}
+      {currentEntry?.billed && <p className="small muted">These hours are already on an invoice. Changing them won't change the invoice amount.</p>}
     </Modal>
   )
 }

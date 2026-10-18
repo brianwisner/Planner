@@ -15,22 +15,23 @@ export function Reports() {
   const { jobs, clients, phases, timeEntries } = store
   const hourMap = useMemo(() => allHours(store), [store])
   // Hours that are billed, or paid for by a deposit (part-covered entries count proportionally).
-  const covered = (e: (typeof timeEntries)[number]) => { const h = hourMap.get(e.id); if (!h) return 0; if (h.status === 'billed' || h.status === 'paid' || h.status === 'deposit') return entryHours(e); return h.amount > 0 ? entryHours(e) * h.covered / h.amount : 0 }
+  const covered = (e: (typeof timeEntries)[number]) => { const h = hourMap.get(e.id); if (!h || e.billable === false) return 0; if (h.status === 'billed' || h.status === 'paid' || h.status === 'deposit') return entryHours(e); return h.amount > 0 ? entryHours(e) * h.covered / h.amount : 0 }
   const [tab, setTab] = useState<Tab>('job')
   const [from, setFrom] = useState(format(subDays(new Date(), 90), 'yyyy-MM-dd'))
   const [to, setTo] = useState(todayISO())
   const entries = useMemo(() => timeEntries.filter(e => e.hours != null && e.date >= from && e.date <= to), [timeEntries, from, to])
   const total = sum(entries.map(entryHours))
 
-  const byJob = jobs.map(j => ({ key: j.id, label: j.name, sub: clients.find(c => c.id === j.client_id)?.name ?? '', hours: sum(entries.filter(e => e.job_id === j.id).map(entryHours)), billed: sum(entries.filter(e => e.job_id === j.id).map(covered)), link: `/jobs/${j.id}` })).filter(r => r.hours > 0).sort((a, b) => b.hours - a.hours)
-  const byClient = clients.map(c => { const ids = new Set(jobs.filter(j => j.client_id === c.id).map(j => j.id)); const es = entries.filter(e => ids.has(e.job_id)); return { key: c.id, label: c.name, sub: `${ids.size} jobs`, hours: sum(es.map(entryHours)), billed: sum(es.map(covered)), link: `/clients/${c.id}` } }).filter(r => r.hours > 0).sort((a, b) => b.hours - a.hours)
+  const summarize = (es: typeof entries) => ({ hours: sum(es.map(entryHours)), billable: sum(es.filter(e => e.billable !== false).map(entryHours)), nonbillable: sum(es.filter(e => e.billable === false).map(entryHours)), billed: sum(es.map(covered)) })
+  const byJob = jobs.map(j => ({ key: j.id, label: j.name, sub: clients.find(c => c.id === j.client_id)?.name ?? '', ...summarize(entries.filter(e => e.job_id === j.id)), link: `/jobs/${j.id}` })).filter(r => r.hours > 0).sort((a, b) => b.hours - a.hours)
+  const byClient = clients.map(c => { const ids = new Set(jobs.filter(j => j.client_id === c.id).map(j => j.id)); return { key: c.id, label: c.name, sub: `${ids.size} jobs`, ...summarize(entries.filter(e => ids.has(e.job_id))), link: `/clients/${c.id}` } }).filter(r => r.hours > 0).sort((a, b) => b.hours - a.hours)
   const rows = tab === 'client' ? byClient : byJob
 
   const estimateRows = jobs.filter(j => j.status !== 'archived').flatMap(j => phases.filter(p => p.job_id === j.id && (p.estimate_hours > 0 || hoursForPhase(timeEntries, p.id) > 0)).map(p => ({ job: j, phase: p, logged: hoursForPhase(timeEntries, p.id) })))
 
   function exportCSV() {
     if (tab === 'estimate') downloadCSV('estimate-vs-actual.csv', ['Job #', 'Job', 'Phase', 'Status', 'Estimate h', 'Actual h', 'Variance h', '% used'], estimateRows.map(r => [r.job.job_number, r.job.name, r.phase.name, r.phase.status, r.phase.estimate_hours, Math.round(r.logged * 100) / 100, Math.round((r.logged - r.phase.estimate_hours) * 100) / 100, r.phase.estimate_hours ? Math.round(r.logged / r.phase.estimate_hours * 100) : '']))
-    else downloadCSV(`hours-by-${tab}.csv`, [tab === 'job' ? 'Job' : 'Client', 'Detail', 'Hours', 'Billed or deposit h', 'Not billed h', 'Share %'], rows.map(r => [r.label, r.sub, Math.round(r.hours * 100) / 100, Math.round(r.billed * 100) / 100, Math.round((r.hours - r.billed) * 100) / 100, total ? Math.round(r.hours / total * 100) : 0]))
+    else downloadCSV(`hours-by-${tab}.csv`, [tab === 'job' ? 'Job' : 'Client', 'Detail', 'Total hours', 'Billable h', 'Nonbillable h', 'Billed or deposit h', 'Billable not billed h', 'Share %'], rows.map(r => [r.label, r.sub, Math.round(r.hours * 100) / 100, Math.round(r.billable * 100) / 100, Math.round(r.nonbillable * 100) / 100, Math.round(r.billed * 100) / 100, Math.round(Math.max(0, r.billable - r.billed) * 100) / 100, total ? Math.round(r.hours / total * 100) : 0]))
   }
 
   return (
@@ -58,18 +59,20 @@ export function Reports() {
       <div className="card">
         {tab !== 'estimate' ? (
           <div className="table-wrap"><table>
-            <thead><tr><th>{tab === 'job' ? 'Job' : 'Client'}</th><th style={{ width: '30%' }} className="hide-mobile">Share</th><th className="num">Hours</th><th className="num hide-mobile">Billed / deposit</th><th className="num">Not billed</th></tr></thead>
+            <thead><tr><th>{tab === 'job' ? 'Job' : 'Client'}</th><th style={{ width: '20%' }} className="hide-mobile">Share</th><th className="num">Total hours</th><th className="num hide-mobile">Billable</th><th className="num">Nonbillable</th><th className="num hide-mobile">Billed / deposit</th><th className="num">Billable not billed</th></tr></thead>
             <tbody>
               {rows.map(r => (
                 <tr key={r.key}>
                   <td><Link to={r.link} className="bold">{r.label}</Link><div className="tiny muted">{r.sub}</div></td>
                   <td className="hide-mobile"><Progress value={r.hours} max={total} /><span className="tiny muted">{total ? Math.round(r.hours / total * 100) : 0}%</span></td>
                   <td className="num bold">{fmtHours(r.hours)}</td>
+                  <td className="num hide-mobile">{fmtHours(r.billable)}</td>
+                  <td className="num">{fmtHours(r.nonbillable)}</td>
                   <td className="num hide-mobile">{fmtHours(r.billed)}</td>
-                  <td className="num">{fmtHours(r.hours - r.billed)}</td>
+                  <td className="num">{fmtHours(Math.max(0, r.billable - r.billed))}</td>
                 </tr>
               ))}
-              {rows.length === 0 && <tr><td colSpan={5} className="empty">No hours in this range.</td></tr>}
+              {rows.length === 0 && <tr><td colSpan={7} className="empty">No hours in this range.</td></tr>}
             </tbody>
           </table></div>
         ) : (

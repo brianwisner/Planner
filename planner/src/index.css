@@ -482,6 +482,13 @@ tfoot td { font-weight: 600; background: var(--surface-2); }
 .badge.h-partial { background: #fef3c7; color: #92400e; }
 .badge.h-billed { background: #fef3c7; color: #92400e; }
 .badge.h-unbilled { background: #fee2e2; color: #991b1b; }
+.badge.h-nonbillable { background: #e5e7eb; color: #4b5563; }
+.time-billability .chip { width: fit-content; margin-bottom: 0; }
+.time-billability input[type="checkbox"] { width: 18px; min-height: 18px; margin: 0; }
+.time-billability p { margin: 6px 0 0; }
+.timer-mode { width: auto; min-width: 145px; }
+.fee-summary { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.fee-value { font-size: 23px; font-weight: 700; line-height: 1.5; }
 .money-pos { color: var(--ok); }
 .money-neg { color: var(--danger); }
 

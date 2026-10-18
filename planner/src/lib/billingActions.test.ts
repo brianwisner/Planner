@@ -8,7 +8,7 @@ function fixture() {
     timeEntries: [{
       id: 'hours', job_id: 'job', user_id: 'owner', phase_id: null, task_id: null,
       date: '2026-01-02', hours: 1, rate: 150, started_at: null, notes: '', billed: false,
-      invoice_id: null, deposit_applied: null, created_at: '2026-01-02T00:00:00Z',
+      invoice_id: null, deposit_applied: null, billable: true, created_at: '2026-01-02T00:00:00Z',
     }],
     items: [{
       id: 'charge', job_id: 'job', date: '2026-01-03', category: 'Expense', description: '',
@@ -54,5 +54,15 @@ describe('capturing invoice work', () => {
     store.deposits[0].amount = 200
     expect(() => invoiceWorkLinks(store, 'job', ['hours'], [])).toThrow('Selected hours have changed')
     expect(() => invoiceWorkLinks(store, 'job', [], ['charge'])).toThrow('Selected charges have changed')
+  })
+
+  it('excludes non-billable time without spending the deposit that can cover charges', () => {
+    const store = fixture()
+    store.timeEntries[0].billable = false
+    expect(() => invoiceWorkLinks(store, 'job', ['hours'], [])).toThrow('Selected hours have changed')
+    store.items[0].unit_price = 150
+    expect(invoiceWorkLinks(store, 'job', [], ['charge'])).toEqual([
+      { table: 'job_items', id: 'charge', amount: 150, depositApplied: 100 },
+    ])
   })
 })

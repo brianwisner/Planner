@@ -1,10 +1,13 @@
 // @vitest-environment jsdom
-import { act } from 'react'
+import { act, type ReactNode } from 'react'
+import { MemoryRouter } from 'react-router-dom'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Store } from '../lib/store'
 import type { Invoice, Task } from '../lib/types'
 import { InvoiceModal, ItemModal, TaskModal, TimeModal } from './editors'
+import { FeesSummary, WorkStatusBar } from './MoneyCharts'
+import { jobBilling } from '../lib/calc'
 
 let store: Store
 vi.mock('../lib/store', () => ({ useData: () => store }))
@@ -26,7 +29,7 @@ beforeEach(() => {
     session: null, me: profile, settings: { id: 1, company_name: 'Synthetic', default_rate: 150, weekly_capacity: 40 },
     profiles: [profile], clients: [], phases: [], tasks: [{ ...task }], items: [], schedule: [], deposits: [], invoices: [], comments: [],
     jobs: [{ id: 'job', client_id: 'client', job_number: 'TEST', name: 'Synthetic job', description: '', address: '', status: 'active', priority: 0, fee: null, queued_date: null, start_date: null, due_date: null, created_at: '' }],
-    timeEntries: [{ id: 'hours', job_id: 'job', phase_id: null, task_id: null, user_id: 'owner', date: '2026-01-02', hours: 1, started_at: null, rate: 150, notes: '', billed: false, invoice_id: null, deposit_applied: null, created_at: '' }],
+    timeEntries: [{ id: 'hours', job_id: 'job', phase_id: null, task_id: null, user_id: 'owner', date: '2026-01-02', hours: 1, started_at: null, rate: 150, notes: '', billed: false, invoice_id: null, deposit_applied: null, billable: true, created_at: '' }],
     loading: false, error: null, online: true, toasts: [], refresh: vi.fn(async () => {}), signOut: vi.fn(async () => {}), toast: vi.fn(),
     insert: vi.fn(async () => null), update: vi.fn(async () => true), remove: vi.fn(async () => true), recordInvoice: vi.fn(async () => issued),
   }
@@ -40,6 +43,10 @@ afterEach(async () => {
   container.remove()
   vi.restoreAllMocks()
 })
+
+async function render(node: ReactNode) {
+  await act(async () => root.render(<MemoryRouter>{node}</MemoryRouter>))
+}
 
 async function clickButton(text: string) {
   const button = [...container.querySelectorAll('button')].find(b => b.textContent?.trim() === text)
@@ -62,7 +69,7 @@ describe('invoice form', () => {
   it('submits the invoice and captured deposit credit in one operation', async () => {
     store.deposits = [{ id: 'deposit', job_id: 'job', amount: 100, received_date: '2026-01-01', method: '', notes: '', created_at: '' }]
     const close = vi.fn()
-    await act(async () => root.render(<InvoiceModal jobId="job" entryIds={['hours']} defaultAmount={50} onClose={close} />))
+    await render(<InvoiceModal jobId="job" entryIds={['hours']} defaultAmount={50} onClose={close} />)
     await clickButton('Save')
     expect(store.recordInvoice).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ job_id: 'job', amount: 50 }), [
       { table: 'time_entries', id: 'hours', amount: 150, depositApplied: 100 },
@@ -76,7 +83,7 @@ describe('invoice form', () => {
     store.deposits = [{ id: 'deposit', job_id: 'job', amount: 100, received_date: '2026-01-01', method: '', notes: '', created_at: '' }]
     store.recordInvoice = vi.fn(async () => null)
     const close = vi.fn()
-    await act(async () => root.render(<InvoiceModal jobId="job" entryIds={['hours']} defaultAmount={50} onClose={close} />))
+    await render(<InvoiceModal jobId="job" entryIds={['hours']} defaultAmount={50} onClose={close} />)
     store.deposits[0].amount = 150
     await clickButton('Save')
     expect(store.recordInvoice).toHaveBeenCalledWith(expect.anything(), [{ table: 'time_entries', id: 'hours', amount: 150, depositApplied: 100 }])
@@ -86,7 +93,7 @@ describe('invoice form', () => {
   it('keeps a failed atomic save open and permits a clean retry', async () => {
     store.recordInvoice = vi.fn<Store['recordInvoice']>().mockResolvedValueOnce(null).mockResolvedValueOnce(issued)
     const close = vi.fn()
-    await act(async () => root.render(<InvoiceModal jobId="job" entryIds={['hours']} defaultAmount={150} onClose={close} />))
+    await render(<InvoiceModal jobId="job" entryIds={['hours']} defaultAmount={150} onClose={close} />)
     await clickButton('Save')
     expect(close).not.toHaveBeenCalled()
     await clickButton('Save')
@@ -98,7 +105,7 @@ describe('invoice form', () => {
   it('deletes the invoice once and lets database constraints unlink all its work', async () => {
     vi.spyOn(window, 'confirm').mockReturnValue(true)
     const close = vi.fn()
-    await act(async () => root.render(<InvoiceModal invoice={issued} jobId="job" onClose={close} />))
+    await render(<InvoiceModal invoice={issued} jobId="job" onClose={close} />)
     await clickButton('Delete')
     expect(store.remove).toHaveBeenCalledExactlyOnceWith('invoices', 'invoice')
     expect(store.update).not.toHaveBeenCalled()
@@ -107,11 +114,62 @@ describe('invoice form', () => {
 })
 
 describe('task and credited-work forms', () => {
+  it('defaults new hours to billable', async () => {
+    store.insert = vi.fn(async () => store.timeEntries[0]) as Store['insert']
+    await render(<TimeModal onClose={vi.fn()} />)
+    const checkbox = container.querySelector<HTMLInputElement>('input[type="checkbox"]')!
+    expect(checkbox.checked).toBe(true)
+    await change('Hours', '1')
+    await clickButton('Save')
+    expect(store.insert).toHaveBeenCalledWith('time_entries', expect.objectContaining({ billable: true, hours: 1, rate: 150 }))
+  })
+
+  it('saves non-billable hours at their original rate instead of erasing their time value', async () => {
+    store.insert = vi.fn(async () => store.timeEntries[0]) as Store['insert']
+    await render(<TimeModal onClose={vi.fn()} />)
+    const checkbox = container.querySelector<HTMLInputElement>('input[type="checkbox"]')!
+    await act(async () => checkbox.click())
+    await change('Hours', '2')
+    await clickButton('Save')
+    expect(store.insert).toHaveBeenCalledWith('time_entries', expect.objectContaining({ billable: false, hours: 2, rate: 150 }))
+  })
+
+  it('allows unbilled hours to become non-billable even if a deposit currently covers them', async () => {
+    store.deposits = [{ id: 'deposit', job_id: 'job', amount: 100, received_date: '2026-01-01', method: '', notes: '', created_at: '' }]
+    await render(<TimeModal entry={store.timeEntries[0]} onClose={vi.fn()} />)
+    const checkbox = container.querySelector<HTMLInputElement>('input[type="checkbox"]')!
+    expect(checkbox.disabled).toBe(false)
+    await act(async () => checkbox.click())
+    await clickButton('Save')
+    expect(store.update).toHaveBeenCalledWith('time_entries', 'hours', expect.objectContaining({ billable: false, rate: 150 }))
+  })
+
+  it('keeps billed hours billable until the invoice link is released', async () => {
+    const entry = { ...store.timeEntries[0], billed: true, invoice_id: 'invoice', deposit_applied: 100 }
+    store.timeEntries = [entry]
+    await render(<TimeModal entry={entry} onClose={vi.fn()} />)
+    const checkbox = container.querySelector<HTMLInputElement>('input[type="checkbox"]')!
+    expect(checkbox.checked).toBe(true)
+    expect(checkbox.disabled).toBe(true)
+    expect(container.textContent).toContain('Unbill')
+  })
+
+  it('can reclassify an unbilled non-billable entry without changing the saved hourly rate', async () => {
+    const entry = { ...store.timeEntries[0], billable: false, rate: 125 }
+    store.timeEntries = [entry]
+    await render(<TimeModal entry={entry} onClose={vi.fn()} />)
+    const checkbox = container.querySelector<HTMLInputElement>('input[type="checkbox"]')!
+    expect(checkbox.checked).toBe(false)
+    await act(async () => checkbox.click())
+    await clickButton('Save')
+    expect(store.update).toHaveBeenCalledWith('time_entries', 'hours', expect.objectContaining({ billable: true, rate: 125 }))
+  })
+
   it('creates the next occurrence when Done is saved in the task form', async () => {
     const child = { ...task, id: 'next', due_date: '2026-01-09', recurrence_parent_id: task.id }
     store.insert = vi.fn(async () => child) as Store['insert']
     const close = vi.fn()
-    await act(async () => root.render(<TaskModal task={task} onClose={close} />))
+    await render(<TaskModal task={task} onClose={close} />)
     await change('Status', 'done')
     await clickButton('Save')
     expect(store.insert).toHaveBeenCalledWith('tasks', expect.objectContaining({ recurrence_parent_id: 'task', due_date: '2026-01-09', status: 'todo' }))
@@ -120,8 +178,9 @@ describe('task and credited-work forms', () => {
 
   it('requires unbilling before reducing time below its saved deposit credit', async () => {
     const entry = { ...store.timeEntries[0], billed: true, invoice_id: 'invoice', deposit_applied: 100 }
+    store.timeEntries = [entry]
     const close = vi.fn()
-    await act(async () => root.render(<TimeModal entry={entry} onClose={close} />))
+    await render(<TimeModal entry={entry} onClose={close} />)
     await change('Hours', '0.5')
     await clickButton('Save')
     expect(store.update).not.toHaveBeenCalled()
@@ -132,11 +191,47 @@ describe('task and credited-work forms', () => {
   it('requires unbilling before reducing a charge below its saved deposit credit', async () => {
     const item = { id: 'charge', job_id: 'job', date: '2026-01-02', category: 'Expense', description: '', quantity: 1, unit_price: 150, billed: true, invoice_id: 'invoice', deposit_applied: 100, created_by: 'owner', created_at: '' }
     const close = vi.fn()
-    await act(async () => root.render(<ItemModal item={item} onClose={close} />))
+    await render(<ItemModal item={item} onClose={close} />)
     await change('Price each ($)', '75')
     await clickButton('Save $75')
     expect(store.update).not.toHaveBeenCalled()
     expect(store.toast).toHaveBeenCalledWith(expect.stringContaining('Unbill this charge'), 'error')
     expect(close).not.toHaveBeenCalled()
+  })
+})
+
+describe('job fees and effective hourly rate', () => {
+  it('shows $100 per hour for $1,000 of fees and ten hours including two non-billable hours', async () => {
+    const original = store.timeEntries[0]
+    store.timeEntries = [
+      { ...original, hours: 8, rate: 125, billed: true, invoice_id: 'invoice' },
+      { ...original, id: 'internal', hours: 2, rate: 125, billable: false },
+    ]
+    store.invoices = [{ ...issued, amount: 1000 }]
+    await render(<FeesSummary b={jobBilling(store, store.jobs[0])} />)
+    expect([...container.querySelectorAll('.fee-value')].map(e => e.textContent)).toEqual(['$1,000', '$100/h'])
+    expect(container.textContent).toContain('10h completed · 8h billable · 2h nonbillable')
+    expect(container.textContent).toContain('Nonbillable time value: $250')
+    expect(container.textContent).toContain('Includes unused deposits')
+  })
+
+  it('keeps cents in the hourly rate and shows no rate before any completed hours', async () => {
+    store.timeEntries[0].hours = 3
+    store.invoices = [{ ...issued, amount: 400 }]
+    await render(<FeesSummary b={jobBilling(store, store.jobs[0])} />)
+    expect(container.textContent).toContain('$133.33/h')
+    store.timeEntries = []
+    await render(<FeesSummary b={jobBilling(store, store.jobs[0])} />)
+    expect([...container.querySelectorAll('.fee-value')].map(e => e.textContent)).toEqual(['$400', '–'])
+  })
+
+  it('does not present an all-nonbillable job as unpaid client work', async () => {
+    store.timeEntries[0].billable = false
+    const b = jobBilling(store, store.jobs[0])
+    await render(<><FeesSummary b={b} /><WorkStatusBar b={b} /></>)
+    expect(container.textContent).toContain('$0/h')
+    expect(container.textContent).toContain('1h completed · 0h billable · 1h nonbillable')
+    expect(container.textContent).toContain('Nonbillable time value: $150')
+    expect(container.textContent).toContain('No billable work or deposits yet')
   })
 })

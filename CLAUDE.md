@@ -31,6 +31,7 @@ It contains two separate things:
 - `jobs.priority` (integer, lower = higher in queue) drives the prioritized job table.
 - Job statuses are Active, On hold, Complete, Cancelled, and Archived. The job-title and Jobs-table status selectors save directly. Cancelled keeps all history and money records but removes pending deadlines/tasks and planned hours from capacity totals; changing back to Active restores them.
 - `time_entries.hours` is null while a timer is running (`started_at` set). Stopping the timer fills `hours` (rounded to quarter hours).
+- `time_entries.billable` defaults to true, including existing records. Nonbillable time retains its saved rate, actual hours, and work value in estimates and the job balance, but cannot consume deposits or be invoiced. Reclassifying billed/invoice-linked/credited time requires explicit Unbill first; both the UI and database enforce this.
 - `time_entries.billed` + `invoice_id` link hours to invoices. `time_entries.rate` is the $/hour saved on insert by the `time_entry_rate` trigger (person's `hourly_rate`, else `settings.default_rate`), so rate changes never rewrite past hours.
 - `schedule_entries` (job_id, phase_id, user_id, date, hours): **planned** hours (not worked time), created by dragging on the Gantt chart via `components/ScheduleModal.tsx`. The app merges by (job, phase, person, date): editing updates the row, 0/blank deletes it.
 - `job_items` (job_id, date, category, description, quantity, unit_price, billed, invoice_id): billable **charges** that aren't hours (expenses, mileage, fees). Amount = quantity × unit_price. Edited in `ItemModal` (`editors.tsx`); invoiced alongside hours.
@@ -40,6 +41,7 @@ It contains two separate things:
 - Money model lives in `src/lib/calc.ts`:
   - `jobHours()` gives each entry a status: `deposit` (paid by deposit), `partial`, `unbilled`, `billed` (on an unpaid invoice), `paid` (invoice paid).
   - `jobBilling()` totals per job; **balance = deposits + invoiced − work value** (work value = hours value + charges value) (the owner's definition of job profitability: drops as hours are logged, rises when a deposit arrives or an invoice is sent). `collected` = deposits + paid invoices.
+  - Billable/nonbillable hours and `nonBillableValue` split completed effort without subtracting it twice. `feeRevenue` uses recorded deposits + invoices once, less funded separate charges: deposit-covered charges plus each invoice's linked net charges up to its amount. Custom invoices fund linked charges before fees; standalone invoices count as fees. `effectiveHourlyRate = feeRevenue / all completed hours`, including nonbillable time, or null before any completed hours. It includes unused deposits and is before overhead/tax. Running timers are excluded from this rate until stopped. `FeesSummary` displays the same lifetime basis on Job detail and job Billing; Reports keeps its hours within the selected dates.
   - `balanceHistory()` feeds the step chart; `depositUsage()` splits usage across deposits; `allHours()` is the cross-job status map.
   - UI: `pages/Billing.tsx` (tabs Jobs / Deposits / Hours, and `?job=<id>` job money view), `components/MoneyCharts.tsx` (work-status bar + balance chart, status palette good #0ca30c / warning #fab219 / critical #d03b3b, always with text labels).
 - `profiles` rows are created by a trigger on `auth.users` (`handle_new_user`). The first-ever user also gets the sample data assigned to them.
@@ -52,6 +54,8 @@ It contains two separate things:
 The existing-project migration for Cancelled is `planner/supabase/migrations/20261017182411_add_cancelled_job_status.sql`. It is applied to the live project, and the updated `ics` Edge Function is deployed so subscribed calendars omit cancelled work. Keep migration filenames aligned with the live migration history.
 
 The recurrence/deposit migration was applied to the live project on 2026-10-18: `planner/supabase/migrations/20261018201758_preserve_deposit_credits_and_recurring_task_parent.sql`. It adds the columns, constraints, normalization trigger, and atomic invoicing RPC without backfilling financial history. See `planner/supabase/README.md` for rollout and disposable-database checks.
+
+The billable-hours migration was applied to the live project on 2026-10-18: `planner/supabase/migrations/20261018203905_add_billable_time_entries.sql`. It adds the default-true field and financial-link constraint, updates the existing trigger/RPC to reject nonbillable invoice work, and preserves prior records. Other existing projects must apply it before deploying the matching frontend. Its synthetic checks are `planner/supabase/tests/billable_hours.sql`.
 
 ### Frontend layout — `planner/src/`
 

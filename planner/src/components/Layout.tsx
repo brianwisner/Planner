@@ -79,7 +79,7 @@ export function Layout({ children }: { children: ReactNode }) {
           </button>
           {running && (
             <button className="timer-pill" onClick={stopTimer} title="Click to stop the timer">
-              <span className="dot" /> <TimerClock startedAt={running.started_at!} /> <span className="timer-job">· {jobs.find(j => j.id === running.job_id)?.name}</span> <Icon name="stop" size={12} /> <span>Stop</span>
+              <span className="dot" /> <TimerClock startedAt={running.started_at!} />{running.billable === false && <span>Nonbillable</span>} <span className="timer-job">· {jobs.find(j => j.id === running.job_id)?.name}</span> <Icon name="stop" size={12} /> <span>Stop</span>
             </button>
           )}
           {netOffline ? <span className="badge overdue">Offline</span> : !online && <span className="badge ok hide-mobile" title="Live updates from other devices are paused. The app refreshes when you switch back to this tab.">Live sync paused</span>}

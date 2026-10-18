@@ -204,10 +204,14 @@ create table if not exists time_entries (
   started_at timestamptz,                       -- set while a timer is running
   rate numeric,                                 -- $/hour saved when the entry is created
   notes text default '',
+  billable boolean not null default true,        -- internal/rework hours remain recorded without charging the client
   billed boolean not null default false,
   invoice_id uuid references invoices(id) on delete set null,
   deposit_applied numeric check (deposit_applied >= 0), -- deposit credit saved when the remaining work is invoiced; null for legacy/unbilled rows
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  constraint time_entries_nonbillable_unlinked check (
+    billable or (not billed and invoice_id is null and coalesce(deposit_applied, 0) = 0)
+  )
 );
 
 -- Save the billing rate on each new time entry (person's rate, else company default),
@@ -276,6 +280,13 @@ begin
   end if;
   if not new.billed or new.invoice_id is null then
     new.deposit_applied := null;
+  end if;
+  if tg_table_name = 'time_entries' then
+    if not new.billable and (new.billed or new.invoice_id is not null or coalesce(new.deposit_applied, 0) <> 0) then
+      raise exception 'Non-billable hours cannot be invoiced or use deposits. Unbill these hours before changing their billing type.';
+    end if;
+  end if;
+  if not new.billed or new.invoice_id is null then
     return new;
   end if;
   if tg_op = 'UPDATE' and old.deposit_applied > 0 and old.job_id <> new.job_id then
@@ -377,7 +388,7 @@ begin
   select greatest(0,
       coalesce((select sum(amount) from public.deposits where job_id = p_job_id), 0)
       - coalesce((select sum(greatest(0, coalesce(deposit_applied, 0))) from public.time_entries
-          where job_id = p_job_id and billed and hours is not null), 0)
+          where job_id = p_job_id and billable and billed and hours is not null), 0)
       - coalesce((select sum(greatest(0, coalesce(deposit_applied, 0))) from public.job_items
           where job_id = p_job_id and billed), 0))
     into available_deposit;
@@ -386,26 +397,29 @@ begin
   -- status. Tie breakers match jobCharges() so equal timestamps are stable.
   for work_row in
     select * from (
-      select 'time_entries'::text as table_name, e.id, e.date, e.created_at, e.billed,
+      select 'time_entries'::text as table_name, e.id, e.date, e.created_at, e.billed, e.billable,
         e.hours * coalesce(e.rate, p.hourly_rate,
           (select default_rate from public.settings where id = 1), 150) as amount,
         0 as kind_order
       from public.time_entries e left join public.profiles p on p.id = e.user_id
       where e.job_id = p_job_id and e.hours is not null
       union all
-      select 'job_items', i.id, i.date, i.created_at, i.billed,
+      select 'job_items', i.id, i.date, i.created_at, i.billed, true,
         i.quantity * i.unit_price, 1
       from public.job_items i where i.job_id = p_job_id
     ) work order by date, created_at, kind_order, id
   loop
     coverage := 0;
-    if not work_row.billed then
+    if work_row.billable and not work_row.billed then
       coverage := greatest(0, least(available_deposit, work_row.amount));
       available_deposit := available_deposit - coverage;
     end if;
     select value into requested_link from jsonb_array_elements(p_links)
       where value->>'table' = work_row.table_name and (value->>'id')::uuid = work_row.id;
     if requested_link is not null then
+      if not work_row.billable then
+        raise exception 'Non-billable hours cannot be invoiced. Select billable work only.';
+      end if;
       if work_row.billed or work_row.amount is null
           or work_row.amount::text in ('NaN', 'Infinity', '-Infinity')
           or abs(work_row.amount - (requested_link->>'amount')::numeric) > 0.000001
@@ -427,7 +441,7 @@ begin
     if requested_link->>'table' = 'time_entries' then
       update public.time_entries set billed = true, invoice_id = new_invoice.id,
         deposit_applied = (requested_link->>'depositApplied')::numeric
-        where id = (requested_link->>'id')::uuid and job_id = p_job_id and not billed;
+        where id = (requested_link->>'id')::uuid and job_id = p_job_id and billable and not billed;
     else
       update public.job_items set billed = true, invoice_id = new_invoice.id,
         deposit_applied = (requested_link->>'depositApplied')::numeric

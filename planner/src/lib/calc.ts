@@ -44,6 +44,11 @@ export function entryAmount(store: Pick<Store, 'profiles' | 'settings'>, e: Time
   return entryHours(e) * entryRate(store, e)
 }
 
+/** Older rows without the new flag keep their historical billable behavior. */
+export function isBillable(e: Pick<TimeEntry, 'billable'>): boolean {
+  return e.billable !== false
+}
+
 export function itemAmount(i: JobItem): number {
   return (Number(i.quantity) || 0) * (Number(i.unit_price) || 0)
 }
@@ -55,11 +60,12 @@ export function itemAmount(i: JobItem): number {
  *  - unbilled: not on an invoice and no deposit left to cover it
  *  - billed:   on an invoice that hasn't been paid yet
  *  - paid:     on an invoice that has been paid
+ *  - nonbillable: time retained as effort, excluded from deposits and invoicing
  * Deposits pay for un-invoiced hours AND charges oldest-first. When work is
  * invoiced, its deposit coverage is saved on the row so that billing the unpaid
  * remainder does not make the same deposit available to pay for other work.
  */
-export type HourStatus = 'deposit' | 'partial' | 'unbilled' | 'billed' | 'paid'
+export type HourStatus = 'deposit' | 'partial' | 'unbilled' | 'billed' | 'paid' | 'nonbillable'
 
 export interface HourMoney {
   entry: TimeEntry
@@ -81,6 +87,7 @@ export const HOUR_STATUS_LABEL: Record<HourStatus, string> = {
   unbilled: 'Not billed',
   billed: 'Billed, not paid',
   paid: 'Paid',
+  nonbillable: 'Non-billable',
 }
 
 // Keep PostgreSQL's microsecond precision while normalizing offsets and missing
@@ -105,7 +112,7 @@ export function jobCharges(store: MoneyStore, jobId: string): { hours: HourMoney
   // Reserve billed coverage first: even new backdated work must not spend a
   // deposit already applied to an invoice. Legacy billed rows have no snapshot;
   // treating them as zero avoids inventing a credit from an editable invoice amount.
-  const reserved = sum(rows.filter(r => r.kind === 'h' ? r.e.billed : r.it.billed).map(savedCoverage))
+  const reserved = sum(rows.filter(r => r.kind === 'h' ? r.e.billed && isBillable(r.e) : r.it.billed).map(savedCoverage))
   let pool = Math.max(0, deposits - reserved)
   const hours: HourMoney[] = []
   const items: ItemMoney[] = []
@@ -115,7 +122,9 @@ export function jobCharges(store: MoneyStore, jobId: string): { hours: HourMoney
     const amount = r.kind === 'h' ? entryAmount(store, r.e) : itemAmount(r.it)
     let covered = 0
     let status: HourStatus
-    if (billed) {
+    if (r.kind === 'h' && !isBillable(r.e)) {
+      status = 'nonbillable'
+    } else if (billed) {
       covered = savedCoverage(r)
       const inv = invoiceId ? invoices.get(invoiceId) : undefined
       status = inv?.paid_date ? 'paid' : 'billed'
@@ -159,7 +168,10 @@ export interface JobBilling {
   job: Job
   fee: number | null
   loggedHours: number
-  hoursValue: number       // hours × their rates
+  billableHours: number
+  nonBillableHours: number
+  nonBillableValue: number // non-billable effort at saved rates, already included in hoursValue
+  hoursValue: number       // ALL completed hours × their rates, including non-billable time
   itemsValue: number       // charges (expenses, fees...)
   workValue: number        // hours + charges
   deposits: number         // deposits received
@@ -169,6 +181,8 @@ export interface JobBilling {
   paid: number             // invoices that have been paid
   outstanding: number      // invoiced but not paid
   collected: number        // deposits + paid invoices (cash actually received)
+  feeRevenue: number       // deposits + invoices, less their funded portions of separate charges
+  effectiveHourlyRate: number | null // feeRevenue / ALL completed hours, null before any hours are logged
   billedHours: number
   unbilledHours: number    // hours (or part-hours) nobody has paid or been billed for
   unbilledItems: number    // $ of charges not billed
@@ -188,15 +202,33 @@ export function jobBilling(store: MoneyStore, job: Job): JobBilling {
   const hoursValue = sum(hours.map(h => h.amount))
   const itemsValue = sum(items.map(i => i.amount))
   const workValue = hoursValue + itemsValue
+  const loggedHours = sum(hours.map(h => entryHours(h.entry)))
+  const nonBillable = hours.filter(h => h.status === 'nonbillable')
+  // Deposits and invoice amounts each appear once in the chosen revenue basis.
+  // Separate charges are excluded only to the extent they are funded: first by
+  // deposit coverage, then by their own invoice. Custom invoice amounts fund
+  // linked charges before fees; standalone invoices contain no linked charges.
+  const chargeDepositFunding = sum(items.map(i => Math.max(0, i.covered)))
+  const chargeInvoiceFunding = sum(inv.map(invoice => Math.min(
+    Math.max(0, invoice.amount),
+    sum(items.filter(i => i.item.billed && i.item.invoice_id === invoice.id).map(i => Math.max(0, i.amount - i.covered))),
+  )))
+  // A deleted deposit can leave a retained historical charge snapshot. That
+  // snapshot must not turn the fee revenue attributed to current funds negative.
+  const feeRevenue = Math.max(0, deposits + invoiced - chargeDepositFunding - chargeInvoiceFunding)
   const depositUsed = sum(all.map(h => h.covered))
   const open = (s: HourStatus) => s === 'unbilled' || s === 'partial'
   const unbilledH = hours.filter(h => open(h.status))
   const unbilledItems = sum(items.filter(i => open(i.status)).map(i => i.amount - i.covered))
   return {
     job, fee: job.fee,
-    loggedHours: sum(hours.map(h => entryHours(h.entry))),
+    loggedHours,
+    billableHours: sum(hours.filter(h => h.status !== 'nonbillable').map(h => entryHours(h.entry))),
+    nonBillableHours: sum(nonBillable.map(h => entryHours(h.entry))),
+    nonBillableValue: sum(nonBillable.map(h => h.amount)),
     hoursValue, itemsValue, workValue, deposits, depositUsed, depositRemaining: Math.max(0, deposits - depositUsed),
     invoiced, paid, outstanding: invoiced - paid, collected: deposits + paid,
+    feeRevenue, effectiveHourlyRate: loggedHours > 0 ? feeRevenue / loggedHours : null,
     billedHours: sum(hours.filter(h => h.status === 'billed' || h.status === 'paid').map(h => entryHours(h.entry))),
     unbilledHours: sum(unbilledH.map(h => entryHours(h.entry) * (h.amount > 0 ? (h.amount - h.covered) / h.amount : 1))),
     unbilledItems,
