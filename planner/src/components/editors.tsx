@@ -1,6 +1,6 @@
 // Pop-up forms for creating and editing things: tasks, jobs, clients,
 // time entries and invoices. Every page reuses these.
-import { useEffect, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useData } from '../lib/store'
 import type { Client, Deposit, Invoice, Job, JobItem, JobStatus, Recurrence, Task, TaskStatus, TimeEntry } from '../lib/types'
@@ -298,11 +298,13 @@ export function ClientModal({ client, onClose, onCreated }: { client?: Client; o
 /* =============== Time entry =============== */
 export function TimeModal({ entry, defaults, onClose }: { entry?: TimeEntry; defaults?: Partial<TimeEntry>; onClose: () => void }) {
   const { jobs, phases, tasks, timeEntries, clients, me, profiles, settings, insert, update, remove, toast } = useData()
-  const activeJobs = jobs.filter(j => j.status !== 'archived')
+  const activeJobs = jobs.filter(j => j.status !== 'archived' || j.id === entry?.job_id || j.id === defaults?.job_id)
   const personRate = (uid: string) => rateFor(profiles.find(p => p.id === uid), settings.default_rate)
+  const defaultJobId = entry?.job_id ?? defaults?.job_id ?? activeJobs[0]?.id ?? ''
+  const defaultPhase = (jobId: string) => workPhase([...phases].sort((a, b) => a.sort_order - b.sort_order), jobId)?.id ?? null
   const [d, setD] = useState({
-    job_id: entry?.job_id ?? defaults?.job_id ?? activeJobs[0]?.id ?? '',
-    phase_id: entry?.phase_id ?? defaults?.phase_id ?? null as string | null,
+    job_id: defaultJobId,
+    phase_id: entry ? entry.phase_id : defaults?.phase_id !== undefined ? defaults.phase_id : defaultPhase(defaultJobId),
     task_id: entry?.task_id ?? defaults?.task_id ?? null as string | null,
     user_id: entry?.user_id ?? me?.id ?? '',
     date: entry?.date ?? defaults?.date ?? todayISO(),
@@ -318,7 +320,6 @@ export function TimeModal({ entry, defaults, onClose }: { entry?: TimeEntry; def
   const set = <K extends keyof typeof d>(k: K, v: (typeof d)[K]) => setD(x => ({ ...x, [k]: v }))
   const jobPhases = phases.filter(p => p.job_id === d.job_id)
   const jobTasks = tasks.filter(t => t.job_id === d.job_id && (!d.phase_id || t.phase_id === d.phase_id))
-  useEffect(() => { if (!jobPhases.some(p => p.id === d.phase_id)) setD(x => ({ ...x, phase_id: workPhase(phases, d.job_id)?.id ?? null })) }, [d.job_id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   async function save() {
     if (busy.current) return
@@ -346,7 +347,7 @@ export function TimeModal({ entry, defaults, onClose }: { entry?: TimeEntry; def
       <div className="row">
         <div className="field">
           <label>Job</label>
-          <select value={d.job_id} onChange={e => { set('job_id', e.target.value); set('task_id', null) }}>
+          <select value={d.job_id} onChange={e => setD(current => ({ ...current, job_id: e.target.value, phase_id: defaultPhase(e.target.value), task_id: null }))}>
             {activeJobs.map(j => <option key={j.id} value={j.id}>{j.job_number ? `${j.job_number} · ` : ''}{j.name} ({clients.find(c => c.id === j.client_id)?.name})</option>)}
           </select>
         </div>
@@ -356,6 +357,7 @@ export function TimeModal({ entry, defaults, onClose }: { entry?: TimeEntry; def
           <label>Phase</label>
           <select value={d.phase_id ?? ''} onChange={e => { set('phase_id', e.target.value || null); set('task_id', null) }}>
             <option value="">General</option>
+            {d.phase_id && !jobPhases.some(phase => phase.id === d.phase_id) && <option value={d.phase_id}>Unavailable phase (saved)</option>}
             {jobPhases.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
           </select>
         </div>
@@ -453,7 +455,7 @@ function suggestInvoiceNumber(invoices: Invoice[]): string {
 /* =============== Deposit =============== */
 export function DepositModal({ deposit, jobId, onClose }: { deposit?: Deposit; jobId?: string; onClose: () => void }) {
   const { jobs, clients, insert, update, remove, toast } = useData()
-  const openJobs = jobs.filter(j => j.status !== 'archived')
+  const openJobs = jobs.filter(j => j.status !== 'archived' || j.id === deposit?.job_id || j.id === jobId)
   const [d, setD] = useState({
     job_id: deposit?.job_id ?? jobId ?? openJobs[0]?.id ?? '',
     amount: deposit?.amount ?? (null as number | null),
@@ -500,7 +502,7 @@ export function DepositModal({ deposit, jobId, onClose }: { deposit?: Deposit; j
 /* =============== Charge (billable item other than hours) =============== */
 export function ItemModal({ item, jobId, onClose }: { item?: JobItem; jobId?: string; onClose: () => void }) {
   const { jobs, clients, me, insert, update, remove, toast } = useData()
-  const openJobs = jobs.filter(j => j.status !== 'archived')
+  const openJobs = jobs.filter(j => j.status !== 'archived' || j.id === item?.job_id || j.id === jobId)
   const [d, setD] = useState({
     job_id: item?.job_id ?? jobId ?? openJobs[0]?.id ?? '',
     date: item?.date ?? todayISO(),
