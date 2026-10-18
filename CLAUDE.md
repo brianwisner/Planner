@@ -69,6 +69,7 @@ lib/
                     realtime, exposes insert/update/remove (optimistic) + toast
   calc.ts           hours, billing and workload math (shared by pages)
   dashboard.ts      owner overview: action scopes, bounded weekly time, queue, billing, job checks
+  jobs.ts           job overview rows, linked next steps/deadlines, URL search/status/focus filters
   billingActions.ts captures invoice work values and deposit credits when the form opens
   taskActions.ts    shared task completion, recurrence, duplicate prevention, retry handling
   calendar.ts       calendar items from jobs/phases/tasks, Google link, .ics builder
@@ -109,6 +110,7 @@ Conventions:
 - Keep touch targets ≥ 40px; `hide-mobile` class hides non-essential columns on phones.
 - The owner specifically prefers compact job-status dropdowns: 28px high on desktop, 30px on phones, with an inset chevron and room between the label and arrow. Preserve this sizing when editing the shared control.
 - Dashboard tasks/deadlines cover active and on-hold jobs; the priority queue covers active jobs only. Financial totals retain all nonarchived jobs, including completed/cancelled obligations. Weekly actuals are completed Monday–Sunday hours across all historical ownership, separate from running timers and remaining active-job plans. The dashboard hourly return divides lifetime recorded fees by lifetime completed hours; never combine that revenue with the weekly denominator.
+- Jobs keeps status, client, search, focus, and the four views in the URL. Quick-filter counts follow status/client/search before the focus filter. List view shows linked next tasks and the earliest open job/phase/task deadline; closed jobs retain recorded dates and billing history without active deadline alerts. Plan hours defaults off when no preference exists. Reordering requires an explicit mode on the full open-job list in ascending priority order; hidden job priorities are preserved. Planned-hour inputs edit the owner's rows, show other saved plans separately, and count all saved plans on active jobs in capacity totals.
 - Phone navigation has Dashboard, Jobs, Calendar, Time, and a More menu for Clients, Billing, Reports, and Settings. Log hours and Add task are visible in the top bar.
 - No CSS framework, no icon library (icons are inline SVG paths in `ui.tsx`).
 
