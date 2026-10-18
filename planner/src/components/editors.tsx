@@ -1,13 +1,17 @@
 // Pop-up forms for creating and editing things: tasks, jobs, clients,
 // time entries and invoices. Every page reuses these.
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useData } from '../lib/store'
 import type { Client, Deposit, Invoice, Job, JobItem, JobStatus, Recurrence, Task, TaskStatus, TimeEntry } from '../lib/types'
 import { ITEM_CATEGORIES } from '../lib/types'
 import { rateFor, workPhase } from '../lib/calc'
 import { JOB_STATUS_LABEL, RECURRENCE_LABEL, TASK_STATUS_LABEL } from '../lib/types'
-import { fmtMoney, nextOccurrence, todayISO } from '../lib/utils'
+import { fmtMoney, todayISO } from '../lib/utils'
+import { saveTask } from '../lib/taskActions'
+import { invoiceWorkLinks } from '../lib/billingActions'
 import { Modal } from './ui'
+
+export { toggleTaskDone } from '../lib/taskActions'
 
 /* =============== Task =============== */
 export interface TaskDraft {
@@ -26,7 +30,8 @@ export interface TaskDraft {
 }
 
 export function TaskModal({ task, defaults, onClose }: { task?: Task; defaults?: Partial<TaskDraft>; onClose: () => void }) {
-  const { jobs, phases, clients, insert, update, remove, me, toast } = useData()
+  const store = useData()
+  const { jobs, phases, clients, remove, me, toast } = store
   const activeJobs = jobs.filter(j => (j.status !== 'archived' && j.status !== 'cancelled') || j.id === task?.job_id || j.id === defaults?.job_id)
   const [d, setD] = useState<TaskDraft>(() => task ? {
     id: task.id, job_id: task.job_id, phase_id: task.phase_id, title: task.title, description: task.description, status: task.status,
@@ -38,6 +43,8 @@ export function TaskModal({ task, defaults, onClose }: { task?: Task; defaults?:
     is_site_visit: defaults?.is_site_visit ?? false, estimate_hours: null, recurrence: 'none',
   })
   const [saving, setSaving] = useState(false)
+  const savingRef = useRef(false)
+  const persistedTask = useRef<Task | undefined>(task)
   const jobPhases = phases.filter(p => p.job_id === d.job_id)
   const set = <K extends keyof TaskDraft>(k: K, v: TaskDraft[K]) => setD(x => ({ ...x, [k]: v }))
 
@@ -45,19 +52,26 @@ export function TaskModal({ task, defaults, onClose }: { task?: Task; defaults?:
   const timePart = d.scheduled_at ? localTime(d.scheduled_at) : '09:00'
 
   async function save() {
+    if (savingRef.current) return
     if (!d.title.trim() || !d.job_id) { toast('Give the task a title and a job', 'error'); return }
+    savingRef.current = true
     setSaving(true)
     const row: Partial<Task> = {
       job_id: d.job_id, phase_id: d.phase_id, title: d.title.trim(), description: d.description, status: d.status,
       assignee_id: d.assignee_id, due_date: d.due_date, is_site_visit: d.is_site_visit,
       scheduled_at: d.is_site_visit && d.due_date ? new Date(`${d.due_date}T${timePart}:00`).toISOString() : null,
       estimate_hours: d.estimate_hours, recurrence: d.recurrence,
-      completed_at: d.status === 'done' ? (task?.completed_at ?? new Date().toISOString()) : null,
     }
-    if (task) await update('tasks', task.id, row)
-    else await insert('tasks', { ...row, created_by: me?.id ?? null })
-    setSaving(false)
-    onClose()
+    try {
+      const result = await saveTask(store, persistedTask.current, row)
+      // A new completed task may save while the successor fails. Retry that
+      // same task rather than inserting a second original task.
+      if (result.task) persistedTask.current = result.task
+      if (result.success) onClose()
+    } finally {
+      savingRef.current = false
+      setSaving(false)
+    }
   }
 
   async function del() {
@@ -138,24 +152,6 @@ export function TaskModal({ task, defaults, onClose }: { task?: Task; defaults?:
 function localTime(iso: string) {
   const d = new Date(iso)
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
-}
-
-/** Mark a task done or not done. Recurring tasks spawn their next occurrence. */
-export async function toggleTaskDone(store: ReturnType<typeof useData>, task: Task) {
-  const done = task.status !== 'done'
-  await store.update('tasks', task.id, { status: done ? 'done' : 'todo', completed_at: done ? new Date().toISOString() : null })
-  if (done && task.recurrence !== 'none' && task.due_date) {
-    const next = nextOccurrence(task.due_date, task.recurrence)
-    if (next) {
-      await store.insert('tasks', {
-        job_id: task.job_id, phase_id: task.phase_id, title: task.title, description: task.description, status: 'todo',
-        assignee_id: store.me?.id ?? null, due_date: next, is_site_visit: task.is_site_visit, estimate_hours: task.estimate_hours,
-        recurrence: task.recurrence, sort_order: task.sort_order, created_by: task.created_by,
-        scheduled_at: task.scheduled_at ? new Date(`${next}T${localTime(task.scheduled_at)}:00`).toISOString() : null,
-      })
-      store.toast(`Next "${task.title}" scheduled for ${next}`)
-    }
-  }
 }
 
 /* =============== Job =============== */
@@ -320,8 +316,12 @@ export function TimeModal({ entry, defaults, onClose }: { entry?: TimeEntry; def
 
   async function save() {
     if (!d.job_id || d.hours == null || d.hours <= 0) { toast('Enter the job and the hours', 'error'); return }
-    if (entry) await update('time_entries', entry.id, { ...d, started_at: null })
-    else await insert('time_entries', { ...d, started_at: null })
+    const credit = entry?.billed ? entry.deposit_applied ?? 0 : 0
+    if (entry && credit > 0 && (d.job_id !== entry.job_id || d.hours * (d.rate ?? personRate(d.user_id)) < credit)) {
+      toast('Unbill these hours before moving them to another job or reducing their value below the applied deposit.', 'error'); return
+    }
+    if (entry) { if (!await update('time_entries', entry.id, { ...d, started_at: null })) return }
+    else if (!await insert('time_entries', { ...d, started_at: null })) return
     onClose()
   }
   async function del() { if (entry && confirm('Delete this time entry?')) { await remove('time_entries', entry.id); onClose() } }
@@ -372,7 +372,14 @@ export function TimeModal({ entry, defaults, onClose }: { entry?: TimeEntry; def
 
 /* =============== Invoice =============== */
 export function InvoiceModal({ invoice, jobId, entryIds, itemIds, defaultAmount, onClose }: { invoice?: Invoice; jobId: string; entryIds?: string[]; itemIds?: string[]; defaultAmount?: number; onClose: () => void }) {
-  const { invoices, timeEntries, items, insert, update, remove, toast } = useData()
+  const store = useData()
+  const { invoices, recordInvoice, update, remove, toast } = store
+  const [selection] = useState(() => {
+    try { return { links: invoiceWorkLinks(store, jobId, entryIds ?? [], itemIds ?? []), error: null } }
+    catch (e) { return { links: [], error: (e as Error).message } }
+  })
+  const busy = useRef(false)
+  const [saving, setSaving] = useState(false)
   const [d, setD] = useState({
     number: invoice?.number ?? suggestInvoiceNumber(invoices),
     amount: invoice?.amount ?? Math.round(defaultAmount ?? 0),
@@ -382,29 +389,31 @@ export function InvoiceModal({ invoice, jobId, entryIds, itemIds, defaultAmount,
   })
   const set = <K extends keyof typeof d>(k: K, v: (typeof d)[K]) => setD(x => ({ ...x, [k]: v }))
   async function save() {
-    if (invoice) await update('invoices', invoice.id, d)
-    else {
-      const created = await insert('invoices', { ...d, job_id: jobId })
-      if (created && (entryIds?.length || itemIds?.length)) {
-        await Promise.all((entryIds ?? []).map(id => update('time_entries', id, { billed: true, invoice_id: created.id })))
-        await Promise.all((itemIds ?? []).map(id => update('job_items', id, { billed: true, invoice_id: created.id })))
-        const parts = [entryIds?.length ? `${entryIds.length} time entr${entryIds.length === 1 ? 'y' : 'ies'}` : '', itemIds?.length ? `${itemIds.length} charge${itemIds.length === 1 ? '' : 's'}` : ''].filter(Boolean)
-        toast(`${parts.join(' and ')} marked as billed`)
+    if (busy.current) return
+    busy.current = true; setSaving(true)
+    try {
+      if (invoice) {
+        if (!await update('invoices', invoice.id, d)) return
+      } else {
+        if (selection.error) { toast(selection.error, 'error'); return }
+        // The database validates these opening values and saves the invoice
+        // and every selected row together, or rolls the whole operation back.
+        if (!await recordInvoice({ ...d, job_id: jobId }, selection.links)) return
+        if (selection.links.length) toast('Selected hours and charges marked as billed')
       }
-    }
-    onClose()
+      onClose()
+    } catch (e) { toast((e as Error).message, 'error') }
+    finally { busy.current = false; setSaving(false) }
   }
   async function del() {
     if (!invoice || !confirm('Delete this invoice? Hours on it will become unbilled again.')) return
-    await Promise.all(timeEntries.filter(e => e.invoice_id === invoice.id).map(e => update('time_entries', e.id, { billed: false, invoice_id: null })))
-    await Promise.all(items.filter(i => i.invoice_id === invoice.id).map(i => update('job_items', i.id, { billed: false, invoice_id: null })))
-    await remove('invoices', invoice.id); onClose()
+    if (await remove('invoices', invoice.id)) onClose()
   }
   return (
     <Modal title={invoice ? 'Edit invoice' : 'Record invoice'} onClose={onClose} footer={<>
-      {invoice && <button className="btn danger left" onClick={del}>Delete</button>}
+      {invoice && <button className="btn danger left" onClick={del} disabled={saving}>Delete</button>}
       <button className="btn" onClick={onClose}>Cancel</button>
-      <button className="btn primary" onClick={save}>Save</button>
+      <button className="btn primary" onClick={save} disabled={saving}>{saving ? 'Saving…' : 'Save'}</button>
     </>}>
       {((entryIds?.length ?? 0) + (itemIds?.length ?? 0)) > 0 && <p className="small muted">{[entryIds?.length ? `${entryIds.length} time entr${entryIds.length === 1 ? 'y' : 'ies'}` : '', itemIds?.length ? `${itemIds.length} charge${itemIds.length === 1 ? '' : 's'}` : ''].filter(Boolean).join(' and ')} will be marked as billed on this invoice.</p>}
       <div className="row">
@@ -489,9 +498,13 @@ export function ItemModal({ item, jobId, onClose }: { item?: JobItem; jobId?: st
   const miles = d.category === 'Mileage'
   async function save() {
     if (!d.job_id || !d.unit_price || !d.quantity) { toast('Enter the amount', 'error'); return }
+    const credit = item?.billed ? item.deposit_applied ?? 0 : 0
+    if (item && credit > 0 && (d.job_id !== item.job_id || amount < credit)) {
+      toast('Unbill this charge before moving it to another job or reducing its value below the applied deposit.', 'error'); return
+    }
     const row = { ...d, quantity: d.quantity, unit_price: d.unit_price, description: d.description.trim() }
-    if (item) await update('job_items', item.id, row)
-    else { await insert('job_items', { ...row, created_by: me?.id ?? null }); toast('Charge added') }
+    if (item) { if (!await update('job_items', item.id, row)) return }
+    else { if (!await insert('job_items', { ...row, created_by: me?.id ?? null })) return; toast('Charge added') }
     onClose()
   }
   async function del() { if (item && confirm('Delete this charge?')) { await remove('job_items', item.id); onClose() } }

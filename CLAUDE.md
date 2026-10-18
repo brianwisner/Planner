@@ -34,7 +34,9 @@ It contains two separate things:
 - `time_entries.billed` + `invoice_id` link hours to invoices. `time_entries.rate` is the $/hour saved on insert by the `time_entry_rate` trigger (person's `hourly_rate`, else `settings.default_rate`), so rate changes never rewrite past hours.
 - `schedule_entries` (job_id, phase_id, user_id, date, hours): **planned** hours (not worked time), created by dragging on the Gantt chart via `components/ScheduleModal.tsx`. The app merges by (job, phase, person, date): editing updates the row, 0/blank deletes it.
 - `job_items` (job_id, date, category, description, quantity, unit_price, billed, invoice_id): billable **charges** that aren't hours (expenses, mileage, fees). Amount = quantity × unit_price. Edited in `ItemModal` (`editors.tsx`); invoiced alongside hours.
-- `deposits` (job_id, amount, received_date, method, notes): retainers. The app (not the DB) applies them to a job's **un-invoiced** hours and charges oldest-first (`jobCharges()`).
+- `deposits` (job_id, amount, received_date, method, notes): retainers. `jobCharges()` applies them to a job's **un-invoiced** hours and charges oldest-first; the invoice RPC independently validates the same allocation before saving.
+- Invoiced work retains `deposit_applied` on each time entry/charge. `jobCharges()` reserves these saved credits before allocating remaining deposits, and only the remainder counts as awaiting invoice payment. New invoices use the `record_invoice` RPC to validate the form's original amounts/credits and save all links atomically. Invoice deletion/unbilling clears credits; legacy `NULL` credits are never inferred from editable invoice amounts. Work with a saved credit must be unbilled before moving jobs or reducing its value below that credit.
+- `tasks.recurrence_parent_id` uniquely links each generated occurrence to its predecessor. All completion paths use `lib/taskActions.ts`; reopening/completing again reuses the successor. Legacy matching excludes ancestors and checks original as well as edited attributes. Completion and successor creation are two writes; a failed successor reports an error and can be retried by saving the completed task again.
 - Money model lives in `src/lib/calc.ts`:
   - `jobHours()` gives each entry a status: `deposit` (paid by deposit), `partial`, `unbilled`, `billed` (on an unpaid invoice), `paid` (invoice paid).
   - `jobBilling()` totals per job; **balance = deposits + invoiced − work value** (work value = hours value + charges value) (the owner's definition of job profitability: drops as hours are logged, rises when a deposit arrives or an invoice is sent). `collected` = deposits + paid invoices.
@@ -49,6 +51,8 @@ It contains two separate things:
 
 The existing-project migration for Cancelled is `planner/supabase/migrations/20261017182411_add_cancelled_job_status.sql`. It is applied to the live project, and the updated `ics` Edge Function is deployed so subscribed calendars omit cancelled work. Keep migration filenames aligned with the live migration history.
 
+Before deploying the recurrence/deposit fixes, apply `planner/supabase/migrations/20261018200639_preserve_deposit_credits_and_recurring_task_parent.sql`. It adds the columns, constraints, normalization trigger, and atomic invoicing RPC without backfilling financial history. See `planner/supabase/README.md` for rollout and disposable-database checks.
+
 ### Frontend layout — `planner/src/`
 
 ```
@@ -60,6 +64,8 @@ lib/
   store.tsx         DataProvider / useData(): loads ALL tables once, subscribes to
                     realtime, exposes insert/update/remove (optimistic) + toast
   calc.ts           hours, billing and workload math (shared by pages)
+  billingActions.ts captures invoice work values and deposit credits when the form opens
+  taskActions.ts    shared task completion, recurrence, duplicate prevention, retry handling
   calendar.ts       calendar items from jobs/phases/tasks, Google link, .ics builder
   reminders.ts      once-a-day browser notification of overdue/due-today items
   utils.ts          date/money/hours formatting, CSV download, recurrence
@@ -69,7 +75,7 @@ components/
   ui.tsx            Icon, Avatar, Person, PersonSelect, status badges/selects,
                     DueBadge, Progress, Modal, Checkbox, Empty
   editors.tsx       TaskModal, JobModal, ClientModal, TimeModal, InvoiceModal,
-                    toggleTaskDone (handles recurring tasks)
+                    re-exports toggleTaskDone from taskActions.ts
   SearchPalette.tsx global search (/)
   Shortcuts.tsx     keyboard shortcut hook + help modal
 views/              reusable big views used inside pages
@@ -92,7 +98,7 @@ index.css           all styles; CSS variables at top; mobile rules at bottom (@m
 
 Conventions:
 - Pages never call Supabase directly; they use `useData()` from `store.tsx`. The store holds every table in memory (fine for a small firm) and refetches a table whenever Supabase realtime reports a change.
-- `update()` is optimistic (UI changes instantly, then saves). `insert()` returns the created row.
+- `update()` is optimistic (UI changes instantly, then saves) and verifies an updated row before returning a success boolean. `remove()` returns a success boolean; `insert()` returns the created row. `recordInvoice()` calls the atomic SQL function and refreshes data after success.
 - Routing uses `HashRouter` (`#/jobs/123`) so GitHub Pages never 404s. Deep links: `/jobs/:id?task=<id>` opens a task, `/billing?job=<id>` opens job billing, `/time?entry=<id>` opens a time entry.
 - Hours display in quarter hours (`fmtHours`). Money via `fmtMoney`.
 - Keep touch targets ≥ 40px; `hide-mobile` class hides non-essential columns on phones.
@@ -111,7 +117,7 @@ Conventions:
 - Deploy: GitHub Actions workflow builds (Vite reads `planner/.env.production`, which holds the Supabase URL and *publishable* key — public by design), copies the shear-wall tool into `dist/shear-wall/`, and pushes the result to the `gh-pages` branch, which GitHub Pages serves. `.env.production` is deliberately un-ignored in `planner/.gitignore`.
 - Live Supabase project: `wisner-planner` (ref `axjyhkyvmbrhtivgofya`, us-east-1). Schema was applied with the Supabase MCP `execute_sql` tool in chunks; note that statements containing `drop …` make that tool wait for a confirmation that never arrives in a cloud session (60s timeout), so write migrations without DROP or run them from the dashboard.
 - Creating logins without the dashboard: insert into `auth.users` + `auth.identities` via SQL (see conversation history / Supabase docs); the `on_auth_user_created` trigger then creates the profile. Password resets by email need Site URL set in Supabase Auth settings, which the MCP cannot change.
-- There is no automated test suite. A throwaway Playwright harness with a fake Supabase backend was used during development (mock PostgREST routes + seeded session); recreate something similar if you need to click through the UI without a real project.
+- Run `npm test` for Vitest calculation, recurrence, and synthetic form regressions. `.github/workflows/checks.yml` runs tests, build, and lint on pull requests. SQL regressions in `planner/supabase/tests/` are for a disposable local database; never run test writes against customer records. Lint currently has existing React warnings; errors must pass.
 
 ### Things the owner is likely to ask for
 

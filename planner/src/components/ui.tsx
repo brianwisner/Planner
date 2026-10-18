@@ -72,7 +72,7 @@ export function PersonSelect({ value, onChange, allowNone = true }: { value: str
 export function JobStatusBadge({ status }: { status: JobStatus }) {
   return <span className={`badge ${status}`}>{JOB_STATUS_LABEL[status]}</span>
 }
-export function JobStatusSelect({ value, onChange, label = 'Job status' }: { value: JobStatus; onChange: (status: JobStatus) => Promise<void>; label?: string }) {
+export function JobStatusSelect({ value, onChange, label = 'Job status' }: { value: JobStatus; onChange: (status: JobStatus) => Promise<unknown>; label?: string }) {
   const [saving, setSaving] = useState(false)
   return (
     <select className={`status-select job-status-select badge ${value}`} value={value} aria-label={label} aria-busy={saving} disabled={saving}

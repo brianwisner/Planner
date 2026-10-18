@@ -79,6 +79,7 @@ export interface Task {
   is_site_visit: boolean
   estimate_hours: number | null
   recurrence: Recurrence
+  recurrence_parent_id: string | null // the completed occurrence that created this task
   sort_order: number
   completed_at: string | null
   created_by: string | null
@@ -109,6 +110,7 @@ export interface TimeEntry {
   notes: string
   billed: boolean
   invoice_id: string | null
+  deposit_applied: number | null // deposit credit preserved when the remainder is invoiced
   created_at: string
 }
 
@@ -145,6 +147,7 @@ export interface JobItem {
   unit_price: number
   billed: boolean
   invoice_id: string | null
+  deposit_applied: number | null // null for unbilled work and legacy invoice links
   created_by: string | null
   created_at: string
 }
