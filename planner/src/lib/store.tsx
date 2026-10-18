@@ -7,6 +7,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import type { Session } from '@supabase/supabase-js'
 import { supabase } from './supabase'
 import type { Client, Comment, Deposit, Invoice, Job, JobItem, Phase, Profile, ScheduleEntry, Settings, Task, TimeEntry } from './types'
+import type { InvoiceWorkLink } from './billingActions'
 
 export interface Tables {
   settings: Settings
@@ -52,8 +53,9 @@ export interface Store {
   online: boolean
   refresh: (table?: TableName) => Promise<void>
   insert: <K extends TableName>(table: K, row: Partial<Tables[K]>) => Promise<Tables[K] | null>
-  update: <K extends TableName>(table: K, id: string | number, patch: Partial<Tables[K]>) => Promise<void>
-  remove: (table: TableName, id: string | number) => Promise<void>
+  update: <K extends TableName>(table: K, id: string | number, patch: Partial<Tables[K]>) => Promise<boolean>
+  remove: (table: TableName, id: string | number) => Promise<boolean>
+  recordInvoice: (invoice: Omit<Invoice, 'id' | 'created_at'>, links: InvoiceWorkLink[]) => Promise<Invoice | null>
   signOut: () => Promise<void>
   toast: (msg: string, kind?: 'ok' | 'error') => void
   toasts: { id: number; msg: string; kind: 'ok' | 'error' }[]
@@ -148,16 +150,28 @@ export function DataProvider({ session, children }: { session: Session | null; c
   const update = useCallback(async <K extends TableName>(table: K, id: string | number, patch: Partial<Tables[K]>) => {
     // Optimistic: apply locally first so the UI feels instant.
     setData(d => ({ ...d, [table]: d[table].map(r => (r as { id: string | number }).id === id ? { ...r, ...patch } : r) }))
-    const { error: err } = await supabase.from(table).update(patch as never).eq('id', id)
-    if (err) { toast(`Could not save: ${err.message}`, 'error'); void fetchTable(table) }
+    const { error: err } = await supabase.from(table).update(patch as never).eq('id', id).select('id').single()
+    if (err) { toast(`Could not save: ${err.message}`, 'error'); void fetchTable(table); return false }
+    return true
   }, [toast, fetchTable])
 
   const remove = useCallback(async (table: TableName, id: string | number) => {
     setData(d => ({ ...d, [table]: d[table].filter(r => (r as { id: string | number }).id !== id) }))
     const { error: err } = await supabase.from(table).delete().eq('id', id)
-    if (err) { toast(`Could not delete: ${err.message}`, 'error'); void fetchTable(table) }
-    else void refresh() // cascades (phases, tasks, time) may have gone with it
+    if (err) { toast(`Could not delete: ${err.message}`, 'error'); void fetchTable(table); return false }
+    await refresh() // cascades (phases, tasks, time) may have gone with it
+    return true
   }, [toast, fetchTable, refresh])
+
+  const recordInvoice = useCallback(async (invoice: Omit<Invoice, 'id' | 'created_at'>, links: InvoiceWorkLink[]) => {
+    const { data: created, error: err } = await supabase.rpc('record_invoice', {
+      p_job_id: invoice.job_id, p_number: invoice.number, p_amount: invoice.amount,
+      p_issued_date: invoice.issued_date, p_paid_date: invoice.paid_date, p_notes: invoice.notes, p_links: links,
+    }).single()
+    if (err) { toast(`Could not save invoice: ${err.message}`, 'error'); return null }
+    await refresh()
+    return created as Invoice
+  }, [toast, refresh])
 
   const signOut = useCallback(async () => { await supabase.auth.signOut() }, [])
 
@@ -177,9 +191,9 @@ export function DataProvider({ session, children }: { session: Session | null; c
       schedule: [...data.schedule_entries].sort((a, b) => a.date.localeCompare(b.date)),
       timeEntries: [...data.time_entries].sort((a, b) => b.date.localeCompare(a.date) || b.created_at.localeCompare(a.created_at)),
       comments: [...data.comments].sort((a, b) => a.created_at.localeCompare(b.created_at)),
-      loading, error, online, refresh, insert, update, remove, signOut, toast, toasts,
+      loading, error, online, refresh, insert, update, remove, recordInvoice, signOut, toast, toasts,
     }
-  }, [data, session, loading, error, online, refresh, insert, update, remove, signOut, toast, toasts])
+  }, [data, session, loading, error, online, refresh, insert, update, remove, recordInvoice, signOut, toast, toasts])
 
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>
 }

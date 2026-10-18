@@ -145,11 +145,11 @@ function DepositsTab() {
   )
 }
 
-const FILTERS: { key: 'all' | 'unbilled' | 'billed' | 'paid'; label: string; match: (s: HourStatus) => boolean }[] = [
+const FILTERS: { key: 'all' | 'unbilled' | 'billed' | 'paid'; label: string; match: (s: HourStatus, covered: number) => boolean }[] = [
   { key: 'all', label: 'All hours', match: () => true },
   { key: 'unbilled', label: 'Not billed', match: s => s === 'unbilled' || s === 'partial' },
   { key: 'billed', label: 'Billed, not paid', match: s => s === 'billed' },
-  { key: 'paid', label: 'Paid', match: s => s === 'paid' || s === 'deposit' || s === 'partial' },
+  { key: 'paid', label: 'Paid', match: (s, covered) => s === 'paid' || covered > 0 },
 ]
 
 function HoursTab() {
@@ -162,9 +162,9 @@ function HoursTab() {
   const base = [...map.values()].filter(h => !jobId || h.entry.job_id === jobId)
     .sort((a, b) => b.entry.date.localeCompare(a.entry.date))
   const f = FILTERS.find(x => x.key === filter)!
-  const rows = base.filter(h => f.match(h.status))
-  const owed = (h: (typeof rows)[number]) => h.status === 'partial' ? h.amount - h.covered : h.amount
-  const totalFor = (k: (typeof FILTERS)[number]['key']) => { const m = FILTERS.find(x => x.key === k)!; return sum(base.filter(h => m.match(h.status)).map(h => k === 'unbilled' ? owed(h) : h.status === 'partial' && k === 'paid' ? h.covered : h.amount)) }
+  const rows = base.filter(h => f.match(h.status, h.covered))
+  const amountFor = (h: (typeof rows)[number], k: typeof filter) => k === 'all' ? h.amount : k === 'paid' ? (h.status === 'paid' ? h.amount : h.covered) : Math.max(0, h.amount - h.covered)
+  const totalFor = (k: typeof filter) => { const m = FILTERS.find(x => x.key === k)!; return sum(base.filter(h => m.match(h.status, h.covered)).map(h => amountFor(h, k))) }
   return (
     <div className="card">
       <div className="filters">
@@ -172,7 +172,7 @@ function HoursTab() {
         <select aria-label="Filter billed hours by job" value={jobId} onChange={e => setJobId(e.target.value)}><option value="">All jobs</option>{jobs.filter(j => j.status !== 'archived').map(j => <option key={j.id} value={j.id}>{j.name}</option>)}</select>
         <span className="grow" />
         <button className="btn sm" onClick={() => downloadCSV(`hours-${filter}.csv`, ['Date', 'Person', 'Client', 'Job #', 'Job', 'Phase', 'Hours', 'Rate', 'Amount $', 'Status', 'Paid by deposit $', 'Invoice', 'Notes'],
-          rows.map(h => { const j = jobs.find(j => j.id === h.entry.job_id); return [h.entry.date, profiles.find(p => p.id === h.entry.user_id)?.full_name, clients.find(c => c.id === j?.client_id)?.name, j?.job_number, j?.name, phases.find(p => p.id === h.entry.phase_id)?.name ?? 'General', entryHours(h.entry), entryRate(store, h.entry), round2(h.amount), HOUR_STATUS_LABEL[h.status], round2(h.covered), store.invoices.find(i => i.id === h.entry.invoice_id)?.number ?? '', h.entry.notes] }))}><Icon name="download" size={14} /> CSV</button>
+          rows.map(h => { const j = jobs.find(j => j.id === h.entry.job_id); return [h.entry.date, profiles.find(p => p.id === h.entry.user_id)?.full_name, clients.find(c => c.id === j?.client_id)?.name, j?.job_number, j?.name, phases.find(p => p.id === h.entry.phase_id)?.name ?? 'General', entryHours(h.entry), entryRate(store, h.entry), round2(amountFor(h, filter)), HOUR_STATUS_LABEL[h.status], round2(h.covered), store.invoices.find(i => i.id === h.entry.invoice_id)?.number ?? '', h.entry.notes] }))}><Icon name="download" size={14} /> CSV</button>
       </div>
       {rows.length === 0 && <Empty>No hours in this list.</Empty>}
       {rows.length > 0 && <div className="table-wrap"><table>
@@ -185,7 +185,7 @@ function HoursTab() {
                 <td className="nowrap">{fmtDate(h.entry.date)}</td>
                 <td>{j?.name}<div className="tiny muted">{phases.find(p => p.id === h.entry.phase_id)?.name ?? 'General'}{h.entry.notes && ` · ${h.entry.notes}`}</div></td>
                 <td className="num hide-mobile nowrap">{fmtHours(h.entry.hours)} × ${entryRate(store, h.entry)}</td>
-                <td className="num">{fmtMoney(h.amount)}</td>
+                <td className="num">{fmtMoney(amountFor(h, filter))}</td>
                 <td><StatusBadge h={h} /></td>
               </tr>
             )
@@ -201,9 +201,9 @@ export function StatusBadge({ h }: { h: { status: HourStatus; amount: number; co
   const { invoices } = useData()
   const invoiceId = h.entry?.invoice_id ?? h.item?.invoice_id
   const inv = invoices.find(i => i.id === invoiceId)
-  const label = h.status === 'partial' ? `${fmtMoney(h.amount - h.covered)} not billed` : HOUR_STATUS_LABEL[h.status]
+  const label = h.status === 'partial' ? `${fmtMoney(h.amount - h.covered)} not billed` : h.status === 'billed' && h.covered > 0 ? `${fmtMoney(Math.max(0, h.amount - h.covered))} billed, not paid` : HOUR_STATUS_LABEL[h.status]
   return (
-    <span className={`badge h-${h.status}`} title={h.status === 'partial' ? `Deposit covers ${fmtMoney(h.covered)} of ${fmtMoney(h.amount)}` : undefined}>
+    <span className={`badge h-${h.status}`} title={h.covered > 0 ? `Deposit covers ${fmtMoney(h.covered)} of ${fmtMoney(h.amount)}` : undefined}>
       {label}{inv && (h.status === 'billed' || h.status === 'paid') ? ` · ${inv.number}` : ''}
     </span>
   )
@@ -229,7 +229,7 @@ function JobMoney({ jobId, onBack }: { jobId: string; onBack: () => void }) {
   const jobDeposits = deposits.filter(d => d.job_id === job.id)
   const jobInv = invoices.filter(i => i.job_id === job.id)
   const f = FILTERS.find(x => x.key === filter)!
-  const list = [...hours].reverse().filter(h => f.match(h.status))
+  const list = [...hours].reverse().filter(h => f.match(h.status, h.covered))
   const selectable = (s: HourStatus) => s === 'unbilled' || s === 'partial'
   const owedSel = sum(hours.filter(h => sel.has(h.entry.id)).map(h => h.amount - h.covered)) + sum(itemRows.filter(i => sel.has(i.item.id)).map(i => i.amount - i.covered))
   const selEntryIds = hours.filter(h => sel.has(h.entry.id)).map(h => h.entry.id)
@@ -329,7 +329,7 @@ function JobMoney({ jobId, onBack }: { jobId: string; onBack: () => void }) {
               <td><StatusBadge h={h} /></td>
               <td onClick={e => e.stopPropagation()} className="nowrap">
                 <button className="btn sm ghost" onClick={() => setEditEntry(h.entry)} title="Edit hours or rate"><Icon name="edit" size={14} /></button>
-                {(h.status === 'billed' || h.status === 'paid') && <button className="btn sm ghost" title="Take these hours off their invoice" onClick={() => update('time_entries', h.entry.id, { billed: false, invoice_id: null })}>Unbill</button>}
+                {(h.status === 'billed' || h.status === 'paid') && <button className="btn sm ghost" title="Take these hours off their invoice" onClick={() => update('time_entries', h.entry.id, { billed: false, invoice_id: null, deposit_applied: null })}>Unbill</button>}
               </td>
             </tr>
           ))}</tbody>
@@ -345,7 +345,7 @@ function JobMoney({ jobId, onBack }: { jobId: string; onBack: () => void }) {
         {itemRows.length === 0 && <p className="small muted">No charges yet. Add expenses, mileage, printing, permit fees or flat fees to bill them on this job.</p>}
         {itemRows.length > 0 && <div className="table-wrap"><table>
           <thead><tr><th></th><th>Date</th><th>Charge</th><th className="num hide-mobile">Qty × price</th><th className="num">Amount</th><th>Status</th><th></th></tr></thead>
-          <tbody>{[...itemRows].reverse().filter(i => f.match(i.status)).map(i => (
+          <tbody>{[...itemRows].reverse().filter(i => f.match(i.status, i.covered)).map(i => (
             <tr key={i.item.id} className={selectable(i.status) ? 'clickable' : ''} onClick={() => selectable(i.status) && toggle(i.item.id)}>
               <td>{selectable(i.status) && <input type="checkbox" style={{ width: 18, minHeight: 0 }} checked={sel.has(i.item.id)} onChange={() => toggle(i.item.id)} onClick={e => e.stopPropagation()} />}</td>
               <td className="nowrap">{fmtDate(i.item.date)}</td>
@@ -355,7 +355,7 @@ function JobMoney({ jobId, onBack }: { jobId: string; onBack: () => void }) {
               <td><StatusBadge h={i} /></td>
               <td onClick={e => e.stopPropagation()} className="nowrap">
                 <button className="btn sm ghost" onClick={() => setItemModal({ item: i.item })} title="Edit charge"><Icon name="edit" size={14} /></button>
-                {(i.status === 'billed' || i.status === 'paid') && <button className="btn sm ghost" title="Take this charge off its invoice" onClick={() => update('job_items', i.item.id, { billed: false, invoice_id: null })}>Unbill</button>}
+                {(i.status === 'billed' || i.status === 'paid') && <button className="btn sm ghost" title="Take this charge off its invoice" onClick={() => update('job_items', i.item.id, { billed: false, invoice_id: null, deposit_applied: null })}>Unbill</button>}
               </td>
             </tr>
           ))}</tbody>

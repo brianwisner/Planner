@@ -55,15 +55,16 @@ export function itemAmount(i: JobItem): number {
  *  - unbilled: not on an invoice and no deposit left to cover it
  *  - billed:   on an invoice that hasn't been paid yet
  *  - paid:     on an invoice that has been paid
- * Deposits pay for un-invoiced hours AND charges oldest-first, so as work is
- * logged the deposit runs down and, once it's used up, new work shows as unbilled.
+ * Deposits pay for un-invoiced hours AND charges oldest-first. When work is
+ * invoiced, its deposit coverage is saved on the row so that billing the unpaid
+ * remainder does not make the same deposit available to pay for other work.
  */
 export type HourStatus = 'deposit' | 'partial' | 'unbilled' | 'billed' | 'paid'
 
 export interface HourMoney {
   entry: TimeEntry
   amount: number      // hours × rate
-  covered: number     // $ of this entry paid by deposit
+  covered: number     // $ paid by deposit, frozen once the entry is billed
   status: HourStatus
 }
 
@@ -82,16 +83,30 @@ export const HOUR_STATUS_LABEL: Record<HourStatus, string> = {
   paid: 'Paid',
 }
 
+// Keep PostgreSQL's microsecond precision while normalizing offsets and missing
+// fractions. Locale collation and Date's millisecond rounding can reorder rows
+// compared with the database allocator used when an invoice is saved.
+function timestampKey(iso: string): string {
+  const match = /^(.*T\d{2}:\d{2}:\d{2})(?:\.(\d+))?(Z|[+-]\d{2}:\d{2})$/.exec(iso)
+  if (!match) return iso
+  return new Date(match[1] + match[3]).toISOString().slice(0, 19) + '.' + (match[2] ?? '').padEnd(6, '0')
+}
+
 /** Hours and charges on one job, in date order, with deposit coverage and status. */
 export function jobCharges(store: MoneyStore, jobId: string): { hours: HourMoney[]; items: ItemMoney[] } {
   const deposits = sum(store.deposits.filter(d => d.job_id === jobId).map(d => d.amount))
   const invoices = new Map(store.invoices.filter(i => i.job_id === jobId).map(i => [i.id, i]))
   type Row = { kind: 'h'; e: TimeEntry; date: string; at: string } | { kind: 'i'; it: JobItem; date: string; at: string }
   const rows: Row[] = [
-    ...store.timeEntries.filter(e => e.job_id === jobId && e.hours != null).map(e => ({ kind: 'h' as const, e, date: e.date ?? '', at: e.created_at ?? '' })),
-    ...store.items.filter(i => i.job_id === jobId).map(it => ({ kind: 'i' as const, it, date: it.date ?? '', at: it.created_at ?? '' })),
-  ].sort((a, b) => a.date.localeCompare(b.date) || a.at.localeCompare(b.at))
-  let pool = deposits
+    ...store.timeEntries.filter(e => e.job_id === jobId && e.hours != null).map(e => ({ kind: 'h' as const, e, date: e.date ?? '', at: timestampKey(e.created_at ?? '') })),
+    ...store.items.filter(i => i.job_id === jobId).map(it => ({ kind: 'i' as const, it, date: it.date ?? '', at: timestampKey(it.created_at ?? '') })),
+  ].sort((a, b) => a.date.localeCompare(b.date) || (a.at < b.at ? -1 : a.at > b.at ? 1 : 0) || a.kind.localeCompare(b.kind) || (a.kind === 'h' ? a.e.id : a.it.id).localeCompare(b.kind === 'h' ? b.e.id : b.it.id))
+  const savedCoverage = (r: Row) => Math.max(0, (r.kind === 'h' ? r.e.deposit_applied : r.it.deposit_applied) ?? 0)
+  // Reserve billed coverage first: even new backdated work must not spend a
+  // deposit already applied to an invoice. Legacy billed rows have no snapshot;
+  // treating them as zero avoids inventing a credit from an editable invoice amount.
+  const reserved = sum(rows.filter(r => r.kind === 'h' ? r.e.billed : r.it.billed).map(savedCoverage))
+  let pool = Math.max(0, deposits - reserved)
   const hours: HourMoney[] = []
   const items: ItemMoney[] = []
   for (const r of rows) {
@@ -101,6 +116,7 @@ export function jobCharges(store: MoneyStore, jobId: string): { hours: HourMoney
     let covered = 0
     let status: HourStatus
     if (billed) {
+      covered = savedCoverage(r)
       const inv = invoiceId ? invoices.get(invoiceId) : undefined
       status = inv?.paid_date ? 'paid' : 'billed'
     } else {
@@ -179,14 +195,14 @@ export function jobBilling(store: MoneyStore, job: Job): JobBilling {
   return {
     job, fee: job.fee,
     loggedHours: sum(hours.map(h => entryHours(h.entry))),
-    hoursValue, itemsValue, workValue, deposits, depositUsed, depositRemaining: deposits - depositUsed,
+    hoursValue, itemsValue, workValue, deposits, depositUsed, depositRemaining: Math.max(0, deposits - depositUsed),
     invoiced, paid, outstanding: invoiced - paid, collected: deposits + paid,
     billedHours: sum(hours.filter(h => h.status === 'billed' || h.status === 'paid').map(h => entryHours(h.entry))),
     unbilledHours: sum(unbilledH.map(h => entryHours(h.entry) * (h.amount > 0 ? (h.amount - h.covered) / h.amount : 1))),
     unbilledItems,
     unbilledAmount: sum(unbilledH.map(h => h.amount - h.covered)) + unbilledItems,
     paidAmount: sum(all.map(h => h.status === 'paid' ? h.amount : h.covered)),
-    waitingAmount: sum(all.filter(h => h.status === 'billed').map(h => h.amount)),
+    waitingAmount: sum(all.filter(h => h.status === 'billed').map(h => Math.max(0, h.amount - h.covered))),
     balance: deposits + invoiced - workValue,
   }
 }

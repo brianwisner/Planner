@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { DndContext, DragOverlay, PointerSensor, TouchSensor, useDraggable, useDroppable, useSensor, useSensors, type DragEndEvent, type DragStartEvent } from '@dnd-kit/core'
 import { useData } from '../lib/store'
+import { setTaskStatus } from '../lib/taskActions'
 import type { Task, TaskStatus } from '../lib/types'
 import { TASK_STATUS_LABEL } from '../lib/types'
 import { DueBadge, Icon } from '../components/ui'
@@ -12,7 +13,8 @@ import { TaskModal } from '../components/editors'
 const COLS: TaskStatus[] = ['todo', 'doing', 'waiting', 'done']
 
 export function Kanban({ tasks }: { tasks: Task[] }) {
-  const { jobs, update } = useData()
+  const store = useData()
+  const { jobs } = store
   const [active, setActive] = useState<Task | null>(null)
   const [editing, setEditing] = useState<Task | null>(null)
   const sensors = useSensors(
@@ -26,7 +28,7 @@ export function Kanban({ tasks }: { tasks: Task[] }) {
     const to = e.over?.id as TaskStatus | undefined
     const task = tasks.find(t => t.id === e.active.id)
     if (!to || !task || task.status === to) return
-    await update('tasks', task.id, { status: to, completed_at: to === 'done' ? new Date().toISOString() : null })
+    await setTaskStatus(store, task, to)
   }
 
   return (
