@@ -146,7 +146,7 @@ describe('JobWork phases and tasks', () => {
   })
 
   it('gives general tasks the same visit, date, status and recurrence context', async () => {
-    await render({ tasks: [task({ phase_id: null, status: 'waiting', title: 'Site inspection', is_site_visit: true, scheduled_at: '2026-10-19T14:30:00-07:00', due_date: TODAY, recurrence: 'weekly', estimate_hours: 2 })] })
+    await render({ tasks: [task({ phase_id: null, status: 'waiting', title: 'Site inspection', is_site_visit: true, scheduled_at: new Date('2026-10-19T14:30:00').toISOString(), due_date: TODAY, recurrence: 'weekly', estimate_hours: 2 })] })
     const general = card('General tasks')
     expect(general.textContent).toContain('Site visit')
     expect(general.textContent).toContain('2:30')
@@ -251,7 +251,7 @@ describe('JobWork explicit phase editing', () => {
   })
 
   it('stamps a newly entered queue only after saving, using the local calendar date', async () => {
-    vi.setSystemTime(new Date('2026-10-19T23:30:00-07:00'))
+    vi.setSystemTime(new Date('2026-10-19T23:30:00'))
     await render({ phases: [phase({ kind: 'queued', status: 'not_started' })] }); await openEditor(); await change('Phase status', 'in_progress'); await save()
     expect(store.update).toHaveBeenNthCalledWith(1, 'phases', 'design', expect.objectContaining({ status: 'in_progress' }))
     expect(store.update).toHaveBeenNthCalledWith(2, 'jobs', 'job', { queued_date: TODAY })
@@ -281,14 +281,14 @@ describe('JobWork explicit phase editing', () => {
   it('keeps the original local queue-entry date across midnight latency and next-day retries', async () => {
     let resolvePhase!: (value: boolean) => void
     store.update = vi.fn().mockImplementationOnce(() => new Promise<boolean>(resolve => { resolvePhase = resolve })).mockResolvedValueOnce(false).mockResolvedValue(true)
-    vi.setSystemTime(new Date('2026-10-19T23:59:00-07:00'))
+    vi.setSystemTime(new Date('2026-10-19T23:59:00'))
     await render({ phases: [phase({ kind: 'queued', status: 'not_started' })] }); await openEditor(); await change('Phase status', 'in_progress')
     await save()
-    vi.setSystemTime(new Date('2026-10-20T00:01:00-07:00'))
+    vi.setSystemTime(new Date('2026-10-20T00:01:00'))
     await act(async () => { resolvePhase(true) })
     expect(store.update).toHaveBeenNthCalledWith(2, 'jobs', 'job', { queued_date: TODAY })
     expect(store.refresh).toHaveBeenCalledWith('jobs')
-    vi.setSystemTime(new Date('2026-10-21T11:00:00-07:00'))
+    vi.setSystemTime(new Date('2026-10-21T11:00:00'))
     await save()
     expect(store.update).toHaveBeenNthCalledWith(4, 'jobs', 'job', { queued_date: TODAY })
     expect(container.querySelector('[role="dialog"]')).toBeNull()
