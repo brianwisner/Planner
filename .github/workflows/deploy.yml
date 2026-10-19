@@ -4,14 +4,14 @@
 #   /Who-knows/             the planner (planner/)
 #   /Who-knows/demo/        the same planner with made-up sample data, no login
 #   /Who-knows/classic/     the previous design (classic/), same database
-#   /Who-knows/shear-wall/  the shear wall analyzer (repo root)
 #
 # The built site is pushed to the `gh-pages` branch, which GitHub Pages serves.
 name: Deploy planner to GitHub Pages
 
 on:
   push:
-    branches: [claude/shear-wall-analyzer-kQe3k, main]
+    # The second name is the default branch's old name; drop it once the branch is renamed to main.
+    branches: [main, claude/shear-wall-analyzer-kQe3k]
     paths-ignore: ['**.md']
   workflow_dispatch:
 
@@ -44,8 +44,6 @@ jobs:
       - name: Build the classic version
         working-directory: classic
         run: npm ci && npm run build && cp -r dist ../planner/dist/classic
-      - name: Add the shear wall analyzer
-        run: mkdir -p planner/dist/shear-wall && cp -r index.html css js planner/dist/shear-wall/
       - uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}

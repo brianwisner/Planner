@@ -10,8 +10,8 @@ previously assigned work must remain visible in the business views and workload.
 
 The app lives in `planner/` (version 2, rebuilt in October 2026) and is published at
 `https://brianwisner.github.io/Who-knows/`. `classic/` is the previous design, frozen,
-published at `/Who-knows/classic/` on the same database — don't develop it. The root
-HTML/JS is a separate shear-wall tool published under `/Who-knows/shear-wall/`.
+published at `/Who-knows/classic/` on the same database — don't develop it. The shear
+wall analyzer is a separate project in its own repository; it is not part of the planner.
 
 Explain changes in plain English and make routine design decisions. Favor clear
 labels, reachable navigation on phones, keyboard access, and simple workflows. The
