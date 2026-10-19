@@ -1,6 +1,6 @@
 // A job workspace: next steps and phases, with time/charges and notes close by.
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { phaseLabel } from '../lib/phases'
 import { useData } from '../lib/store'
 import type { Job, JobItem, Task, TimeEntry } from '../lib/types'
@@ -12,6 +12,7 @@ import { Avatar, DueBadge, Empty, Icon, JobStatusSelect, Progress } from '../com
 import { DepositModal, ItemModal, JobModal, TaskModal, TimeModal } from '../components/editors'
 import { FeesSummary, WorkStatusBar } from '../components/MoneyCharts'
 import { JobWork } from '../components/JobWork'
+import { JobPlanning } from '../components/JobPlanning'
 import { StatusBadge } from './Billing'
 
 type Section = 'work' | 'hours' | 'notes'
@@ -25,11 +26,13 @@ export function JobDetail() {
 function JobWorkspace({ id }: { id: string }) {
   const store = useData()
   const nav = useNavigate()
+  const { hash } = useLocation()
   const { me, update, insert, remove, toast } = store
   const [params, setParams] = useSearchParams()
   const section: Section = params.get('tab') === 'hours' ? 'hours' : params.get('tab') === 'notes' ? 'notes' : 'work'
   const [now, setNow] = useState(() => new Date())
   const model = useMemo(() => jobDetailData(store, id, now), [store, id, now])
+  const hasJob = Boolean(model)
   const hourMap = useMemo(() => new Map(jobHours(store, id).map(row => [row.entry.id, row])), [store, id])
   const [editingJob, setEditingJob] = useState<Job | null>(null)
   const [taskModal, setTaskModal] = useState<{ task?: Task; phaseId?: string | null } | null>(null)
@@ -47,6 +50,15 @@ function JobWorkspace({ id }: { id: string }) {
   const [hoursFilter, setHoursFilter] = useState('all')
   const [hoursSearch, setHoursSearch] = useState('')
   const consumedTask = useRef<string | null>(null)
+  const consumedPlanningAnchor = useRef(false)
+
+  useEffect(() => {
+    if (hash !== '#job-planning') { consumedPlanningAnchor.current = false; return }
+    if (!hasJob || consumedPlanningAnchor.current) return
+    if (section !== 'work') { setParams(current => { const next = new URLSearchParams(current); next.delete('tab'); return next }, { replace: true }); return }
+    consumedPlanningAnchor.current = true
+    document.getElementById('job-planning')?.scrollIntoView?.({ block: 'start' })
+  }, [hash, section, hasJob, setParams])
 
   useEffect(() => {
     const refreshClock = () => setNow(new Date())
@@ -189,6 +201,7 @@ function JobWorkspace({ id }: { id: string }) {
               {nextTask ? <><button className="job-next-task" onClick={() => setTaskModal({ task: nextTask })}>{nextTask.title}<Icon name="chevronR" size={18} /></button><div className="job-next-context"><span className={`badge ${nextTask.status}`}>{TASK_STATUS_LABEL[nextTask.status]}</span><span>{phaseName(nextTask.phase_id)}</span>{nextTask.is_site_visit && <span className="badge site">Site visit</span>}{jobTaskDate(nextTask) && <DueBadge date={jobTaskDate(nextTask)} />}</div></> : <p className="small muted">{!operational ? 'Review the phases and tasks below. You can update historical records at any time.' : model.waitingTasks.length ? 'The remaining tasks are waiting. Review what is needed to move them forward.' : 'No ready tasks. Add the next step when you know what needs doing.'}</p>}
               <div className="job-work-signals"><span>{model.readyTasks.length} ready · {model.waitingTasks.length} waiting · {model.doneTasks.length} done</span>{operational && overview.overEstimatePhases.length > 0 && <span className="badge soon">{overview.overEstimatePhases.length} phase{overview.overEstimatePhases.length === 1 ? '' : 's'} over estimate</span>}{operational && model.waitingPhaseCount > 0 && <span className="badge soon">{model.waitingPhaseCount} waiting phase{model.waitingPhaseCount === 1 ? '' : 's'}</span>}</div>
             </section>
+            <JobPlanning jobId={id} />
             <JobWork job={job} phases={model.phases} tasks={model.tasks} timeEntries={model.recentEntries} currentPhaseId={workPhase?.id} operational={operational} timerBillable={timerBillable} timerBusy={timerBusy} onAddTask={addTask} onEditTask={task => setTaskModal({ task })} onLog={logHours} onStart={startTimer} />
           </>}
 

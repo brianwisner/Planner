@@ -11,7 +11,10 @@ import { ShortcutsModal, useShortcuts } from './Shortcuts'
 import { Avatar, Icon, Modal } from './ui'
 
 const NAV: { to: string; label: string; icon: string; mobile?: boolean }[] = [
-  { to: '/', label: 'Dashboard', icon: 'dashboard', mobile: true },
+  { to: '/', label: 'Dashboard', icon: 'dashboard' },
+  { to: '/review', label: 'Morning Review', icon: 'check', mobile: true },
+  { to: '/follow-ups', label: 'Follow-ups', icon: 'clients' },
+  { to: '/availability', label: 'Availability', icon: 'calendar' },
   { to: '/jobs', label: 'Jobs', icon: 'jobs', mobile: true },
   { to: '/clients', label: 'Clients', icon: 'clients' },
   { to: '/calendar', label: 'Calendar', icon: 'calendar', mobile: true },
@@ -43,7 +46,7 @@ export function Layout({ children }: { children: ReactNode }) {
   // Each new page starts at the top (filters and tabs within a page keep their place).
   const { pathname } = useLocation()
   useEffect(() => { window.scrollTo(0, 0) }, [pathname])
-  const moreActive = NAV.some(n => !n.mobile && pathname.startsWith(n.to))
+  const moreActive = NAV.some(n => !n.mobile && (n.to === '/' ? pathname === '/' : pathname.startsWith(n.to)))
 
   const running = timeEntries.find(e => e.user_id === me?.id && e.started_at && e.hours == null)
   const stopTimer = useCallback(async () => {

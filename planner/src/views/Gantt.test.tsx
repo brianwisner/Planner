@@ -3,9 +3,12 @@ import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type { PlanningStore } from '../lib/planningTypes'
 import type { Store } from '../lib/store'
 import type { Phase, ScheduleEntry } from '../lib/types'
 import { Gantt } from './Gantt'
+let planning: PlanningStore | null = null
+vi.mock('../lib/planningStore', () => ({ useOptionalPlanning: () => planning }))
 let store: Store, root: Root, container: HTMLDivElement
 vi.mock('../lib/store', () => ({ useData: () => store }))
 vi.mock('../components/ScheduleModal', () => ({ ScheduleModal: (props: { phaseId: string; from: string; to: string }) => <div data-testid="schedule" data-phase={props.phaseId} data-from={props.from} data-to={props.to} /> }))
@@ -13,6 +16,7 @@ const today = '2026-10-19'
 function phase(patch: Partial<Phase> = {}): Phase { return { id: 'design', job_id: 'job', kind: 'design', name: 'Design', status: 'in_progress', sort_order: 2, estimate_hours: 10, start_date: today, due_date: '2026-10-21', assignee_id: null, notes: '', ...patch } }
 function plan(patch: Partial<ScheduleEntry> = {}): ScheduleEntry { return { id: 'saved', job_id: 'job', phase_id: 'history', user_id: 'owner', date: today, hours: 2, note: '', created_at: '', ...patch } }
 beforeEach(() => {
+  planning = null
   vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(new Date(`${today}T12:00:00`))
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true }); localStorage.clear()
   const owner = { id: 'owner', full_name: 'Owner', email: null, color: '#123456', hourly_rate: 100, weekly_hours: 40, ics_token: '', created_at: '' }
@@ -45,7 +49,7 @@ describe('timeline workflow retirement', () => {
     store.jobs.push(...['active', 'on_hold', 'complete', 'archived', 'cancelled'].map((status, i) => ({ ...store.jobs[0], id: `other-${i}`, status: status as Store['jobs'][number]['status'] })))
     store.schedule.push(plan({ id: 'legacy', user_id: 'legacy', hours: 3 }), plan({ id: 'hidden-active', job_id: 'other-0', hours: 4 }), ...[1, 2, 3, 4].map(i => plan({ id: `closed-${i}`, job_id: `other-${i}`, hours: 20 })))
     await render()
-    expect(container.querySelector('.ghours [title="9h planned on active jobs"]')).toBeTruthy()
+    expect(container.querySelector('.ghours [title="9h planned / 8h available on active jobs"]')).toBeTruthy()
     expect(container.querySelector('.ghours .over')?.textContent).toBe('9')
   })
   it('opens keyboard planning on workflow today and on an existing historical date only', async () => {
@@ -64,5 +68,15 @@ describe('timeline workflow retirement', () => {
     await render()
     expect(container.querySelector('[data-phase-id="history"] .gsched')).toBeTruthy()
     expect(button('Edit saved Planning history for Synthetic residence: Planning history').disabled).toBe(true)
+  })
+})
+
+
+describe('timeline daily availability', () => {
+  it('uses an overridden day after blocks while retaining saved planning history capacity', async () => {
+    planning = { availability: [{ date: '2026-10-19', base_hours: 2 }], blocks: [{ date: '2026-10-19', hours: 1 }] } as PlanningStore
+    await render()
+    expect(container.querySelector('.ghours [title="2h planned / 1h available on active jobs"]')).toBeTruthy()
+    expect(container.querySelector('.ghours .over')?.textContent).toBe('2')
   })
 })

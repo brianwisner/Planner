@@ -3,10 +3,13 @@ import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type { PlanningStore } from '../lib/planningTypes'
 import type { Store } from '../lib/store'
 import type { Job, Phase, Task, TimeEntry } from '../lib/types'
 import { Dashboard } from './Dashboard'
 
+let planning: PlanningStore | null = null
+vi.mock('../lib/planningStore', () => ({ useOptionalPlanning: () => planning }))
 let store: Store
 vi.mock('../lib/store', () => ({ useData: () => store }))
 vi.mock('../lib/reminders', () => ({ useReminders: vi.fn() }))
@@ -33,6 +36,7 @@ function hours(overrides: Partial<TimeEntry> = {}): TimeEntry {
 }
 
 beforeEach(() => {
+  planning = null
   vi.useFakeTimers({ toFake: ['Date'] })
   vi.setSystemTime(new Date('2026-10-19T12:00:00-07:00'))
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
@@ -237,5 +241,18 @@ describe('Dashboard', () => {
     expect(billing.textContent).toContain('$100/h')
     expect(billing.textContent).toContain('10h')
     expect(billing.textContent).toMatch(/overhead|tax/)
+  })
+})
+
+
+describe('Dashboard daily availability', () => {
+  it('shows the week after daily overrides and blocks without altering worked-time totals', async () => {
+    planning = { availability: [{ date: TODAY, base_hours: 0 }], blocks: [{ date: '2026-10-20', hours: 2 }] } as PlanningStore
+    await render()
+    const week = card('This week & capacity')
+    expect(week.textContent).toContain('Available this week30h')
+    expect(week.textContent).toContain('Today: 0h available')
+    expect(week.querySelector('[role="meter"]')?.getAttribute('aria-valuemax')).toBe('30')
+    expect(container.querySelector('a[href="/review"]')).toBeTruthy()
   })
 })

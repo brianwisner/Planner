@@ -1,0 +1,40 @@
+.morning-review-page { min-width: 0; }
+.morning-review-date { display: flex; align-items: center; gap: 8px; margin: 0; white-space: nowrap; }
+.morning-review-date input { width: auto; }
+.morning-review-grid { display: grid; grid-template-columns: minmax(0,2fr) minmax(260px,1fr); gap: 18px; align-items: start; }
+.morning-review-main,.morning-review-agenda { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.review-section-heading { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+.review-section-heading h2 { margin: 0; }
+.review-section-heading a { font-size: 12px; min-height: 40px; display: inline-flex; align-items: center; }
+.review-section-heading p { margin-bottom: 0; }
+.review-priority-list { margin: 0 0 10px; padding: 0; list-style: none; counter-reset: priorities; }
+.review-priority-list li { display: grid; grid-template-columns: 40px minmax(0,1fr) 40px; align-items: center; gap: 8px; padding: 10px 0; border-bottom: 1px solid var(--border); }
+.review-priority-check { display: flex; align-items: center; justify-content: center; width: 40px; min-height: 40px; margin: 0; cursor: pointer; }
+.review-priority-list input[type=checkbox] { width: 18px; height: 18px; min-height: 0; margin: 0; }
+.review-priority-fields { display: grid; grid-template-columns: minmax(0,1fr) minmax(130px,.6fr); gap: 8px; }
+.review-priority-list .btn { min-width: 40px; min-height: 40px; }
+.review-carry { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+.review-carry .btn { margin-left: auto; }
+.review-notes { margin-top: 18px; }
+.review-save-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding-top: 14px; margin-top: 12px; border-top: 1px solid var(--border); }
+.review-save-bar > span { flex: 1; min-width: 120px; }
+.review-shared-warning { margin: 10px 0; padding: 10px; background: #fff9e9; border: 1px solid #e8c365; border-radius: 8px; font-size: 13px; }
+.review-shared-warning p { margin: 0 0 8px; }
+.review-error { color: #a42222; line-height: 1.5; }
+.review-empty { padding: 7px 0; margin: 0; font-size: 13px; line-height: 1.5; color: var(--muted); }
+.review-activity-list,.review-agenda-list { list-style: none; padding: 0; margin: 0; }
+.review-activity-list li,.review-agenda-list li { display: flex; flex-direction: column; gap: 4px; padding: 9px 0; border-bottom: 1px solid var(--border); font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; }
+.review-activity-list li:last-child,.review-agenda-list li:last-child { border-bottom: 0; }
+.review-agenda-list li > span { color: var(--muted); font-size: 12px; }
+.review-text-button { padding: 6px 0; background: none; border: 0; min-height: 40px; text-align: left; font: inherit; color: var(--accent); cursor: pointer; }
+.review-text-button:hover { text-decoration: underline; }
+.review-agenda-link { font-size: 12px; display: inline-flex; align-items: center; min-height: 40px; }
+.review-money { margin: 0; }
+.review-money > div { display: flex; justify-content: space-between; gap: 10px; padding: 7px 0; font-size: 13px; }
+.review-money dd { margin: 0; font-weight: 600; }
+.review-saved-priorities { list-style: none; padding: 0; margin: 12px 0; }
+.review-saved-priorities li { display: flex; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--border); line-height: 1.5; overflow-wrap: anywhere; }
+.review-saved-priorities a { display: block; font-size: 12px; }
+.review-saved-notes { white-space: pre-wrap; line-height: 1.6; font-size: 13px; overflow-wrap: anywhere; }
+@media(max-width:1000px) { .review-priority-fields { grid-template-columns: 1fr; } }
+@media(max-width:760px) { .morning-review-grid { grid-template-columns: 1fr; } .morning-review-page .page-header .actions { flex-wrap: wrap; width: 100%; } .morning-review-date { flex: 1; } .morning-review-date input { min-width: 0; flex: 1; font-size: 16px; } .review-priority-fields input,.review-priority-fields select,.review-notes textarea { font-size: 16px; } .review-save-bar > span { flex-basis: 100%; } .review-save-bar .btn { flex: 1; } }

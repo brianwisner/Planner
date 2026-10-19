@@ -3,6 +3,9 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useData } from '../lib/store'
 import { hoursForPhase, soloWorkload } from '../lib/calc'
+import { useOptionalPlanning } from '../lib/planningStore'
+import { dayCapacity } from '../lib/planningCapacity'
+import { addDays, format, parseISO } from 'date-fns'
 import { dashboardData } from '../lib/dashboard'
 import type { CalItem } from '../lib/calendar'
 import { PHASE_KIND_SHORT } from '../lib/types'
@@ -13,6 +16,7 @@ import { useReminders } from '../lib/reminders'
 
 export function Dashboard() {
   const store = useData()
+  const planning = useOptionalPlanning()
   const { jobs, tasks, clients } = store
   const [editing, setEditing] = useState<string | null>(null)
   const [taskView, setTaskView] = useState<'ready' | 'waiting'>('ready')
@@ -28,6 +32,8 @@ export function Dashboard() {
   const data = useMemo(() => dashboardData(store, now), [store, now])
   const workload = soloWorkload(store)
   const { today, week, money } = data
+  const plannedWeekCapacity = planning && !planning.loading && !planning.error ? Array.from({ length: 7 }, (_, i) => dayCapacity(store, planning, format(addDays(parseISO(data.weekStart), i), 'yyyy-MM-dd')).availableHours).reduce((total, hours) => total + hours, 0) : week.capacity
+  const todayCapacity = planning && !planning.loading && !planning.error ? dayCapacity(store, planning, today) : null
   const readyTasks = data.openTasks.filter(t => t.status !== 'waiting')
   const waitingTasks = data.openTasks.filter(t => t.status === 'waiting')
   const visibleTasks = taskView === 'ready' ? readyTasks : waitingTasks
@@ -37,7 +43,7 @@ export function Dashboard() {
   const editingTask = tasks.find(t => t.id === editing)
   const clientName = (jobId: string) => clients.find(c => c.id === jobs.find(j => j.id === jobId)?.client_id)?.name ?? ''
   const jobContext = (jobId: string) => [clientName(jobId), jobs.find(j => j.id === jobId)?.name].filter(Boolean).join(' · ')
-  const capacityPercent = Math.max(0, Math.min(100, week.hours / week.capacity * 100))
+  const capacityPercent = Math.max(0, Math.min(100, plannedWeekCapacity > 0 ? week.hours / plannedWeekCapacity * 100 : week.hours > 0 ? 100 : 0))
 
   function deadlineGroup(label: string, items: CalItem[]) {
     if (!items.length) return null
@@ -55,7 +61,7 @@ export function Dashboard() {
   return <div className="dashboard-page">
     <div className="page-header dashboard-header">
       <div><h1>Dashboard</h1><p className="dashboard-subtitle">{fmtDate(today, 'long')}</p></div>
-      <Link className="dashboard-header-link" to="/calendar"><Icon name="calendar" size={16} /> Open calendar →</Link>
+      <div className="row"><Link className="btn primary" to="/review"><Icon name="check" size={16} /> Morning Review</Link><Link className="dashboard-header-link" to="/calendar"><Icon name="calendar" size={16} /> Open calendar →</Link></div>
     </div>
 
     <div className="stats dashboard-stats">
@@ -110,11 +116,11 @@ export function Dashboard() {
         <section className="card" aria-labelledby="dashboard-week-title">
           <div className="dashboard-card-header"><h2 id="dashboard-week-title">This week & capacity</h2><Link className="small" to="/time">Timesheet →</Link></div>
           <div className="dashboard-week-total"><strong>{fmtHours(week.hours)}</strong><span>completed · {fmtDate(data.weekStart)}–{fmtDate(data.weekEnd)}</span></div>
-          <div className={`dashboard-capacity-bar ${week.hours > week.capacity ? 'over' : ''}`} role="meter" aria-label="Completed hours against weekly capacity" aria-valuemin={0} aria-valuemax={week.capacity} aria-valuenow={Math.min(week.hours, week.capacity)} aria-valuetext={`${fmtHours(week.hours)} completed of ${fmtHours(week.capacity)} weekly capacity`}><span style={{ width: `${capacityPercent}%` }} /></div>
+          <div className={`dashboard-capacity-bar ${week.hours > plannedWeekCapacity ? 'over' : ''}`} role="meter" aria-label="Completed hours against weekly capacity" aria-valuemin={0} aria-valuemax={Math.max(1, plannedWeekCapacity)} aria-valuenow={Math.min(week.hours, plannedWeekCapacity)} aria-valuetext={`${fmtHours(week.hours)} completed of ${fmtHours(plannedWeekCapacity)} available this week`}><span style={{ width: `${capacityPercent}%` }} /></div>
           <div className="dashboard-week-split"><span><i />{fmtHours(week.billableHours)} billable</span><span><i />{fmtHours(week.nonBillableHours)} nonbillable</span></div>
-          <dl className="dashboard-facts"><div><dt>Weekly capacity</dt><dd>{fmtHours(week.capacity)}</dd></div><div><dt>Planned today onward</dt><dd>{fmtHours(week.plannedHours)}</dd></div><div><dt>Estimated work left</dt><dd>{fmtHours(workload.remainingHours)}</dd></div><div><dt>Booked through</dt><dd>{workload.bookedUntil ? fmtDate(workload.bookedUntil.toISOString()) : 'Available'}</dd></div></dl>
-          <p className="dashboard-note">Planned hours are separate from worked time. The booked-through estimate uses remaining phase hours at your weekly capacity.</p>
-          <div className="dashboard-card-links"><Link to="/jobs?view=gantt">Plan hours →</Link><Link to="/settings">Capacity settings →</Link></div>
+          <dl className="dashboard-facts"><div><dt>Available this week</dt><dd>{fmtHours(plannedWeekCapacity)}</dd></div><div><dt>Planned today onward</dt><dd>{fmtHours(week.plannedHours)}</dd></div><div><dt>Phase-estimated work left</dt><dd>{fmtHours(workload.remainingHours)}</dd></div><div><dt>Booked through</dt><dd>{workload.bookedUntil ? fmtDate(workload.bookedUntil.toISOString()) : 'Available'}</dd></div></dl>
+          <p className="dashboard-note">Planned hours are separate from worked time. The booked-through estimate uses remaining phase hours at your default weekly capacity. Daily availability includes your overrides and time blocks.</p>
+          <p className="small muted">{todayCapacity ? <>Today: {fmtHours(todayCapacity.availableHours)} available · {fmtHours(todayCapacity.plannedHours)} planned{todayCapacity.overHours > 0 ? ` · ${fmtHours(todayCapacity.overHours)} over capacity` : ''}. </> : null}<Link to="/availability">Set daily availability →</Link></p><div className="dashboard-card-links"><Link to="/jobs?view=gantt">Plan hours →</Link><Link to="/settings">Capacity settings →</Link></div>
         </section>
 
         <section className="card" aria-labelledby="dashboard-billing-title">

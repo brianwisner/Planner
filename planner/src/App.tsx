@@ -3,6 +3,10 @@ import { HashRouter, Route, Routes } from 'react-router-dom'
 import type { Session } from '@supabase/supabase-js'
 import { supabase } from './lib/supabase'
 import { DataProvider, useData } from './lib/store'
+import { PlanningProvider } from './lib/planningStore'
+import { MorningReview } from './pages/MorningReview'
+import { FollowUps } from './pages/FollowUps'
+import { Availability } from './pages/Availability'
 import { Layout } from './components/Layout'
 import { Login, SetPassword } from './pages/Login'
 import { Dashboard } from './pages/Dashboard'
@@ -40,11 +44,15 @@ export default function App() {
 
   return (
     <DataProvider session={session}>
+      <PlanningProvider session={session}>
       <HashRouter>
         <Layout>
           <Loaded>
             <Routes>
               <Route path="/" element={<Dashboard />} />
+              <Route path="/review" element={<MorningReview />} />
+              <Route path="/follow-ups" element={<FollowUps />} />
+              <Route path="/availability" element={<Availability />} />
               <Route path="/jobs" element={<Jobs />} />
               <Route path="/jobs/:id" element={<JobDetail />} />
               <Route path="/clients" element={<Clients />} />
@@ -59,6 +67,7 @@ export default function App() {
           </Loaded>
         </Layout>
       </HashRouter>
+      </PlanningProvider>
     </DataProvider>
   )
 }
