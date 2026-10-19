@@ -1,8 +1,8 @@
 // A job workspace: next steps and phases, with time/charges and notes close by.
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Link, useParams, useSearchParams } from 'react-router-dom'
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useData } from '../lib/store'
-import type { JobItem, Task, TimeEntry } from '../lib/types'
+import type { Job, JobItem, Task, TimeEntry } from '../lib/types'
 import { JOB_STATUS_LABEL, PHASE_STATUS_LABEL, TASK_STATUS_LABEL } from '../lib/types'
 import { jobHours, timerHours } from '../lib/calc'
 import { jobDetailData, jobTaskDate } from '../lib/jobDetail'
@@ -23,13 +23,14 @@ export function JobDetail() {
 
 function JobWorkspace({ id }: { id: string }) {
   const store = useData()
+  const nav = useNavigate()
   const { me, update, insert, remove, toast } = store
   const [params, setParams] = useSearchParams()
   const section: Section = params.get('tab') === 'hours' ? 'hours' : params.get('tab') === 'notes' ? 'notes' : 'work'
   const [now, setNow] = useState(() => new Date())
   const model = useMemo(() => jobDetailData(store, id, now), [store, id, now])
   const hourMap = useMemo(() => new Map(jobHours(store, id).map(row => [row.entry.id, row])), [store, id])
-  const [editJob, setEditJob] = useState(false)
+  const [editingJob, setEditingJob] = useState<Job | null>(null)
   const [taskModal, setTaskModal] = useState<{ task?: Task; phaseId?: string | null } | null>(null)
   const [timeModal, setTimeModal] = useState<{ entry?: TimeEntry; phaseId?: string | null; taskId?: string | null } | null>(null)
   const [deposit, setDeposit] = useState(false)
@@ -118,7 +119,10 @@ function JobWorkspace({ id }: { id: string }) {
     finally { postLock.current = false; setPosting(false) }
   }
 
-  if (!model) return <div className="card"><Empty>Job not found. <Link to="/jobs">Back to jobs</Link></Empty></div>
+  const jobEditor = editingJob && <JobModal job={editingJob} onClose={() => setEditingJob(null)} onDeleted={() => nav('/jobs', { replace: true })} />
+  // An optimistic removal can hide the job before deletion is confirmed.
+  // Keep the editor snapshot mounted until its confirmed callback or Cancel.
+  if (!model) return <><div className="card"><Empty>Job not found. <Link to="/jobs">Back to jobs</Link></Empty></div>{jobEditor}</>
   const { overview, client, operational } = model
   const { job, billing, workPhase } = overview
   const running = model.myRunningEntries[0]
@@ -137,7 +141,7 @@ function JobWorkspace({ id }: { id: string }) {
   const timelineLink = `/jobs?view=gantt&status=${job.status}&client=${encodeURIComponent(job.client_id)}&q=${encodeURIComponent(job.job_number || job.name)}`
 
   return (
-    <div className="job-detail">
+    <><div className="job-detail">
       <div className="page-header job-detail-header">
         <div className="job-detail-title">
           <div className="job-breadcrumb small muted"><Link to="/jobs">Jobs</Link><span>›</span>{client ? <Link to={`/clients/${client.id}`}>{client.name}</Link> : <span>Client not listed</span>}</div>
@@ -148,7 +152,7 @@ function JobWorkspace({ id }: { id: string }) {
           <button className="btn primary" onClick={() => logHours()}><Icon name="time" size={15} /> Log hours</button>
           <button className="btn" onClick={() => addTask()}><Icon name="plus" size={15} /> Add task</button>
           <details className="job-more-actions" onKeyDown={event => { if (event.key === 'Escape') { event.preventDefault(); event.currentTarget.open = false; event.currentTarget.querySelector('summary')?.focus() } }}><summary className="btn"><Icon name="more" size={16} /> More actions</summary><div className="job-more-menu" onClick={event => { const menu = event.currentTarget.closest('details'); menu?.removeAttribute('open'); menu?.querySelector('summary')?.focus() }}>
-            <button onClick={() => setEditJob(true)}><Icon name="edit" size={15} /> Edit job</button>
+            <button onClick={() => setEditingJob(job)}><Icon name="edit" size={15} /> Edit job</button>
             <button onClick={() => setItemModal({})}><Icon name="plus" size={15} /> Add charge</button>
             <button onClick={() => setDeposit(true)}><Icon name="billing" size={15} /> Record deposit</button>
             <Link to={`/billing?job=${id}`}><Icon name="billing" size={15} /> Open billing</Link>
@@ -213,15 +217,14 @@ function JobWorkspace({ id }: { id: string }) {
           <section className="card"><div className="job-section-heading"><h2>Billing at a glance</h2><Link to={`/billing?job=${id}`}>Details →</Link></div><dl className="job-detail-facts"><div><dt>Job balance</dt><dd className={billing.balance < 0 ? 'money-neg' : 'money-pos'}>{fmtSigned(billing.balance)}</dd></div><div><dt>Deposits received</dt><dd>{fmtMoney(billing.deposits)}</dd></div><div><dt>Invoiced</dt><dd>{fmtMoney(billing.invoiced)}</dd></div><div><dt>Awaiting payment</dt><dd>{fmtMoney(billing.outstanding)}</dd></div></dl><p className="tiny muted">Balance = deposits + invoices − all work and charges.</p><WorkStatusBar b={billing} compact /><Link className="job-aside-link" to={`/billing?job=${id}`}>Review hours, charges &amp; payments →</Link></section>
           {section === 'work' && operational && <section className="card"><h2>Upcoming dates</h2>{model.deadlines.length ? <ul className="job-context-list">{model.deadlines.slice(0, 5).map(date => <li key={date.id}><div>{date.kind === 'task' || date.kind === 'site_visit' ? <Link to={date.link}>{date.title}</Link> : <span>{date.title}</span>}<div className="tiny muted">{date.time ? fmtDateTime(date.time) : fmtDate(date.date, 'long')}</div></div><DueBadge date={date.date} /></li>)}</ul> : <p className="small muted">No pending dates for this job.</p>}{model.deadlines.length > 5 && <p className="tiny muted">Showing the next 5 dates, including overdue work.</p>}</section>}
           {section === 'work' && <section className="card"><h2>{operational ? 'Planned work' : 'Saved plans'}</h2><p className="small muted">{fmtHours(model.upcomingPlannedHours)} saved from today forward{!operational ? ' · outside active capacity' : ''}.</p>{model.upcomingPlans.length ? <ul className="job-context-list">{model.upcomingPlans.slice(0, 4).map(({ entry, phaseName: name, isOwner }) => <li key={entry.id}><div><b>{fmtDate(entry.date)}</b><div className="tiny muted">{name}{!isOwner ? ' · additional saved plan' : ''}</div></div><span className="nowrap">{fmtHours(entry.hours)}</span></li>)}</ul> : <p className="small muted">No upcoming hours planned.</p>}<Link className="job-aside-link" to={timelineLink}>Open timeline →</Link></section>}
-          <section className="card job-project-details"><div className="job-section-heading"><h2>Project details</h2><button className="btn ghost" aria-label="Edit project details" onClick={() => setEditJob(true)}><Icon name="edit" size={15} /></button></div>{job.description && <p className="small job-description">{job.description}</p>}<dl className="job-detail-facts"><div><dt>Job number</dt><dd>{job.job_number || 'Not set'}</dd></div><div><dt>Priority</dt><dd>{job.priority}</dd></div><div><dt>Start date</dt><dd>{job.start_date ? fmtDate(job.start_date, 'long') : 'Not set'}</dd></div><div><dt>Job due date</dt><dd>{job.due_date ? fmtDate(job.due_date, 'long') : 'Not set'}</dd></div>{job.queued_date && <div><dt>Entered queue</dt><dd>{fmtDate(job.queued_date)}{queueAge != null && queueAge < 0 ? ` · ${-queueAge}d ago` : queueAge === 0 ? ' · today' : ''}</dd></div>}{job.fee != null && <div><dt>Agreed fee</dt><dd>{fmtMoney(job.fee)}</dd></div>}</dl>{client && <div className="job-client-contact"><Link className="bold" to={`/clients/${client.id}`}>{client.name}</Link>{client.contact_name && <div className="small">{client.contact_name}</div>}{client.phone && <a href={`tel:${client.phone}`}>{client.phone}</a>}{client.email && <a href={`mailto:${client.email}`}>{client.email}</a>}</div>}</section>
+          <section className="card job-project-details"><div className="job-section-heading"><h2>Project details</h2><button className="btn ghost" aria-label="Edit project details" onClick={() => setEditingJob(job)}><Icon name="edit" size={15} /></button></div>{job.description && <p className="small job-description">{job.description}</p>}<dl className="job-detail-facts"><div><dt>Job number</dt><dd>{job.job_number || 'Not set'}</dd></div><div><dt>Priority</dt><dd>{job.priority}</dd></div><div><dt>Start date</dt><dd>{job.start_date ? fmtDate(job.start_date, 'long') : 'Not set'}</dd></div><div><dt>Job due date</dt><dd>{job.due_date ? fmtDate(job.due_date, 'long') : 'Not set'}</dd></div>{job.queued_date && <div><dt>Entered queue</dt><dd>{fmtDate(job.queued_date)}{queueAge != null && queueAge < 0 ? ` · ${-queueAge}d ago` : queueAge === 0 ? ' · today' : ''}</dd></div>}{job.fee != null && <div><dt>Agreed fee</dt><dd>{fmtMoney(job.fee)}</dd></div>}</dl>{client && <div className="job-client-contact"><Link className="bold" to={`/clients/${client.id}`}>{client.name}</Link>{client.contact_name && <div className="small">{client.contact_name}</div>}{client.phone && <a href={`tel:${client.phone}`}>{client.phone}</a>}{client.email && <a href={`mailto:${client.email}`}>{client.email}</a>}</div>}</section>
         </aside>
       </div>
 
-      {editJob && <JobModal job={job} onClose={() => setEditJob(false)} />}
       {deposit && <DepositModal jobId={id} onClose={() => setDeposit(false)} />}
       {itemModal && <ItemModal item={itemModal.item} jobId={id} onClose={() => setItemModal(null)} />}
       {taskModal && <TaskModal task={taskModal.task} defaults={{ job_id: id, phase_id: taskModal.phaseId ?? null }} onClose={() => setTaskModal(null)} />}
       {timeModal && <TimeModal entry={timeModal.entry} defaults={{ job_id: id, phase_id: timeModal.phaseId ?? null, task_id: timeModal.taskId ?? null }} onClose={() => setTimeModal(null)} />}
-    </div>
+    </div>{jobEditor}</>
   )
 }

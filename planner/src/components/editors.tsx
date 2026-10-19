@@ -1,6 +1,6 @@
 // Pop-up forms for creating and editing things: tasks, jobs, clients,
 // time entries and invoices. Every page reuses these.
-import { useRef, useState } from 'react'
+import { useId, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useData } from '../lib/store'
 import type { Client, Deposit, Invoice, Job, JobItem, JobStatus, Recurrence, Task, TaskStatus, TimeEntry } from '../lib/types'
@@ -156,8 +156,8 @@ function localTime(iso: string) {
 }
 
 /* =============== Job =============== */
-export function JobModal({ job, defaultClientId, onClose, onCreated }: { job?: Job; defaultClientId?: string; onClose: () => void; onCreated?: (job: Job) => void }) {
-  const { clients, jobs, insert, update, remove, toast } = useData()
+export function JobModal({ job, defaultClientId, onClose, onCreated, onDeleted }: { job?: Job; defaultClientId?: string; onClose: () => void; onCreated?: (job: Job) => void; onDeleted?: () => void }) {
+  const { clients, jobs, insert, update, remove, refresh, toast } = useData()
   const [d, setD] = useState(() => ({
     client_id: job?.client_id ?? defaultClientId ?? clients[0]?.id ?? '',
     job_number: job?.job_number ?? suggestJobNumber(jobs),
@@ -168,32 +168,54 @@ export function JobModal({ job, defaultClientId, onClose, onCreated }: { job?: J
     start_date: job?.start_date ?? null as string | null,
     due_date: job?.due_date ?? null as string | null,
   }))
-  const [saving, setSaving] = useState(false)
+  const [pending, setPending] = useState<'save' | 'delete' | null>(null)
+  const saving = pending !== null
+  const saveLock = useRef(false)
+  const [saveError, setSaveError] = useState('')
   const set = <K extends keyof typeof d>(k: K, v: (typeof d)[K]) => setD(x => ({ ...x, [k]: v }))
+  const close = () => { if (!saveLock.current) onClose() }
 
   async function save() {
+    if (saveLock.current) return
     if (!d.name.trim() || !d.client_id) { toast('A job needs a name and a client', 'error'); return }
-    setSaving(true)
-    if (job) { await update('jobs', job.id, { ...d, name: d.name.trim() }); onClose() }
-    else {
-      const maxPriority = Math.max(0, ...jobs.filter(j => j.status === 'active').map(j => j.priority))
-      const created = await insert('jobs', { ...d, name: d.name.trim(), priority: maxPriority + 1 })
-      if (created) { toast('Job created with its phases (starts in Bidding)'); onCreated?.(created) }
+    saveLock.current = true; setPending('save'); setSaveError('')
+    try {
+      if (job) {
+        if (!await update('jobs', job.id, { ...d, name: d.name.trim() })) { setSaveError('The job was not saved. Your changes are still here.'); return }
+      } else {
+        const maxPriority = Math.max(0, ...jobs.filter(j => j.status === 'active' || j.status === 'on_hold').map(j => j.priority))
+        const created = await insert('jobs', { ...d, name: d.name.trim(), priority: maxPriority + 1 })
+        if (!created) { setSaveError('The job was not saved. Your changes are still here.'); return }
+        toast('Job created with its phases (starts in Bidding)'); onCreated?.(created)
+      }
       onClose()
-    }
-    setSaving(false)
+    } catch { setSaveError('Could not confirm the save. Your changes are still here; check the jobs list before trying again.') }
+    finally { saveLock.current = false; setPending(null) }
   }
   async function del() {
-    if (!job || !confirm(`Delete "${job.name}" and everything in it (phases, tasks, hours, invoices)? This cannot be undone.`)) return
-    await remove('jobs', job.id); onClose()
+    if (saveLock.current || !job || !confirm(`Delete "${job.name}" and everything in it (phases, tasks, hours, invoices)? This cannot be undone.`)) return
+    saveLock.current = true; setPending('delete'); setSaveError('')
+    try {
+      if (!await remove('jobs', job.id)) {
+        await refresh('jobs')
+        setSaveError('The job was not deleted. Your changes are still here.')
+        return
+      }
+      onDeleted?.(); onClose()
+    } catch {
+      await refresh('jobs')
+      setSaveError('Could not confirm the deletion. Your changes are still here; check the jobs list before trying again.')
+    } finally { saveLock.current = false; setPending(null) }
   }
 
   return (
-    <Modal title={job ? 'Edit job' : 'New job'} onClose={onClose} footer={<>
-      {job && <button className="btn danger left" onClick={del}>Delete job</button>}
-      <button className="btn" onClick={onClose}>Cancel</button>
-      <button className="btn primary" onClick={save} disabled={saving}>{job ? 'Save' : 'Create job'}</button>
+    <Modal title={job ? 'Edit job' : 'New job'} onClose={close} footer={<>
+      {job && <button className="btn danger left" onClick={del} disabled={saving}>{pending === 'delete' ? 'Deleting…' : 'Delete job'}</button>}
+      <button className="btn" onClick={close} disabled={saving}>Cancel</button>
+      <button className="btn primary" onClick={save} disabled={saving}>{pending === 'save' ? 'Saving…' : job ? 'Save' : 'Create job'}</button>
     </>}>
+      {saveError && <p className="client-form-error" role="alert">{saveError}</p>}
+      <fieldset className="editor-fields" disabled={saving}>
       <div className="row">
         <div className="field" style={{ flex: '0 1 120px' }}>
           <label>Job #</label>
@@ -248,6 +270,7 @@ export function JobModal({ job, defaultClientId, onClose, onCreated }: { job?: J
         <textarea value={d.description} onChange={e => set('description', e.target.value)} placeholder="Scope, structure type, and other job details" />
       </div>
       {!job && <p className="small muted">The standard phases (Bidding, Queued, Original design, County / plan-check comments, Construction changes, Client-requested changes) are added automatically. New jobs start in Bidding.</p>}
+      </fieldset>
     </Modal>
   )
 }
@@ -260,37 +283,64 @@ function suggestJobNumber(jobs: Job[]): string {
 }
 
 /* =============== Client =============== */
-export function ClientModal({ client, onClose, onCreated }: { client?: Client; onClose: () => void; onCreated?: (c: Client) => void }) {
-  const { insert, update, remove, toast } = useData()
+export function ClientModal({ client, onClose, onCreated, onDeleted }: { client?: Client; onClose: () => void; onCreated?: (c: Client) => void; onDeleted?: () => void }) {
+  const { insert, update, remove, refresh } = useData()
+  const formId = useId()
+  const busy = useRef(false)
+  const [pending, setPending] = useState<'save' | 'delete' | null>(null)
+  const [error, setError] = useState('')
   const [d, setD] = useState({
     name: client?.name ?? '', contact_name: client?.contact_name ?? '', email: client?.email ?? '', phone: client?.phone ?? '',
     address: client?.address ?? '', notes: client?.notes ?? '',
   })
   const set = <K extends keyof typeof d>(k: K, v: string) => setD(x => ({ ...x, [k]: v }))
+  const close = () => { if (!busy.current) onClose() }
   async function save() {
-    if (!d.name.trim()) { toast('Client needs a name', 'error'); return }
-    if (client) await update('clients', client.id, d)
-    else { const c = await insert('clients', d); if (c) onCreated?.(c) }
-    onClose()
+    if (busy.current) return
+    const row = { ...d, name: d.name.trim(), contact_name: d.contact_name.trim(), email: d.email.trim(), phone: d.phone.trim(), address: d.address.trim() }
+    if (!row.name) { setError('Enter a client or company name.'); return }
+    if (row.email && !/^[^\s@]+@[^\s@]+$/.test(row.email)) { setError('Enter a valid email address, or leave it blank.'); return }
+    busy.current = true; setPending('save'); setError('')
+    try {
+      if (client) {
+        if (!await update('clients', client.id, row)) { setError('The client was not saved. Your changes are still here.'); return }
+      } else {
+        const created = await insert('clients', row)
+        if (!created) { setError('The client was not saved. Your changes are still here.'); return }
+        onCreated?.(created)
+      }
+      onClose()
+    } catch {
+      setError('Could not confirm the save. Your changes are still here; check the client list before trying again.')
+    } finally { busy.current = false; setPending(null) }
   }
   async function del() {
-    if (!client || !confirm(`Delete "${client.name}" and ALL of their jobs? This cannot be undone.`)) return
-    await remove('clients', client.id); onClose()
+    if (busy.current || !client || !confirm(`Delete "${client.name}" and ALL of their jobs? This cannot be undone.`)) return
+    busy.current = true; setPending('delete'); setError('')
+    try {
+      if (!await remove('clients', client.id)) { await refresh('clients'); setError('The client could not be deleted. Your changes are still here.'); return }
+      onDeleted?.()
+      onClose()
+    } catch { await refresh('clients'); setError('Could not confirm the deletion. Check the client list before trying again.') }
+    finally { busy.current = false; setPending(null) }
   }
   return (
-    <Modal title={client ? 'Edit client' : 'New client'} onClose={onClose} footer={<>
-      {client && <button className="btn danger left" onClick={del}>Delete</button>}
-      <button className="btn" onClick={onClose}>Cancel</button>
-      <button className="btn primary" onClick={save}>{client ? 'Save' : 'Add client'}</button>
+    <Modal title={client ? 'Edit client' : 'New client'} onClose={close} footer={<>
+      {client && <button type="button" className="btn danger left" disabled={pending !== null} onClick={del}>{pending === 'delete' ? 'Deleting…' : 'Delete client'}</button>}
+      <button type="button" className="btn" disabled={pending !== null} onClick={close}>Cancel</button>
+      <button type="submit" form={formId} className="btn primary" disabled={pending !== null}>{pending === 'save' ? 'Saving…' : client ? 'Save' : 'Add client'}</button>
     </>}>
-      <div className="field"><label>Client / company name</label><input autoFocus value={d.name} onChange={e => set('name', e.target.value)} /></div>
+      <form id={formId} noValidate onSubmit={event => { event.preventDefault(); void save() }}>
+      {error && <p className="client-form-error" role="alert">{error}</p>}
+      <div className="field"><label htmlFor={`${formId}-name`}>Client / company name</label><input id={`${formId}-name`} autoFocus disabled={pending !== null} value={d.name} onChange={e => set('name', e.target.value)} /></div>
       <div className="row">
-        <div className="field"><label>Contact person</label><input value={d.contact_name} onChange={e => set('contact_name', e.target.value)} /></div>
-        <div className="field"><label>Phone</label><input type="tel" value={d.phone} onChange={e => set('phone', e.target.value)} /></div>
+        <div className="field"><label htmlFor={`${formId}-contact`}>Contact person</label><input id={`${formId}-contact`} disabled={pending !== null} value={d.contact_name} onChange={e => set('contact_name', e.target.value)} /></div>
+        <div className="field"><label htmlFor={`${formId}-phone`}>Phone</label><input id={`${formId}-phone`} type="tel" disabled={pending !== null} value={d.phone} onChange={e => set('phone', e.target.value)} /></div>
       </div>
-      <div className="field"><label>Email</label><input type="email" value={d.email} onChange={e => set('email', e.target.value)} /></div>
-      <div className="field"><label>Address</label><input value={d.address} onChange={e => set('address', e.target.value)} /></div>
-      <div className="field"><label>Notes</label><textarea value={d.notes} onChange={e => set('notes', e.target.value)} /></div>
+      <div className="field"><label htmlFor={`${formId}-email`}>Email</label><input id={`${formId}-email`} type="email" disabled={pending !== null} value={d.email} onChange={e => set('email', e.target.value)} /></div>
+      <div className="field"><label htmlFor={`${formId}-address`}>Address</label><input id={`${formId}-address`} disabled={pending !== null} value={d.address} onChange={e => set('address', e.target.value)} /></div>
+      <div className="field"><label htmlFor={`${formId}-notes`}>Notes</label><textarea id={`${formId}-notes`} disabled={pending !== null} value={d.notes} onChange={e => set('notes', e.target.value)} /></div>
+      </form>
     </Modal>
   )
 }

@@ -105,6 +105,12 @@ function noteField(): HTMLTextAreaElement {
   if (!textarea) throw new Error('Missing note field')
   return textarea
 }
+function jobNameField(): HTMLInputElement {
+  const field = [...dialog().querySelectorAll('.field')].find(field => field.querySelector('label')?.textContent === 'Job name')
+  const input = field?.querySelector<HTMLInputElement>('input')
+  if (!input) throw new Error('Missing job name field')
+  return input
+}
 
 describe('Job detail page', () => {
   it('falls back to Work for unknown tab values and keeps navigation accessible', async () => {
@@ -334,5 +340,44 @@ describe('Job detail page', () => {
     expect(container.textContent).toContain('Job not found')
     expect(container.querySelector('a[href="/jobs"]')).toBeTruthy()
     noWrites()
+  })
+
+  it('keeps the job editor and its draft mounted through a failed optimistic deletion', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    const original = store.jobs.find(job => job.id === 'cedar')!
+    let resolve!: (value: boolean) => void
+    store.remove = vi.fn(() => {
+      store = { ...store, jobs: store.jobs.filter(job => job.id !== 'cedar') }
+      return new Promise<boolean>(done => { resolve = done })
+    })
+    await render()
+    await act(async () => button('Edit project details').click())
+    await change(jobNameField(), 'Keep this engineering draft')
+    await act(async () => button('Delete job').click())
+    await render()
+    expect(container.querySelector('[data-testid="location"]')?.textContent).toBe('/jobs/cedar')
+    expect(jobNameField().value).toBe('Keep this engineering draft')
+    expect(store.remove).toHaveBeenCalledTimes(1)
+    await act(async () => { resolve(false) })
+    expect(jobNameField().value).toBe('Keep this engineering draft')
+    expect(dialog().querySelector('[role="alert"]')?.textContent).toContain('not deleted')
+    store = { ...store, jobs: [...store.jobs, original] }
+    await render()
+    expect(container.querySelector('[data-testid="location"]')?.textContent).toBe('/jobs/cedar')
+    expect(jobNameField().value).toBe('Keep this engineering draft')
+    expect(store.refresh).toHaveBeenCalledWith('jobs')
+  })
+
+  it('navigates to Jobs only after a job deletion is confirmed', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    let resolve!: (value: boolean) => void
+    store.remove = vi.fn(() => new Promise<boolean>(done => { resolve = done }))
+    await render()
+    await act(async () => button('Edit project details').click())
+    await act(async () => button('Delete job').click())
+    expect(container.querySelector('[data-testid="location"]')?.textContent).toBe('/jobs/cedar')
+    await act(async () => { resolve(true) })
+    expect(container.querySelector('[data-testid="location"]')?.textContent).toBe('/jobs')
+    expect(container.querySelector('[role="dialog"]')).toBeNull()
   })
 })

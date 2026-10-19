@@ -5,7 +5,7 @@ import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Store } from '../lib/store'
 import type { Invoice, Task } from '../lib/types'
-import { InvoiceModal, ItemModal, TaskModal, TimeModal } from './editors'
+import { InvoiceModal, ItemModal, JobModal, TaskModal, TimeModal } from './editors'
 import { FeesSummary, WorkStatusBar } from './MoneyCharts'
 import { jobBilling } from '../lib/calc'
 
@@ -233,5 +233,80 @@ describe('job fees and effective hourly rate', () => {
     expect(container.textContent).toContain('1h completed · 0h billable · 1h nonbillable')
     expect(container.textContent).toContain('Nonbillable time value: $150')
     expect(container.textContent).toContain('No billable work or deposits yet')
+  })
+})
+
+describe('job deletion', () => {
+  const findButton = (text: string) => {
+    const button = [...container.querySelectorAll('button')].find(button => button.textContent?.trim() === text)
+    if (!button) throw new Error(`Missing button ${text}`)
+    return button
+  }
+  const jobName = () => [...container.querySelectorAll('.field')]
+    .find(field => field.querySelector('label')?.textContent === 'Job name')!.querySelector('input')!
+
+  it.each(['returns false', 'throws'])('retains the edited draft and awaits authoritative refresh when deletion %s', async failure => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    const close = vi.fn(), deleted = vi.fn()
+    let resolveRefresh!: () => void
+    vi.mocked(store.refresh).mockImplementation(() => new Promise(resolve => { resolveRefresh = resolve }))
+    if (failure === 'throws') vi.mocked(store.remove).mockRejectedValue(new Error('Synthetic connection failure'))
+    else vi.mocked(store.remove).mockResolvedValue(false)
+    await render(<JobModal job={store.jobs[0]} onClose={close} onDeleted={deleted} />)
+    await change('Job name', 'Keep this edited job draft')
+    await clickButton('Delete job')
+    expect(store.remove).toHaveBeenCalledExactlyOnceWith('jobs', 'job')
+    expect(store.refresh).toHaveBeenCalledExactlyOnceWith('jobs')
+    expect(close).not.toHaveBeenCalled()
+    expect(deleted).not.toHaveBeenCalled()
+    expect(jobName().matches(':disabled')).toBe(true)
+    await act(async () => resolveRefresh())
+    expect(jobName().value).toBe('Keep this edited job draft')
+    expect(jobName().matches(':disabled')).toBe(false)
+    expect(container.querySelector('[role="alert"]')?.textContent).toMatch(/delet|confirm/i)
+    expect(close).not.toHaveBeenCalled()
+    expect(deleted).not.toHaveBeenCalled()
+    expect(store.update).not.toHaveBeenCalled()
+  })
+
+  it('guards duplicate delete/save/close actions until deletion succeeds, then notifies before closing', async () => {
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    const close = vi.fn(), deleted = vi.fn()
+    let resolveRemove!: (value: boolean) => void
+    vi.mocked(store.remove).mockImplementation(() => new Promise(resolve => { resolveRemove = resolve }))
+    await render(<JobModal job={store.jobs[0]} onClose={close} onDeleted={deleted} />)
+    const remove = findButton('Delete job'), save = findButton('Save'), cancel = findButton('Cancel')
+    await act(async () => { remove.click(); remove.click(); save.click(); cancel.click() })
+    await act(async () => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })))
+    expect(confirm).toHaveBeenCalledOnce()
+    expect(store.remove).toHaveBeenCalledExactlyOnceWith('jobs', 'job')
+    expect(store.update).not.toHaveBeenCalled()
+    expect(close).not.toHaveBeenCalled()
+    expect(deleted).not.toHaveBeenCalled()
+    expect(remove.disabled).toBe(true)
+    expect(save.disabled).toBe(true)
+    expect(cancel.disabled).toBe(true)
+    await act(async () => resolveRemove(true))
+    expect(deleted).toHaveBeenCalledOnce()
+    expect(close).toHaveBeenCalledOnce()
+    expect(deleted.mock.invocationCallOrder[0]).toBeLessThan(close.mock.invocationCallOrder[0])
+  })
+
+  it('blocks deletion while an edited job save is pending', async () => {
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    const close = vi.fn()
+    let resolveUpdate!: (value: boolean) => void
+    vi.mocked(store.update).mockImplementation(() => new Promise(resolve => { resolveUpdate = resolve }))
+    await render(<JobModal job={store.jobs[0]} onClose={close} />)
+    await change('Job name', 'Pending edited job')
+    const save = findButton('Save'), remove = findButton('Delete job')
+    await act(async () => { save.click(); remove.click() })
+    expect(store.update).toHaveBeenCalledOnce()
+    expect(confirm).not.toHaveBeenCalled()
+    expect(store.remove).not.toHaveBeenCalled()
+    expect(remove.disabled).toBe(true)
+    await act(async () => resolveUpdate(false))
+    expect(close).not.toHaveBeenCalled()
+    expect(jobName().value).toBe('Pending edited job')
   })
 })
