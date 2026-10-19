@@ -18,7 +18,8 @@ import { BrandMark } from './Brand'
 import { DEMO } from '../lib/supabase'
 
 const SHEAR_WALL_URL = `${import.meta.env.BASE_URL}shear-wall/`
-const CLASSIC_URL = `${import.meta.env.BASE_URL}classic/`
+// The demo is published in demo/, one folder below the planner and classic/.
+const CLASSIC_URL = DEMO ? '../classic/' : `${import.meta.env.BASE_URL}classic/`
 
 interface NavItem { to: string; label: string; icon: typeof Sun; end?: boolean; phone?: boolean }
 const NAV: NavItem[] = [
@@ -137,7 +138,7 @@ export function Shell({ children }: { children: ReactNode }) {
         <button className="btn icon" onClick={() => setPalette(true)} aria-label="Search"><Search size={20} /></button>
       </header>
 
-      {DEMO && <div className="demo-banner" role="note">Demo with made-up data — try anything, nothing is saved. <a href={import.meta.env.BASE_URL.endsWith('/demo/') ? import.meta.env.BASE_URL.replace(/demo\/$/, '') : 'https://brianwisner.github.io/Who-knows/'}>Open the real planner</a></div>}
+      {DEMO && <div className="demo-banner" role="note">Demo with made-up data — try anything, nothing is saved. <a href="../">Open the real planner</a></div>}
       <main id="main" className="content" tabIndex={-1}>{children}</main>
     </div>
 

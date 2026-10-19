@@ -40,7 +40,7 @@ jobs:
         run: npm ci && npm run build
       - name: Build the demo (in-memory sample data)
         working-directory: planner
-        run: npx vite build --mode demo --base /Who-knows/demo/ --outDir dist/demo
+        run: npx vite build --mode demo --outDir dist/demo
       - name: Build the classic version
         working-directory: classic
         run: npm ci && npm run build && cp -r dist ../planner/dist/classic
