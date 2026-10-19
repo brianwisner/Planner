@@ -86,6 +86,7 @@ lib/
   reminders.ts        once-a-day browser notification (off in demo)
   theme.ts            light/dark/system + small per-device prefs (localStorage keys prefixed `wp2:`)
   utils.ts            date/money/hours formatting, CSV/text download
+  email.ts            Gmail "new message" links for every email button   (+ email.test.ts)
 demo/
   mockSupabase.ts     in-memory stand-in for the Supabase client (subset the app uses,
                       incl. triggers: phases on job insert, entry rate, cascades, record_invoice)
@@ -128,6 +129,7 @@ Conventions:
 - "Awaiting payment" everywhere uses `views.unpaidInvoices()`: unpaid, more than half a cent, on non-archived jobs. A $0 invoice shows "No payment due". Site-visit dates use the local day (`views.taskDay()`).
 - Reordering the List view numbers open jobs 1, 2, 3… skipping numbers that closed jobs still hold (`priorityNumbers()`); new jobs get the highest number + 1.
 - Today: tasks/deadlines cover active and on-hold jobs; tasks "Waiting on someone" are listed separately and never count as late. Financial totals retain all nonarchived jobs, including completed/cancelled obligations.
+- Email buttons open Gmail on the web (`lib/email.ts` `useEmailLink()`, sent from the signed-in owner's Gmail account), never `mailto:`: the owner uses Gmail, and the computer's default mail app is something else.
 - Plain-English labels everywhere ("Earned per hour", "Ready to bill", "Waiting on someone").
 
 ### Demo mode
@@ -152,6 +154,6 @@ Conventions:
 - New fields on jobs/phases/tasks → `setup.sql` (+ migration), `types.ts`, demo defaults/seed, the relevant editor in `editors.tsx`, and wherever it's displayed.
 - New phase types → the `kind` check constraint, `add_standard_phases()`, `PHASE_KIND_LABEL`/`PHASE_KIND_SHORT` in `types.ts`, and `lib/stages.ts` if it should be a pipeline stage (plus a `--st-…` color in `tokens.css`).
 - Email reminders → would need a scheduled Edge Function (pg_cron + an email provider); currently reminders are browser notifications only.
-- Sending invoices by email → the invoice page has a mailto link and Print/Save as PDF; real sending would need an email provider.
+- Sending invoices by email → the invoice page's Email button opens a pre-filled Gmail message, and Print/Save as PDF makes the attachment; sending without opening Gmail would need the Gmail API or an email provider.
 - Two-way Google Calendar → needs Google OAuth (Google Cloud project); current design is a one-way subscription feed.
 - **Google sign-in + showing the owner's work Google Calendar** was built once (commit 8df26c9) and then reverted at the owner's request ("connect my work account later"). The live database still has the dormant pieces (`google_tokens`, `private_config`, `settings.allowed_email_domains`, `profiles.google_calendar_ids`, and the `google-calendar` edge function); they are unused.
