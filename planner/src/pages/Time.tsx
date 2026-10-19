@@ -1,113 +1,276 @@
-// A completed-hours timesheet and searchable history, with running timers separate.
+// Time: a weekly timesheet you can type into, the running timer, and every entry.
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { addDays, format, parseISO } from 'date-fns'
+import { ChevronLeft, ChevronRight, Clock, Download, Lock, Play, Plus, Search, Square } from 'lucide-react'
 import { useData } from '../lib/store'
-import { timerHours } from '../lib/calc'
-import type { TimeEntry } from '../lib/types'
-import { JOB_STATUS_LABEL } from '../lib/types'
+import { useEditors } from '../components/editors'
+import { Empty, Menu, Segmented, useConfirm, type MenuEntry } from '../components/ui'
+import { allHours, entryHours, HOUR_STATUS_LABEL, workPhase } from '../lib/calc'
 import { phaseLabel } from '../lib/phases'
-import { downloadCSV, fmtDate, fmtDateTime, fmtHourlyRate, fmtHours } from '../lib/utils'
-import { elapsedTime, filterTimeRows, parseTimeQuery, timeCSV, timeDays, timeRangeError, timeRows, timeStatusLabel, timeTotals, timeWeek, validTimeDate, writeTimeQuery, TIME_CSV_HEADERS, TIME_PAGE_SIZE, type TimeQuery, type TimeRow } from '../lib/time'
-import { TimeModal } from '../components/editors'
-import { Icon } from '../components/ui'
-import './Time.css'
+import { runningTimers, needsReview, startTimer, elapsedLabel } from '../lib/timer'
+import { useStopTimer } from '../components/useTimerActions'
+import { mondayOf } from '../lib/views'
+import { downloadCSV, fmtDate, fmtHours, fmtMoney, sum, todayISO } from '../lib/utils'
+import { pref, setPref } from '../lib/theme'
+import type { TimeEntry } from '../lib/types'
+import './time.css'
 
-const money = (value: number) => value.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 2 })
+const iso = (d: Date) => format(d, 'yyyy-MM-dd')
+type Range = 'week' | '30' | 'month' | 'all'
 
 export function Time() {
   const store = useData()
-  const { loading, error, timeEntries, toast } = store
+  const edit = useEditors()
   const [params, setParams] = useSearchParams()
-  const [now, setNow] = useState(() => new Date())
-  const query = parseTimeQuery(params, now)
-  const allRows = useMemo(() => timeRows(store, now), [store, now])
-  const rows = filterTimeRows(allRows, query)
-  const totals = timeTotals(rows)
-  const dateError = timeRangeError(query)
-  const [editing, setEditing] = useState<TimeEntry | null>(null)
-  const [adding, setAdding] = useState(false)
-  const consumedEntry = useRef<string | null>(null)
-  const stopping = useRef(new Set<string>())
-  const [busyTimers, setBusyTimers] = useState(new Set<string>())
-  const [timerErrors, setTimerErrors] = useState<Record<string, string>>({})
-  const selectedJob = store.jobs.find(job => job.id === query.job)
-  const myTimers = allRows.filter(row => row.status === 'running' && row.entry.user_id === store.me?.id)
-  const days = timeDays(query.week)
-  const completedRows = rows.filter(row => row.entry.hours != null)
-  const weekJobs = [...new Set(completedRows.map(row => row.entry.job_id))]
-  const pageCount = Math.max(1, Math.ceil(rows.length / TIME_PAGE_SIZE))
-  const page = Math.min(query.page, pageCount)
-  const shownRows = rows.slice((page - 1) * TIME_PAGE_SIZE, page * TIME_PAGE_SIZE)
-  const filtered = query.job !== '' || query.q.trim() !== '' || query.billable !== 'all' || query.status !== 'all' || query.range !== 'week' || query.week !== timeWeek(now)
-
+  const today = todayISO()
+  const week = /^\d{4}-\d{2}-\d{2}$/.test(params.get('week') ?? '') ? mondayOf(params.get('week')!) : mondayOf(today)
+  const setWeek = (w: string) => setParams(p => { const n = new URLSearchParams(p); if (w === mondayOf(today)) n.delete('week'); else n.set('week', w); return n }, { replace: true })
+  const [weekends, setWeekendsState] = useState(() => pref('time.weekends', false))
+  const setWeekends = (v: boolean) => { setWeekendsState(v); setPref('time.weekends', v) }
+  const allDays = useMemo(() => Array.from({ length: 7 }, (_, i) => iso(addDays(parseISO(week), i))), [week])
+  // Weekend columns appear on their own when weekend hours exist, so totals always add up.
+  const weekendHours = store.timeEntries.some(e => e.date === allDays[5] || e.date === allDays[6])
+  const days = weekends || weekendHours ? allDays : allDays.slice(0, 5)
+  // Deep link: /time?entry=<id>
+  const opened = useRef<string | null>(null)
   useEffect(() => {
-    const tick = () => setNow(new Date())
-    const interval = window.setInterval(tick, 30_000)
-    window.addEventListener('focus', tick)
-    return () => { window.clearInterval(interval); window.removeEventListener('focus', tick) }
-  }, [])
-  useEffect(() => {
-    const entryId = params.get('entry')
-    if (!entryId) { consumedEntry.current = null; return }
-    if (loading || error || consumedEntry.current === entryId) return
-    consumedEntry.current = entryId
-    const entry = timeEntries.find(entry => entry.id === entryId)
-    if (entry) setEditing(entry)
-    else toast('That time entry is no longer available.', 'error')
-    setParams(current => { const next = new URLSearchParams(current); next.delete('entry'); return next }, { replace: true })
-  }, [params, loading, error, timeEntries, toast, setParams])
+    const id = params.get('entry')
+    if (!id || opened.current === id) return
+    const e = store.timeEntries.find(x => x.id === id)
+    if (e) { opened.current = id; edit.time(e) }
+  }, [params, store.timeEntries, edit])
 
-  function patch(change: Partial<TimeQuery>, replace = false) {
-    setParams(current => writeTimeQuery(current, { page: 1, ...change }, now), { replace })
-  }
-  function reset() { patch({ job: '', q: '', billable: 'all', status: 'all', range: 'week', week: timeWeek(now), from: '', to: '' }) }
-  async function stopTimer(row: TimeRow) {
-    if (row.entry.user_id !== store.me?.id || stopping.current.has(row.entry.id)) return
-    const id = row.entry.id
-    if (!Number.isFinite(Date.parse(row.entry.started_at ?? ''))) { setTimerErrors(errors => ({ ...errors, [id]: 'This timer has no valid start time. Edit the entry to record its hours.' })); return }
-    stopping.current.add(id); setBusyTimers(new Set(stopping.current))
-    setTimerErrors(errors => { const next = { ...errors }; delete next[id]; return next })
-    try {
-      if (!await store.update('time_entries', id, { hours: timerHours(row.entry), started_at: null })) {
-        await store.refresh('time_entries')
-        setTimerErrors(errors => ({ ...errors, [id]: 'The timer could not be stopped. Check its current state before retrying.' }))
-      }
-    } catch {
-      await store.refresh('time_entries')
-      setTimerErrors(errors => ({ ...errors, [id]: 'Could not confirm the timer stop. Check the entry before retrying.' }))
-    } finally { stopping.current.delete(id); setBusyTimers(new Set(stopping.current)) }
-  }
-  function entryLink(entry: TimeEntry) {
-    const next = new URLSearchParams(params); next.set('entry', entry.id)
-    return `/time?${next}`
-  }
-  const scope = query.range === 'all' ? 'All recorded dates' : query.range === 'custom' ? dateError ? 'Custom dates need attention' : `${fmtDate(query.from, 'long')} – ${fmtDate(query.to, 'long')}` : `${fmtDate(query.week, 'long')} – ${fmtDate(days[6])}`
+  const weekEntries = store.timeEntries.filter(e => e.date >= allDays[0] && e.date <= allDays[6] && e.hours != null)
+  const weekTotal = sum(weekEntries.map(e => e.hours))
+  const billable = sum(weekEntries.filter(e => e.billable !== false).map(e => e.hours))
 
   return <div className="time-page">
-    <div className="page-header time-header"><div><h1>Time</h1><p className="time-subtitle">Review completed work, keep notes with each entry, and check your timers.</p></div><div className="actions"><button className="btn primary" disabled={!store.jobs.length || Boolean(query.job && !selectedJob)} onClick={() => setAdding(true)}><Icon name="plus" size={15} /> Log hours</button><button className="btn" disabled={!rows.length || Boolean(dateError)} onClick={() => downloadCSV(`hours-${query.range === 'week' ? query.week : query.range}.csv`, TIME_CSV_HEADERS, timeCSV(rows))}><Icon name="download" size={15} /> Export CSV</button></div></div>
+    <div className="page-head">
+      <div className="titles"><h1>Time</h1><p className="lede">{weekTotal ? `${fmtHours(weekTotal)} logged this week · ${fmtHours(billable)} billable` : 'Nothing logged this week yet'}</p></div>
+      <div className="actions">
+        <button className="btn" onClick={() => edit.time()}><Plus size={16} /> Log hours</button>
+      </div>
+    </div>
 
-    {(myTimers.length > 0 || busyTimers.size > 0) && <section className="card time-running-card" aria-label="Your running timers"><div><h2>Your running timers</h2><p className="small muted">Always shown, regardless of the filters below. Elapsed time is separate from completed hours.</p></div>{myTimers.map(row => <div className="time-running-row" key={row.entry.id}><span className="timer-pill"><span className="dot" /> {elapsedTime(row.elapsedHours)} elapsed</span><div><Link to={`/jobs/${row.entry.job_id}`}>{row.job?.name ?? 'Saved job'}</Link><div className="tiny muted">{row.phase ? phaseLabel(row.phase) : 'General'} · {row.entry.billable === false ? 'Nonbillable' : 'Billable'}{row.entry.started_at && Number.isFinite(Date.parse(row.entry.started_at)) ? ` · started ${fmtDateTime(row.entry.started_at)}` : ''}</div></div><button className="btn" disabled={busyTimers.has(row.entry.id)} aria-label={`Stop timer for ${row.job?.name ?? 'saved job'}`} onClick={() => void stopTimer(row)}><Icon name="stop" size={14} />{busyTimers.has(row.entry.id) ? 'Stopping…' : 'Stop timer'}</button></div>)}{!myTimers.length && busyTimers.size > 0 && <p className="small muted" role="status">Saving the timer stop…</p>}</section>}
-    {Object.entries(timerErrors).map(([id, message]) => <p className="time-error" role="alert" key={id}>{message}</p>)}
+    <TimerCard />
 
-    <section className="card time-controls" aria-label="Time filters">
-      <div className="time-range-controls" aria-label="Date range">{([['week', 'Week'], ['all', 'All time'], ['custom', 'Custom range']] as const).map(([range, label]) => <button className={`chip ${query.range === range ? 'on' : ''}`} aria-pressed={query.range === range} key={range} onClick={() => patch({ range, ...(range === 'custom' ? { from: query.from || query.week, to: query.to || days[6] } : {}) })}>{label}</button>)}</div>
-      {query.range === 'week' && <div className="time-week-controls"><button className="btn icon" aria-label="Previous week" onClick={() => patch({ week: format(addDays(parseISO(query.week), -7), 'yyyy-MM-dd') })}><Icon name="chevronL" size={16} /></button><label>Week starting<input aria-label="Week starting" type="date" value={query.week} onChange={event => { if (validTimeDate(event.target.value)) patch({ week: timeWeek(parseISO(event.target.value)) }) }} /></label><button className="btn icon" aria-label="Next week" onClick={() => patch({ week: format(addDays(parseISO(query.week), 7), 'yyyy-MM-dd') })}><Icon name="chevronR" size={16} /></button><button className="btn" onClick={() => patch({ range: 'week', week: timeWeek(now) })}>This week</button><span className="tiny muted">Monday–Sunday · local dates</span></div>}
-      {query.range === 'custom' && <div className="time-custom-dates"><label>From date<input aria-label="From date" type="date" value={query.from} onChange={event => patch({ from: event.target.value })} /></label><label>To date<input aria-label="To date" type="date" value={query.to} onChange={event => patch({ to: event.target.value })} /></label></div>}
-      <div className="time-filter-grid"><label>Job<select aria-label="Filter time by job" value={query.job} onChange={event => patch({ job: event.target.value })}><option value="">All job history</option>{query.job && !selectedJob && <option value={query.job}>{store.loading ? 'Loading selected job…' : 'Unavailable job (saved filter)'}</option>}{[...store.jobs].sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id)).map(job => <option key={job.id} value={job.id}>{store.clients.find(client => client.id === job.client_id)?.name} · {job.job_number ? `${job.job_number} · ` : ''}{job.name}{job.status !== 'active' ? ` (${JOB_STATUS_LABEL[job.status]})` : ''}</option>)}</select></label><label className="time-search-field">Search<input type="search" aria-label="Search time entries" placeholder="Job, client, phase, task, or notes…" value={query.q} onChange={event => patch({ q: event.target.value }, true)} /></label><label>Billing mode<select aria-label="Billable time" value={query.billable} onChange={event => patch({ billable: event.target.value as TimeQuery['billable'] })}><option value="all">Billable &amp; nonbillable</option><option value="billable">Billable</option><option value="nonbillable">Nonbillable</option></select></label><label>Status<select aria-label="Time status" value={query.status} onChange={event => patch({ status: event.target.value as TimeQuery['status'] })}><option value="all">All entries</option><option value="completed">Completed hours</option><option value="running">Running timers</option><option value="unbilled">Not billed</option><option value="partial">Partly paid by deposit</option><option value="deposit">Paid by deposit</option><option value="billed">Billed, not paid</option><option value="paid">Paid invoice</option><option value="nonbillable">Nonbillable</option></select></label></div>
-      <div className="time-filter-footer"><span role="status">{scope}</span>{filtered && <button className="btn ghost" onClick={reset}>Reset filters</button>}</div>
-      {dateError && <p className="time-error" role="alert">{dateError}</p>}
-    </section>
+    <Timesheet key={week} days={days} allDays={allDays} week={week} today={today} onWeek={setWeek} weekends={weekends} setWeekends={setWeekends} />
 
-    <div className="stats time-stats" aria-label="Filtered time totals"><div className="stat"><div className="label">Completed hours</div><div className="value">{fmtHours(totals.hours)}</div><div className="sub">{totals.completed} saved {totals.completed === 1 ? 'entry' : 'entries'}</div></div><div className="stat"><div className="label">Billable hours</div><div className="value">{fmtHours(totals.billable)}</div><div className="sub">Completed client work</div></div><div className="stat"><div className="label">Nonbillable hours</div><div className="value">{fmtHours(totals.nonbillable)}</div><div className="sub">Completed internal or rework time</div></div><div className="stat"><div className="label">Running timers</div><div className="value">{totals.running}</div><div className="sub">{elapsedTime(totals.elapsed)} elapsed · excluded above</div></div></div>
-    <p className="time-basis tiny muted">Totals and export follow every filter and include historical records. Running timers do not add completed hours or work value until stopped.</p>
-
-    {query.range === 'week' && <section className="card time-week-card" aria-labelledby="time-week-title"><div className="time-section-heading"><h2 id="time-week-title">Week at a glance</h2><span className="small muted">{fmtHours(totals.hours)} completed</span></div><p className="small muted">{fmtHours(totals.billable)} billable · {fmtHours(totals.nonbillable)} nonbillable. {totals.running ? `${totals.running} running ${totals.running === 1 ? 'timer is' : 'timers are'} shown separately.` : 'Completed hours only.'}</p><p className="tiny muted time-swipe-hint">Scroll the table sideways to see every day.</p><div className="table-wrap"><table className="time-week-table"><thead><tr><th>Job</th>{days.map(day => <th key={day} className="num">{format(parseISO(day), 'EEE')}<span>{format(parseISO(day), 'MMM d')}</span></th>)}<th className="num">Total</th></tr></thead><tbody>{weekJobs.map(jobId => { const entries = completedRows.filter(row => row.entry.job_id === jobId); const job = entries[0].job; return <tr key={jobId}><th scope="row">{job ? <Link to={`/jobs/${jobId}`}>{job.name}</Link> : 'Unavailable job'}</th>{days.map(day => { const hours = entries.filter(row => row.entry.date === day).reduce((sum, row) => sum + row.entry.hours!, 0); return <td key={day} className="num">{hours ? fmtHours(hours) : <span className="muted">–</span>}</td> })}<td className="num bold">{fmtHours(timeTotals(entries).hours)}</td></tr> })}{weekJobs.length === 0 && <tr><td colSpan={9} className="time-empty-grid">No completed hours match this week and these filters.</td></tr>}</tbody>{weekJobs.length > 0 && <tfoot><tr><th scope="row">Completed total</th>{days.map(day => <td key={day} className="num">{fmtHours(timeTotals(completedRows.filter(row => row.entry.date === day)).hours)}</td>)}<td className="num">{fmtHours(totals.hours)}</td></tr></tfoot>}</table></div></section>}
-
-    <section className="card time-history-card" aria-labelledby="time-history-title"><div className="time-section-heading"><h2 id="time-history-title">Entries</h2><span className="small muted">Newest recorded date first</span></div>{store.loading ? <p className="time-empty" role="status">Loading time entries…</p> : shownRows.length ? <div className="table-wrap"><table className="time-history-table"><thead><tr><th>Date / job / notes</th><th className="num">Hours</th><th>Billing / value</th><th><span className="sr-only">Actions</span></th></tr></thead><tbody>{shownRows.map(row => <tr key={row.entry.id} data-entry-id={row.entry.id}><td className="time-entry-context"><Link className="time-entry-date" to={entryLink(row.entry)}>{fmtDate(row.entry.date, 'long')}</Link><div className="time-entry-job">{row.job ? <Link to={`/jobs/${row.job.id}`}>{row.job.name}</Link> : 'Unavailable job'}{row.client && <span className="tiny muted">{row.client.name}{row.job?.job_number ? ` · ${row.job.job_number}` : ''}</span>}</div><div className="tiny muted">{row.phase ? phaseLabel(row.phase) : 'General / unavailable phase'} · {row.ownerName}</div>{row.task && <div className="tiny muted">Task: {row.task.title}</div>}{row.entry.notes && <p className="time-entry-notes">{row.entry.notes}</p>}</td><td className="num time-entry-hours">{row.status === 'running' ? <><span className="timer-pill"><span className="dot" /> Running</span><div className="tiny muted">{elapsedTime(row.elapsedHours)} elapsed</div></> : fmtHours(row.entry.hours)}</td><td className="time-entry-billing"><span className={`badge h-${row.status}`}>{timeStatusLabel(row)}</span>{row.status === 'running' && <span className={`badge ${row.entry.billable === false ? 'h-nonbillable' : 'todo'}`}>{row.entry.billable === false ? 'Nonbillable' : 'Billable'}</span>}{row.amount != null && <div className="small">{money(row.amount)} work value</div>}<div className="tiny muted">{row.entry.rate == null ? 'Fallback rate' : 'Saved rate'} {fmtHourlyRate(row.rate)}</div><Link className="tiny" to={`/billing?job=${row.entry.job_id}`}>Job billing →</Link></td><td className="time-entry-actions"><button className="btn ghost" aria-label={`Edit time entry on ${row.entry.date}${row.entry.notes ? `: ${row.entry.notes}` : ''}`} onClick={() => setEditing(row.entry)}><Icon name="edit" size={15} /><span>Edit</span></button></td></tr>)}</tbody></table></div> : <div className="time-empty"><h3>{dateError ? 'Check the selected dates' : store.timeEntries.length ? 'No entries match these filters' : 'No time recorded yet'}</h3><p>{dateError ? 'Correct the date range to show entries.' : store.timeEntries.length ? 'Try another job, date range, or search, or reset the filters.' : 'Log completed hours on a job to start your timesheet.'}</p>{filtered && !dateError && <button className="btn" onClick={reset}>Reset filters</button>}{!store.jobs.length && <Link className="btn" to="/jobs">Open jobs</Link>}</div>}
-      <div className="time-history-footer"><span role="status">{rows.length ? `${(page - 1) * TIME_PAGE_SIZE + 1}–${Math.min(page * TIME_PAGE_SIZE, rows.length)} of ${rows.length} matching entries` : '0 matching entries'} · export includes all matches</span>{pageCount > 1 && <div className="time-pagination"><button className="btn" aria-label="Previous entries" disabled={page <= 1} onClick={() => patch({ page: page - 1 })}><Icon name="chevronL" size={14} /> Previous</button><span className="small">Page {page} of {pageCount}</span><button className="btn" aria-label="Next entries" disabled={page >= pageCount} onClick={() => patch({ page: page + 1 })}>Next <Icon name="chevronR" size={14} /></button></div>}</div>
-    </section>
-    {editing && <TimeModal entry={editing} onClose={() => setEditing(null)} />}
-    {adding && <TimeModal defaults={{ job_id: selectedJob?.id }} onClose={() => setAdding(false)} />}
+    <EntryList week={allDays} />
   </div>
+}
+
+function TimerCard() {
+  const store = useData()
+  const edit = useEditors()
+  const stop = useStopTimer()
+  const timers = runningTimers(store)
+  const [, tick] = useState(0)
+  useEffect(() => { if (!timers.length) return; const id = setInterval(() => tick(n => n + 1), 15000); return () => clearInterval(id) }, [timers.length])
+  const active = store.jobs.filter(j => j.status === 'active')
+  const [jobId, setJobId] = useState(() => pref<string>('time.timerJob', ''))
+  const [billable, setBillable] = useState(true)
+  const [starting, setStarting] = useState(false)
+  const job = active.find(j => j.id === jobId) ?? active[0]
+  if (timers.length) return <>
+    {timers.length > 1 && <div className="form-note warn" style={{ marginBottom: 12 }}>More than one timer is running. Stop or edit the extra ones so the same hours aren't saved twice.</div>}
+    {timers.map(timer => {
+      const tj = store.jobs.find(j => j.id === timer.job_id)
+      const ph = store.phases.find(p => p.id === timer.phase_id)
+      const long = needsReview(timer)
+      return <section key={timer.id} className="card timer-card running">
+        <span className="timer-pulse" />
+        <div className="grow" style={{ minWidth: 0 }}>
+          <div className="small muted">Timer running · started {format(new Date(timer.started_at!), long ? 'EEE MMM d, h:mm a' : 'h:mm a')}</div>
+          <div className="timer-job truncate">{tj?.name ?? 'Job'}</div>
+          <div className="tiny muted">{ph ? phaseLabel(ph) : 'General'}{timer.billable === false ? ' · non-billable' : ''}</div>
+          {long && <div className="tiny danger-text">Running a long time — check the hours before saving.</div>}
+        </div>
+        <div className="timer-clock num">{elapsedLabel(timer.started_at!)}</div>
+        <button className="btn" onClick={() => edit.time(timer)}>Edit</button>
+        <button className="btn ok lg" onClick={() => void stop(timer)}><Square size={14} fill="currentColor" /> {long ? 'Check hours' : 'Stop & save'}</button>
+      </section>
+    })}
+  </>
+  if (!active.length) return null
+  return <section className="card timer-card">
+    <span className="timer-ico"><Clock size={20} /></span>
+    <div className="grow timer-form">
+      <select className="input" value={job?.id ?? ''} onChange={e => { setJobId(e.target.value); setPref('time.timerJob', e.target.value) }} aria-label="Job to time">
+        {active.map(j => <option key={j.id} value={j.id}>{j.name}</option>)}
+      </select>
+      <label className="switch small"><input type="checkbox" checked={billable} onChange={e => setBillable(e.target.checked)} />Billable</label>
+    </div>
+    <button className="btn primary lg" disabled={starting} onClick={async () => { if (!job) return; setStarting(true); await startTimer(store, { job_id: job.id, billable }); setStarting(false) }}><Play size={16} /> {starting ? 'Starting…' : 'Start timer'}</button>
+  </section>
+}
+
+/* ---------------- Timesheet ---------------- */
+
+function Timesheet({ days, allDays, week, today, onWeek, weekends, setWeekends }: { days: string[]; allDays: string[]; week: string; today: string; onWeek: (w: string) => void; weekends: boolean; setWeekends: (v: boolean) => void }) {
+  const store = useData()
+  const [extraRows, setExtraRows] = useState<string[]>([])
+  const entries = store.timeEntries.filter(e => e.date >= allDays[0] && e.date <= allDays[6])
+  // Jobs with hours or planned hours this week come pre-listed, ready to type into.
+  const planned = store.schedule.filter(s => s.date >= allDays[0] && s.date <= allDays[6] && s.user_id === store.me?.id && store.jobs.some(j => j.id === s.job_id && j.status === 'active'))
+  const rowJobs = [...new Set([...entries.map(e => e.job_id), ...planned.map(s => s.job_id), ...extraRows])]
+    .map(id => store.jobs.find(j => j.id === id)).filter(Boolean)
+    .sort((a, b) => a!.priority - b!.priority) as typeof store.jobs
+  const candidates = store.jobs.filter(j => j.status === 'active' && !rowJobs.some(r => r.id === j.id))
+  const addItems: MenuEntry[] = candidates.length ? candidates.map(j => ({ label: j.name, onSelect: () => setExtraRows(r => [...r, j.id]) })) : [{ label: 'All active jobs are listed', disabled: true }]
+  const dayTotal = (d: string) => sum(entries.filter(e => e.date === d).map(e => e.hours ?? 0))
+  const total = sum(days.map(dayTotal))
+
+  return <section className="card sheet-card">
+    <div className="card-head sheet-head">
+      <div className="btn-group">
+        <button className="btn icon sm" aria-label="Previous week" onClick={() => onWeek(iso(addDays(parseISO(week), -7)))}><ChevronLeft size={17} /></button>
+        <button className="btn sm" disabled={week === mondayOf(today)} onClick={() => onWeek(mondayOf(today))}>This week</button>
+        <button className="btn icon sm" aria-label="Next week" onClick={() => onWeek(iso(addDays(parseISO(week), 7)))}><ChevronRight size={17} /></button>
+      </div>
+      <h2>Week of {format(parseISO(week), 'MMM d')}</h2>
+      <div className="grow" />
+      <label className="switch small"><input type="checkbox" checked={weekends} onChange={e => setWeekends(e.target.checked)} />Weekends</label>
+    </div>
+    <div className="sheet-scroll">
+      <table className="sheet" style={{ ['--days' as string]: days.length }}>
+        <thead><tr>
+          <th className="sheet-job">Job</th>
+          {days.map(d => <th key={d} className={d === today ? 'today' : ''}><span className="sd-name">{format(parseISO(d), 'EEE')}</span><span className="sd-date">{format(parseISO(d), 'd')}</span></th>)}
+          <th className="sheet-total hide-sm">Total</th>
+        </tr></thead>
+        <tbody>
+          {rowJobs.map(job => <tr key={job.id}>
+            <th className="sheet-job" scope="row"><Link to={`/jobs/${job.id}?tab=time`} className="truncate" style={{ display: 'block' }}>{job.name}</Link><span className="tiny muted truncate" style={{ display: 'block' }}>{store.clients.find(c => c.id === job.client_id)?.name}</span></th>
+            {days.map(d => <SheetCell key={d} jobId={job.id} date={d} today={today} entries={entries.filter(e => e.job_id === job.id && e.date === d)} planned={sum(planned.filter(s => s.job_id === job.id && s.date === d).map(s => s.hours))} />)}
+            <td className="sheet-total hide-sm num strong">{fmtHours(sum(entries.filter(e => e.job_id === job.id && days.includes(e.date)).map(e => e.hours ?? 0)))}</td>
+          </tr>)}
+          <tr className="sheet-add-row">
+            <th className="sheet-job" colSpan={1}>
+              <Menu label="Add a job row" align="start" items={addItems} trigger={p => <button className="btn ghost sm" {...p}><Plus size={15} /> Add a job</button>} />
+            </th>
+            <td colSpan={days.length + 1} className="tiny muted sheet-hint">{rowJobs.length ? 'Type hours in a box (faint numbers are your plan). Click + to add notes.' : 'Add a job, then type the hours you worked each day.'}</td>
+          </tr>
+        </tbody>
+        <tfoot><tr>
+          <th className="sheet-job">Total</th>
+          {days.map(d => <td key={d} className="num strong">{dayTotal(d) ? fmtHours(dayTotal(d)) : '–'}</td>)}
+          <td className="sheet-total hide-sm num strong">{fmtHours(total)}</td>
+        </tr></tfoot>
+      </table>
+    </div>
+  </section>
+}
+
+function SheetCell({ jobId, date, today, entries, planned }: { jobId: string; date: string; today: string; entries: TimeEntry[]; planned: number }) {
+  const store = useData()
+  const edit = useEditors()
+  const done = entries.filter(e => e.hours != null)
+  const running = entries.some(e => e.hours == null && e.started_at)
+  const value = sum(done.map(e => e.hours))
+  const single = done.length === 1 ? done[0] : null
+  const locked = single ? Boolean(single.billed || single.invoice_id || (single.deposit_applied ?? 0) > 0) : false
+  const [draft, setDraft] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
+  const cancelled = useRef(false)
+  const confirm = useConfirm()
+  const editable = !running && (done.length === 0 || (single && !locked))
+  async function commit() {
+    if (cancelled.current) { cancelled.current = false; setDraft(null); return }
+    if (draft == null) return
+    const n = draft.trim() === '' ? 0 : Number(draft)
+    setDraft(null)
+    if (!Number.isFinite(n) || n < 0 || n > 24) { store.toast('Enter hours between 0 and 24', 'error'); return }
+    const hours = Math.round(n * 4) / 4
+    if (n > 0 && hours === 0) { store.toast('Enter at least 0.25 h (a quarter hour)', 'error'); return }
+    if (hours === value) return
+    if (single && hours === 0) {
+      const ok = await confirm({ title: 'Delete this time entry?', body: `${fmtHours(single.hours)} on ${format(parseISO(date), 'EEEE, MMM d')}${single.notes ? ` — “${single.notes}”` : ''}.`, confirmLabel: 'Delete', danger: true })
+      if (!ok) return
+    }
+    setSaving(true)
+    if (single) {
+      if (hours === 0) await store.remove('time_entries', single.id)
+      else await store.update('time_entries', single.id, { hours })
+    } else if (hours > 0 && store.me) {
+      await store.insert('time_entries', { job_id: jobId, phase_id: workPhase(store.phases, jobId)?.id ?? null, user_id: store.me.id, date, hours, billable: true, started_at: null })
+    }
+    setSaving(false)
+  }
+  const label = `Hours on ${format(parseISO(date), 'EEEE MMM d')}`
+  return <td className={`sheet-cell ${date === today ? 'today' : ''} ${value ? 'has' : ''}`}>
+    <div className="sc-wrap">
+      {editable
+        ? <input className="sc-input" inputMode="decimal" aria-label={label} disabled={saving} value={draft ?? (value ? String(value) : '')} placeholder={planned ? String(planned) : '·'} title={planned ? `${fmtHours(planned)} planned` : undefined}
+            onChange={e => setDraft(e.target.value)} onBlur={() => void commit()}
+            onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); if (e.key === 'Escape') { cancelled.current = true; (e.target as HTMLInputElement).blur() } }} />
+        : <button className={`sc-input sc-btn ${running ? 'running' : ''}`} aria-label={`${label}: ${running ? 'timer running' : fmtHours(value)}`} onClick={() => single ? edit.time(single) : edit.time(entries.find(e => e.hours == null) ?? done[0])}>
+            {running ? '●' : fmtHours(value)}{locked && <Lock size={10} className="sc-lock" />}{done.length > 1 && <span className="sc-count">{done.length}</span>}
+          </button>}
+      <button className="sc-more" aria-label={`Add hours with notes on ${format(parseISO(date), 'MMM d')}`} onClick={() => edit.time(undefined, { job_id: jobId, date })}><Plus size={12} /></button>
+    </div>
+  </td>
+}
+
+/* ---------------- Entries ---------------- */
+
+function EntryList({ week }: { week: string[] }) {
+  const store = useData()
+  const edit = useEditors()
+  const [range, setRange] = useState<Range>('week')
+  const [q, setQ] = useState('')
+  const [billing, setBilling] = useState<'all' | 'billable' | 'nonbillable' | 'unbilled'>('all')
+  const status = useMemo(() => allHours(store), [store])
+  const today = todayISO()
+  const from = range === 'week' ? week[0] : range === '30' ? iso(addDays(parseISO(today), -30)) : range === 'month' ? today.slice(0, 8) + '01' : '0000-00-00'
+  const to = range === 'week' ? week[6] : '9999-12-31'
+  const needle = q.trim().toLowerCase()
+  const list = store.timeEntries.filter(e => {
+    if (e.date < from || e.date > to) return false
+    if (billing === 'billable' && e.billable === false) return false
+    if (billing === 'nonbillable' && e.billable !== false) return false
+    if (billing === 'unbilled') { const s = status.get(e.id)?.status; if (s !== 'unbilled' && s !== 'partial') return false }
+    if (!needle) return true
+    const job = store.jobs.find(j => j.id === e.job_id)
+    const client = store.clients.find(c => c.id === job?.client_id)
+    return [e.notes, job?.name, job?.job_number, client?.name].some(v => v?.toLowerCase().includes(needle))
+  })
+  const byDate = new Map<string, TimeEntry[]>()
+  for (const e of list) byDate.set(e.date, [...(byDate.get(e.date) ?? []), e])
+  const phaseName = (id: string | null) => { const p = store.phases.find(x => x.id === id); return p ? phaseLabel(p) : 'General' }
+  const total = sum(list.map(entryHours))
+  function exportCsv() {
+    downloadCSV('time-entries.csv', ['Date', 'Job #', 'Job', 'Client', 'Phase', 'Notes', 'Hours', 'Billable', 'Rate', 'Value', 'Billing status'], list.filter(e => e.hours != null).map(e => {
+      const job = store.jobs.find(j => j.id === e.job_id)
+      const h = status.get(e.id)
+      return [e.date, job?.job_number, job?.name, store.clients.find(c => c.id === job?.client_id)?.name, phaseName(e.phase_id), e.notes, e.hours, e.billable === false ? 'No' : 'Yes', e.rate, h ? Math.round(h.amount * 100) / 100 : null, h ? HOUR_STATUS_LABEL[h.status] : '']
+    }))
+  }
+  return <section className="card entries-card">
+    <div className="card-head wrap-head">
+      <h2>Entries <span className="sub">{fmtHours(total)} · {list.length} entr{list.length === 1 ? 'y' : 'ies'}</span></h2>
+      <div className="row wrap">
+        <Segmented size="sm" label="Date range" value={range} onChange={setRange} options={[{ value: 'week', label: 'This sheet week' }, { value: '30', label: '30 days' }, { value: 'month', label: 'This month' }, { value: 'all', label: 'All' }]} />
+        <select className="input sm" style={{ width: 'auto' }} value={billing} onChange={e => setBilling(e.target.value as typeof billing)} aria-label="Billing filter">
+          <option value="all">All hours</option><option value="billable">Billable</option><option value="nonbillable">Non-billable</option><option value="unbilled">Not billed yet</option>
+        </select>
+        <div className="input-wrap" style={{ width: 200 }}><Search size={15} /><input className="input sm" value={q} onChange={e => setQ(e.target.value)} placeholder="Search notes, job…" aria-label="Search entries" /></div>
+        <button className="btn sm" onClick={exportCsv}><Download size={14} /> CSV</button>
+      </div>
+    </div>
+    {list.length === 0 ? <Empty compact icon={<Clock size={20} />} title="No entries">{range === 'week' ? 'Type hours into the timesheet above, or start a timer.' : 'Try a wider date range.'}</Empty> :
+      [...byDate.entries()].map(([date, rows]) => <div key={date} className="entry-day">
+        <div className="entry-date"><span>{fmtDate(date, 'long').replace(/, \d{4}$/, '')}</span><span className="num">{fmtHours(sum(rows.map(entryHours)))}</span></div>
+        {rows.map(e => { const job = store.jobs.find(j => j.id === e.job_id); const h = status.get(e.id); const running = e.started_at && e.hours == null; return <button key={e.id} className="entry-row" onClick={() => edit.time(e)}>
+          <span className="entry-hours num">{running ? <span className="badge ok">Running</span> : fmtHours(e.hours)}</span>
+          <span className="grow" style={{ minWidth: 0 }}>
+            <span className="strong truncate" style={{ display: 'block' }}>{job?.name ?? 'Deleted job'}<span className="muted" style={{ fontWeight: 400 }}> · {phaseName(e.phase_id)}</span></span>
+            {e.notes && <span className="small soft truncate" style={{ display: 'block' }}>{e.notes}</span>}
+          </span>
+          <span className="hide-sm">{e.billable === false ? <span className="badge">Non-billable</span> : h ? <span className={`badge money-${h.status}`}>{HOUR_STATUS_LABEL[h.status]}</span> : null}</span>
+          <span className="hide-sm num small muted" style={{ width: 70, textAlign: 'right' }}>{h && e.billable !== false ? fmtMoney(h.amount) : ''}</span>
+        </button> })}
+      </div>)}
+  </section>
 }

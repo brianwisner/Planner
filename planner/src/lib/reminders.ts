@@ -5,12 +5,13 @@ import { useEffect } from 'react'
 import { useData } from './store'
 import { calendarItems } from './calendar'
 import { todayISO } from './utils'
+import { DEMO } from './supabase'
 
 export function useReminders() {
   const store = useData()
   const { me } = store
   useEffect(() => {
-    if (!me || typeof Notification === 'undefined' || Notification.permission !== 'granted') return
+    if (DEMO || !me || typeof Notification === 'undefined' || Notification.permission !== 'granted') return
     const key = `reminded-${me.id}-${todayISO()}`
     try { if (localStorage.getItem(key)) return } catch { return }
     const today = todayISO()
@@ -20,7 +21,7 @@ export function useReminders() {
     const dueToday = mine.length - overdue
     const body = [overdue ? `${overdue} overdue` : '', dueToday ? `${dueToday} due today` : ''].filter(Boolean).join(' · ')
     try {
-      new Notification('Wisner Planner reminders', { body: `${body}. ${mine[0]!.title}${mine.length > 1 ? ` and ${mine.length - 1} more` : ''}` })
+      new Notification('Wisner Planner', { body: `${body}. ${mine[0]!.title}${mine.length > 1 ? ` and ${mine.length - 1} more` : ''}` })
       localStorage.setItem(key, '1')
     } catch { /* notifications unsupported in this context */ }
   }, [me, store])

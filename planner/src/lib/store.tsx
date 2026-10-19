@@ -33,6 +33,9 @@ const emptyData: Data = {
   settings: [], profiles: [], clients: [], jobs: [], phases: [], tasks: [], invoices: [], deposits: [], job_items: [], schedule_entries: [], time_entries: [], comments: [],
 }
 
+export interface ToastAction { label: string; run: () => void | Promise<unknown> }
+export interface Toast { id: number; msg: string; kind: 'ok' | 'error'; action?: ToastAction }
+
 export interface Store {
   session: Session | null
   me: Profile | null
@@ -56,9 +59,12 @@ export interface Store {
   update: <K extends TableName>(table: K, id: string | number, patch: Partial<Tables[K]>) => Promise<boolean>
   remove: (table: TableName, id: string | number) => Promise<boolean>
   recordInvoice: (invoice: Omit<Invoice, 'id' | 'created_at'>, links: InvoiceWorkLink[]) => Promise<Invoice | null>
+  /** Fresh rows straight from the database, e.g. the phases a new job just got. */
+  fetchWhere: <K extends TableName>(table: K, column: string, value: string) => Promise<Tables[K][]>
   signOut: () => Promise<void>
-  toast: (msg: string, kind?: 'ok' | 'error') => void
-  toasts: { id: number; msg: string; kind: 'ok' | 'error' }[]
+  toast: (msg: string, kind?: 'ok' | 'error', action?: ToastAction) => void
+  dismissToast: (id: number) => void
+  toasts: Toast[]
 }
 
 const StoreContext = createContext<Store | null>(null)
@@ -74,13 +80,15 @@ export function DataProvider({ session, children }: { session: Session | null; c
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [online, setOnline] = useState(true)
-  const [toasts, setToasts] = useState<Store['toasts']>([])
+  const [toasts, setToasts] = useState<Toast[]>([])
   const toastId = useRef(0)
 
-  const toast = useCallback((msg: string, kind: 'ok' | 'error' = 'ok') => {
+  const dismissToast = useCallback((id: number) => setToasts(t => t.filter(x => x.id !== id)), [])
+  const toast = useCallback((msg: string, kind: 'ok' | 'error' = 'ok', action?: ToastAction) => {
     const id = ++toastId.current
-    setToasts(t => [...t, { id, msg, kind }])
-    setTimeout(() => setToasts(t => t.filter(x => x.id !== id)), kind === 'error' ? 6000 : 2500)
+    // Only the latest Undo is offered, so it's always clear what it will undo.
+    setToasts(t => [...t.filter(x => !(action && x.action)).slice(-3), { id, msg, kind, action }])
+    setTimeout(() => setToasts(t => t.filter(x => x.id !== id)), action ? 7000 : kind === 'error' ? 6000 : 2600)
   }, [])
 
   const fetchTable = useCallback(async (table: TableName) => {
@@ -109,12 +117,12 @@ export function DataProvider({ session, children }: { session: Session | null; c
     // Debounced per-table refetch so a burst of changes becomes one query.
     const timers: Partial<Record<TableName, number>> = {}
     const channel = supabase
-      .channel('planner-live')
+      .channel('planner-v2-live')
       .on('postgres_changes', { event: '*', schema: 'public' }, payload => {
         const table = payload.table as TableName
         if (!TABLE_NAMES.includes(table)) return
         window.clearTimeout(timers[table])
-        timers[table] = window.setTimeout(() => { void fetchTable(table) }, 150)
+        timers[table] = window.setTimeout(() => { void fetchTable(table).catch(() => {}) }, 150)
       })
       .subscribe(status => {
         if (status === 'SUBSCRIBED') setOnline(true)
@@ -131,7 +139,7 @@ export function DataProvider({ session, children }: { session: Session | null; c
 
     return () => {
       cancelled = true
-      supabase.removeChannel(channel)
+      void supabase.removeChannel(channel)
       document.removeEventListener('visibilitychange', onVisible)
       window.removeEventListener('online', onOnline)
       window.removeEventListener('offline', onOffline)
@@ -141,9 +149,9 @@ export function DataProvider({ session, children }: { session: Session | null; c
   const insert = useCallback(async <K extends TableName>(table: K, row: Partial<Tables[K]>) => {
     const { data: created, error: err } = await supabase.from(table).insert(row as never).select('*').single()
     if (err) { toast(`Could not save: ${err.message}`, 'error'); return null }
-    setData(d => ({ ...d, [table]: [...d[table], created] }))
+    setData(d => ({ ...d, [table]: [...d[table].filter(r => (r as { id: unknown }).id !== (created as { id: unknown }).id), created] }))
     // phases are created by a database trigger when a job is inserted
-    if (table === 'jobs') setTimeout(() => void fetchTable('phases'), 300)
+    if (table === 'jobs') await fetchTable('phases').catch(() => {})
     return created as Tables[K]
   }, [toast, fetchTable])
 
@@ -151,14 +159,14 @@ export function DataProvider({ session, children }: { session: Session | null; c
     // Optimistic: apply locally first so the UI feels instant.
     setData(d => ({ ...d, [table]: d[table].map(r => (r as { id: string | number }).id === id ? { ...r, ...patch } : r) }))
     const { error: err } = await supabase.from(table).update(patch as never).eq('id', id).select('id').single()
-    if (err) { toast(`Could not save: ${err.message}`, 'error'); void fetchTable(table); return false }
+    if (err) { toast(`Could not save: ${err.message}`, 'error'); void fetchTable(table).catch(() => {}); return false }
     return true
   }, [toast, fetchTable])
 
   const remove = useCallback(async (table: TableName, id: string | number) => {
     setData(d => ({ ...d, [table]: d[table].filter(r => (r as { id: string | number }).id !== id) }))
     const { error: err } = await supabase.from(table).delete().eq('id', id)
-    if (err) { toast(`Could not delete: ${err.message}`, 'error'); void fetchTable(table); return false }
+    if (err) { toast(`Could not delete: ${err.message}`, 'error'); void fetchTable(table).catch(() => {}); return false }
     await refresh() // cascades (phases, tasks, time) may have gone with it
     return true
   }, [toast, fetchTable, refresh])
@@ -172,6 +180,15 @@ export function DataProvider({ session, children }: { session: Session | null; c
     await refresh()
     return created as Invoice
   }, [toast, refresh])
+
+  const fetchWhere = useCallback(async <K extends TableName>(table: K, column: string, value: string) => {
+    const { data: rows, error: err } = await supabase.from(table).select('*').eq(column, value)
+    if (err) return []
+    const fresh = (rows ?? []) as Tables[K][]
+    const ids = new Set(fresh.map(r => (r as { id: unknown }).id))
+    setData(d => ({ ...d, [table]: [...d[table].filter(r => !ids.has((r as { id: unknown }).id)), ...fresh] }))
+    return fresh
+  }, [])
 
   const signOut = useCallback(async () => { await supabase.auth.signOut() }, [])
 
@@ -191,9 +208,9 @@ export function DataProvider({ session, children }: { session: Session | null; c
       schedule: [...data.schedule_entries].sort((a, b) => a.date.localeCompare(b.date)),
       timeEntries: [...data.time_entries].sort((a, b) => b.date.localeCompare(a.date) || b.created_at.localeCompare(a.created_at)),
       comments: [...data.comments].sort((a, b) => a.created_at.localeCompare(b.created_at)),
-      loading, error, online, refresh, insert, update, remove, recordInvoice, signOut, toast, toasts,
+      loading, error, online, refresh, insert, update, remove, recordInvoice, fetchWhere, signOut, toast, dismissToast, toasts,
     }
-  }, [data, session, loading, error, online, refresh, insert, update, remove, recordInvoice, signOut, toast, toasts])
+  }, [data, session, loading, error, online, refresh, insert, update, remove, recordInvoice, fetchWhere, signOut, toast, dismissToast, toasts])
 
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>
 }

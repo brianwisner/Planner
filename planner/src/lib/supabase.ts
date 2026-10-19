@@ -1,13 +1,16 @@
-import { createClient } from '@supabase/supabase-js'
+import { createClient, type SupabaseClient } from '@supabase/supabase-js'
+import { createMockClient } from '../demo/mockSupabase'
 
 // These two values identify your Supabase project. In production they are
-// injected at build time from GitHub repository variables (see README).
+// read at build time from planner/.env.production.
 export const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string | undefined
 export const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined
 
-export const isConfigured = Boolean(SUPABASE_URL && SUPABASE_ANON_KEY)
+/** `npm run demo` swaps in an in-memory database filled with made-up jobs. */
+export const DEMO: boolean = __DEMO__
 
-export const supabase = createClient(
-  SUPABASE_URL ?? 'https://not-configured.supabase.co',
-  SUPABASE_ANON_KEY ?? 'not-configured',
-)
+export const isConfigured = DEMO || Boolean(SUPABASE_URL && SUPABASE_ANON_KEY)
+
+export const supabase: SupabaseClient = DEMO
+  ? createMockClient() as unknown as SupabaseClient
+  : createClient(SUPABASE_URL ?? 'https://not-configured.supabase.co', SUPABASE_ANON_KEY ?? 'not-configured')

@@ -1,167 +1,117 @@
-// Two small charts for job money:
-//  - WorkStatusBar: the value of all hours worked, split into paid / billed-not-paid /
-//    not billed, plus any deposit money not yet worked against.
-//  - BalanceChart: the job balance over time (deposits + billed − work). It steps down
-//    as hours are logged and jumps up when a deposit arrives or an invoice goes out.
-// Colors use the fixed status palette (good / warning / critical) and always come
-// with a text label, so color is never the only cue.
+// Money pictures for a job:
+//  - WorkStatusBar: the value of the work split into paid / waiting on payment /
+//    not billed yet / non-billable, plus deposit money not used yet.
+//  - BalanceChart: the job balance over time (deposits + invoices − work). It steps
+//    down as hours are logged and jumps up when a deposit arrives or an invoice goes out.
+// Every color also has a text label, so color is never the only cue.
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { format, parseISO } from 'date-fns'
 import type { BalancePoint, JobBilling } from '../lib/calc'
-import { fmtHourlyRate, fmtHours, fmtMoney, fmtSigned, todayISO } from '../lib/utils'
-
-export const STATUS_COLOR = { good: '#0ca30c', warning: '#fab219', critical: '#d03b3b' }
+import { fmtMoney, fmtSigned, todayISO } from '../lib/utils'
+import './money-charts.css'
 
 interface Segment { key: string; label: string; value: number; color: string; dashed?: boolean }
 
-export function FeesSummary({ b }: { b: JobBilling }) {
-  return (
-    <div className="card">
-      <h2>Fees and hourly rate</h2>
-      <div className="fee-summary">
-        <div><div className="small muted">Fees recorded</div><div className="fee-value">{fmtMoney(b.feeRevenue)}</div></div>
-        <div><div className="small muted">Effective hourly rate</div><div className="fee-value">{fmtHourlyRate(b.effectiveHourlyRate)}</div></div>
-      </div>
-      <p className="small muted">{fmtHours(b.loggedHours)} completed · {fmtHours(b.billableHours)} billable · {fmtHours(b.nonBillableHours)} nonbillable</p>
-      <p className="small">Nonbillable time value: <b>{fmtMoney(b.nonBillableValue)}</b><span className="muted"> at saved rates, already counted once in job work value.</span></p>
-      <p className="tiny muted">Recorded deposits and invoices counted once, less amounts funding separate charges. Each invoice funds its linked charges before fees. Includes unused deposits. The rate divides these fees by all completed hours, including nonbillable time, before overhead and tax.</p>
-    </div>
-  )
-}
-
-export function WorkStatusBar({ b, compact }: { b: JobBilling; compact?: boolean }) {
+export function WorkStatusBar({ b }: { b: JobBilling }) {
   const [hover, setHover] = useState<string | null>(null)
   const segs: Segment[] = [
-    { key: 'paid', label: 'Paid', value: b.paidAmount, color: STATUS_COLOR.good },
-    { key: 'billed', label: 'Billed, waiting for payment', value: b.waitingAmount, color: STATUS_COLOR.warning },
-    { key: 'unbilled', label: 'Not billed yet', value: b.unbilledAmount, color: STATUS_COLOR.critical },
-    { key: 'ahead', label: 'Deposit not used yet', value: b.depositRemaining, color: STATUS_COLOR.good, dashed: true },
+    { key: 'paid', label: 'Paid', value: b.paidAmount, color: 'var(--m-paid)' },
+    { key: 'billed', label: 'Invoiced, awaiting payment', value: b.waitingAmount, color: 'var(--m-billed)' },
+    { key: 'unbilled', label: 'Not billed yet', value: b.unbilledAmount, color: 'var(--m-unbilled)' },
+    { key: 'nonbillable', label: 'Non-billable time', value: b.nonBillableValue, color: 'var(--m-nonbillable)' },
+    { key: 'ahead', label: 'Deposit not used yet', value: b.depositRemaining, color: 'var(--m-paid)', dashed: true },
   ]
-  const total = sum(segs.map(s => s.value))
-  if (total <= 0.5) return <div className="small muted">No billable work or deposits yet.</div>
+  const total = segs.reduce((s, x) => s + x.value, 0)
+  if (total <= 0.5) return <p className="small muted">No work or deposits on this job yet.</p>
   const shown = segs.filter(s => s.value > 0.5)
-  return (
-    <div className="wsb">
-      <div className="wsb-bar" role="img" aria-label={shown.map(s => `${s.label} ${fmtMoney(s.value)}`).join(', ')}>
-        {shown.map(s => (
-          <div key={s.key} className={`wsb-seg ${s.dashed ? 'dashed' : ''} ${hover && hover !== s.key ? 'dim' : ''}`}
-            style={{ flexGrow: s.value, background: s.dashed ? 'transparent' : s.color, borderColor: s.color }}
-            onMouseEnter={() => setHover(s.key)} onMouseLeave={() => setHover(null)} onClick={() => setHover(h => h === s.key ? null : s.key)}>
-            {hover === s.key && <div className="chart-tip">{s.label}<b>{fmtMoney(s.value)}</b><span>{Math.round(s.value / total * 100)}%</span></div>}
-          </div>
-        ))}
-      </div>
-      {!compact && (
-        <div className="wsb-legend">
-          {segs.map(s => (
-            <span key={s.key} className={`wsb-key ${s.value <= 0.5 ? 'zero' : ''}`} onMouseEnter={() => setHover(s.key)} onMouseLeave={() => setHover(null)}>
-              <i style={{ background: s.dashed ? 'transparent' : s.color, borderColor: s.color }} className={s.dashed ? 'dashed' : ''} />
-              {s.label} <b>{fmtMoney(s.value)}</b>
-            </span>
-          ))}
-        </div>
-      )}
+  return <div className="wsb">
+    <div className="wsb-bar" role="img" aria-label={shown.map(s => `${s.label} ${fmtMoney(s.value)}`).join(', ')}>
+      {shown.map(s => <div key={s.key} className={`wsb-seg ${s.dashed ? 'dashed' : ''} ${hover && hover !== s.key ? 'dim' : ''}`}
+        style={{ flexGrow: s.value, background: s.dashed ? 'transparent' : s.color, borderColor: s.color }}
+        onMouseEnter={() => setHover(s.key)} onMouseLeave={() => setHover(null)} />)}
     </div>
-  )
+    <div className="wsb-legend">
+      {segs.filter(s => s.value > 0.5 || s.key !== 'nonbillable').map(s => <span key={s.key} className={`wsb-key ${s.value <= 0.5 ? 'zero' : ''} ${hover === s.key ? 'on' : ''}`} onMouseEnter={() => setHover(s.key)} onMouseLeave={() => setHover(null)}>
+        <i style={{ background: s.dashed ? 'transparent' : s.color, borderColor: s.color }} className={s.dashed ? 'dashed' : ''} />
+        <span>{s.label}</span><b className="num">{fmtMoney(s.value)}</b>
+      </span>)}
+    </div>
+  </div>
 }
 
 export function BalanceChart({ points }: { points: BalancePoint[] }) {
   const wrap = useRef<HTMLDivElement>(null)
   const [w, setW] = useState(640)
   const [hi, setHi] = useState<number | null>(null)
+  const [id] = useState(() => Math.random().toString(36).slice(2))
   useEffect(() => {
     const el = wrap.current
-    if (!el) return
-    const ro = new ResizeObserver(([e]) => setW(Math.max(280, Math.round(e.contentRect.width))))
+    if (!el || typeof ResizeObserver === 'undefined') return
+    const ro = new ResizeObserver(([e]) => setW(Math.max(260, Math.round(e.contentRect.width))))
     ro.observe(el)
     return () => ro.disconnect()
   }, [])
-
-  // Extend the line to today so a run of unbilled work is visible.
+  // Extend the line to today so a stretch of unbilled work is visible.
   const pts = useMemo(() => {
     const t = todayISO()
     const last = points[points.length - 1]
-    if (last && last.date < t) return [...points, { date: t, balance: last.balance, work: 0, deposits: 0, billed: 0, notes: ['Today'] }]
-    return points
+    return last && last.date < t ? [...points, { date: t, balance: last.balance, work: 0, deposits: 0, billed: 0, notes: ['Today'] }] : points
   }, [points])
+  if (!pts.length) return <p className="small muted">The balance line starts with the first deposit, invoice or hour.</p>
 
-  if (pts.length === 0) return <div className="small muted">Nothing logged yet. The balance line starts with the first deposit, invoice, or hour.</div>
-
-  const H = 190, padL = 56, padR = 12, padT = 12, padB = 26
+  const H = 180, padL = 52, padR = 12, padT = 12, padB = 24
   const x0 = parseISO(pts[0].date).getTime()
   const x1 = Math.max(parseISO(pts[pts.length - 1].date).getTime(), x0 + 86400000)
   const vals = pts.map(p => p.balance).concat(0)
   const lo = Math.min(...vals), hiV = Math.max(...vals)
   const span = Math.max(1, hiV - lo)
-  const yMin = lo - span * 0.08, yMax = hiV + span * 0.08
+  const yMin = lo - span * 0.1, yMax = hiV + span * 0.1
   const X = (d: string) => padL + ((parseISO(d).getTime() - x0) / (x1 - x0)) * (w - padL - padR)
   const Y = (v: number) => padT + (1 - (v - yMin) / (yMax - yMin)) * (H - padT - padB)
   const zeroY = Y(0)
-
-  // Step-after path: the balance holds until the next event.
   let line = `M${X(pts[0].date)},${Y(0)} L${X(pts[0].date)},${Y(pts[0].balance)}`
   for (let i = 1; i < pts.length; i++) line += ` L${X(pts[i].date)},${Y(pts[i - 1].balance)} L${X(pts[i].date)},${Y(pts[i].balance)}`
   const area = `${line} L${X(pts[pts.length - 1].date)},${zeroY} Z`
-
   const ticks = niceTicks(yMin, yMax, 4)
   const months: { x: number; label: string }[] = [{ x: padL, label: format(new Date(x0), 'MMM d') }]
-  const start = new Date(x0); start.setDate(1); start.setMonth(start.getMonth() + 1)
-  for (let d = start; d.getTime() <= x1; d = new Date(d.getFullYear(), d.getMonth() + 1, 1)) months.push({ x: padL + ((d.getTime() - x0) / (x1 - x0)) * (w - padL - padR), label: format(d, 'MMM') })
-
-  function onMove(clientX: number) {
+  for (let d = new Date(new Date(x0).getFullYear(), new Date(x0).getMonth() + 1, 1); d.getTime() <= x1; d = new Date(d.getFullYear(), d.getMonth() + 1, 1)) months.push({ x: padL + ((d.getTime() - x0) / (x1 - x0)) * (w - padL - padR), label: format(d, 'MMM') })
+  const onMove = (clientX: number) => {
     const r = wrap.current!.getBoundingClientRect()
-    const px = clientX - r.left
     let best = 0, bd = Infinity
-    pts.forEach((p, i) => { const d = Math.abs(X(p.date) - px); if (d < bd) { bd = d; best = i } })
+    pts.forEach((p, i) => { const d = Math.abs(X(p.date) - (clientX - r.left)); if (d < bd) { bd = d; best = i } })
     setHi(best)
   }
   const h = hi != null ? pts[hi] : null
 
-  return (
-    <div className="bal" ref={wrap} onMouseMove={e => onMove(e.clientX)} onMouseLeave={() => setHi(null)} onTouchStart={e => onMove(e.touches[0].clientX)} onTouchMove={e => onMove(e.touches[0].clientX)}>
-      <svg width={w} height={H} role="img" aria-label={`Job balance over time, now ${fmtSigned(pts[pts.length - 1].balance)}`}>
-        <defs>
-          <clipPath id="bal-above"><rect x={0} y={0} width={w} height={Math.max(0, zeroY)} /></clipPath>
-          <clipPath id="bal-below"><rect x={0} y={zeroY} width={w} height={Math.max(0, H - zeroY)} /></clipPath>
-        </defs>
-        {ticks.map(t => (
-          <g key={t}>
-            <line x1={padL} x2={w - padR} y1={Y(t)} y2={Y(t)} className="bal-grid" />
-            <text x={padL - 8} y={Y(t) + 4} className="bal-axis" textAnchor="end">{shortMoney(t)}</text>
-          </g>
-        ))}
-        {months.filter((m, i) => i === 0 || m.x - padL > 48).map((m, i) => <text key={m.x} x={m.x} y={H - 8} className="bal-axis" textAnchor={i === 0 ? 'start' : 'middle'}>{m.label}</text>)}
-        <path d={area} fill={STATUS_COLOR.good} opacity={0.14} clipPath="url(#bal-above)" />
-        <path d={area} fill={STATUS_COLOR.critical} opacity={0.14} clipPath="url(#bal-below)" />
-        <line x1={padL} x2={w - padR} y1={zeroY} y2={zeroY} className="bal-zero" />
-        <path d={line} fill="none" stroke="#2a78d6" strokeWidth={2} strokeLinejoin="round" />
-        {pts.map((p, i) => (p.deposits > 0 || p.billed > 0) && (
-          <circle key={i} cx={X(p.date)} cy={Y(p.balance)} r={5} fill={p.deposits > 0 ? STATUS_COLOR.good : '#2a78d6'} stroke="#fff" strokeWidth={2} />
-        ))}
-        {h && <>
-          <line x1={X(h.date)} x2={X(h.date)} y1={padT} y2={H - padB} className="bal-cross" />
-          <circle cx={X(h.date)} cy={Y(h.balance)} r={5} fill="#2a78d6" stroke="#fff" strokeWidth={2} />
-        </>}
-      </svg>
-      {h && (
-        <div className="chart-tip bal-tip" style={{ left: Math.min(Math.max(X(h.date), 90), w - 90) }}>
-          <span>{format(parseISO(h.date), 'EEE, MMM d')}</span>
-          <b className={h.balance < 0 ? 'danger-text' : 'ok-text'}>{fmtSigned(h.balance)}</b>
-          {h.work > 0 && <span>Work logged: −{fmtMoney(h.work)}</span>}
-          {h.notes.filter(n => n !== 'Today').map(n => <span key={n}>{n}</span>)}
-        </div>
-      )}
-      <div className="bal-legend small muted">
-        <span><i className="dot" style={{ background: '#2a78d6' }} /> Job balance</span>
-        <span><i className="dot" style={{ background: STATUS_COLOR.good }} /> Deposit received</span>
-        <span><i className="dot ring" style={{ background: '#2a78d6' }} /> Invoice sent</span>
-        <span>Below the line = work you haven't been paid or billed for</span>
-      </div>
+  return <div className="bal" ref={wrap} onMouseMove={e => onMove(e.clientX)} onMouseLeave={() => setHi(null)} onTouchStart={e => onMove(e.touches[0].clientX)} onTouchMove={e => onMove(e.touches[0].clientX)}>
+    <svg width={w} height={H} role="img" aria-label={`Job balance over time, now ${fmtSigned(pts[pts.length - 1].balance)}`}>
+      <defs>
+        <clipPath id={`above-${id}`}><rect x={0} y={0} width={w} height={Math.max(0, zeroY)} /></clipPath>
+        <clipPath id={`below-${id}`}><rect x={0} y={zeroY} width={w} height={Math.max(0, H - zeroY)} /></clipPath>
+      </defs>
+      {ticks.map(t => <g key={t}><line x1={padL} x2={w - padR} y1={Y(t)} y2={Y(t)} className="bal-grid" /><text x={padL - 8} y={Y(t) + 4} className="bal-axis" textAnchor="end">{shortMoney(t)}</text></g>)}
+      {months.filter((m, i) => i === 0 || m.x - padL > 46).map((m, i) => <text key={m.x} x={m.x} y={H - 6} className="bal-axis" textAnchor={i === 0 ? 'start' : 'middle'}>{m.label}</text>)}
+      <path d={area} className="bal-pos" clipPath={`url(#above-${id})`} />
+      <path d={area} className="bal-neg" clipPath={`url(#below-${id})`} />
+      <line x1={padL} x2={w - padR} y1={zeroY} y2={zeroY} className="bal-zero" />
+      <path d={line} className="bal-line" />
+      {pts.map((p, i) => (p.deposits > 0 || p.billed > 0) && <circle key={i} cx={X(p.date)} cy={Y(p.balance)} r={5} className={p.deposits > 0 ? 'bal-dep' : 'bal-inv'} />)}
+      {h && <><line x1={X(h.date)} x2={X(h.date)} y1={padT} y2={H - padB} className="bal-cross" /><circle cx={X(h.date)} cy={Y(h.balance)} r={5} className="bal-inv" /></>}
+    </svg>
+    {h && <div className="chart-tip" style={{ left: Math.min(Math.max(X(h.date), 90), w - 90) }}>
+      <span>{format(parseISO(h.date), 'EEE, MMM d')}</span>
+      <b className={h.balance < 0 ? 'danger-text' : 'ok-text'}>{fmtSigned(h.balance)}</b>
+      {h.work > 0 && <span>Work logged: −{fmtMoney(h.work)}</span>}
+      {h.notes.filter(n => n !== 'Today').map(n => <span key={n}>{n}</span>)}
+    </div>}
+    <div className="bal-legend">
+      <span><i className="key line" /> Job balance</span>
+      <span><i className="key dep" /> Deposit</span>
+      <span><i className="key inv" /> Invoice</span>
+      <span className="muted">Below zero = work not yet paid for or billed</span>
     </div>
-  )
+  </div>
 }
-
-function sum(n: number[]) { return n.reduce((a, b) => a + b, 0) }
 
 function niceTicks(min: number, max: number, count: number): number[] {
   const raw = (max - min) / count

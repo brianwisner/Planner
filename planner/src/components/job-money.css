@@ -1,0 +1,5 @@
+.money-panel { display: flex; flex-direction: column; gap: 20px; }
+.money-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 20px; align-items: start; }
+@media (max-width: 1000px) { .money-grid { grid-template-columns: minmax(0, 1fr); } }
+.pick-list.flat { border: 0; border-radius: 0; max-height: 360px; }
+.money-panel .list-row .title { color: var(--text); }

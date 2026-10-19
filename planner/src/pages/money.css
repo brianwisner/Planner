@@ -1,0 +1,44 @@
+.money-body { margin-top: 20px; }
+.money-two { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 20px; align-items: start; }
+@media (max-width: 1000px) { .money-two { grid-template-columns: minmax(0, 1fr); } }
+.money-page .tabs .count { margin-left: 2px; }
+.money-page .list-row .title { color: var(--text); }
+.money-page .list-row a.title:hover { color: var(--accent-text); text-decoration: none; }
+.inline-ico { display: inline; vertical-align: -2px; }
+.pay-ico { width: 30px; height: 30px; border-radius: 9px; flex: none; display: flex; align-items: center; justify-content: center; background: var(--ok-soft); color: var(--ok); }
+.pay-ico.invoice { background: var(--accent-soft); color: var(--accent); }
+.dep-use-col { width: 190px; }
+
+/* Reports */
+.report-range { display: flex; align-items: center; gap: 12px 16px; flex-wrap: wrap; padding: 12px 16px; }
+.report-legend { display: inline-flex; align-items: center; gap: 14px; font-size: 12px; color: var(--text-2); flex-wrap: wrap; }
+.report-legend > span { display: inline-flex; align-items: center; gap: 6px; }
+.bar-key, .est-key { display: inline-block; width: 10px; height: 10px; border-radius: 3px; }
+.bar-key.bill { background: var(--accent); }
+.bar-key.non { background: var(--m-nonbillable); }
+.hbar-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 12px; }
+.hbar-list li { display: flex; flex-direction: column; gap: 5px; }
+.hbar { display: flex; height: 10px; border-radius: 999px; background: var(--surface-3); overflow: hidden; }
+.hbar-bill { background: var(--accent); }
+.hbar-non { background: var(--m-nonbillable); }
+.bar-col { width: 28%; min-width: 120px; }
+.est-list { list-style: none; margin: 0 0 14px; padding: 0; display: flex; flex-direction: column; gap: 14px; }
+.est-list li { display: flex; flex-direction: column; gap: 5px; }
+.est-track { position: relative; height: 14px; border-radius: 999px; background: var(--surface-2); }
+.est-track span { position: absolute; left: 0; display: block; border-radius: 999px; min-width: 3px; }
+.est-est { top: 0; bottom: 0; background: var(--surface-3); box-shadow: inset 0 0 0 1px var(--border-strong); }
+.est-act { top: 4px; height: 6px; background: var(--ok); }
+.est-act.over { background: var(--danger); }
+.est-key.est { background: var(--surface-3); box-shadow: inset 0 0 0 1px var(--border-strong); }
+.est-key.act { background: var(--ok); }
+.est-key.over { background: var(--danger); }
+
+@media (max-width: 760px) {
+  .money-page .card-head { flex-wrap: wrap; }
+  .report-range { padding: 12px; }
+  .report-range .seg { width: 100%; overflow-x: auto; }
+  .dep-use-col { width: 130px; }
+}
+@media (max-width: 760px) {
+  .money-page .invoice-btn { width: 40px; height: 40px; padding: 0; }
+}

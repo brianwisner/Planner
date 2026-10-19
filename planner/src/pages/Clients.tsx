@@ -1,90 +1,171 @@
-import { useEffect, useMemo, useState } from 'react'
+// Clients: everyone you work for, with their open jobs and money at a glance.
+import { useMemo } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import { Building2, Download, LayoutGrid, List, Mail, Phone, Plus, Search } from 'lucide-react'
 import { useData } from '../lib/store'
-import { clientRows, filterClientRows, parseClientsQuery, writeClientsQuery, type ClientsFocus, type ClientsQuery, type ClientsSort } from '../lib/clients'
-import type { Client } from '../lib/types'
-import { downloadCSV, fmtDate, fmtHours, fmtHourlyRate, fmtMoney, fmtSigned, sum } from '../lib/utils'
-import { ClientModal, JobModal } from '../components/editors'
-import { DueBadge, Icon } from '../components/ui'
+import { useEditors } from '../components/editors'
+import { Avatar, Empty, Segmented, StageChip } from '../components/ui'
+import { jobBilling } from '../lib/calc'
+import { jobStage, type Stage } from '../lib/stages'
+import { pref, setPref } from '../lib/theme'
+import type { Client, Job } from '../lib/types'
+import { downloadCSV, fmtMoney, sum } from '../lib/utils'
+import './clients.css'
 
-// Spreadsheet software should read client/contact text as text, not a formula.
-const csvText = (value: string) => /^\s*[=+\-@]/.test(value) ? `'${value}` : value
-const round2 = (value: number) => Math.round(value * 100) / 100
+type Sort = 'name' | 'open' | 'bill' | 'recent'
+type Layout = 'cards' | 'list'
+
+const PALETTE = ['#2f5bea', '#0b8a7e', '#7a3fe4', '#d97a06', '#cf2f7d', '#12813f', '#e35a12', '#0e7490']
+
+/** A steady color per client, so the same client always looks the same. */
+/** Initials from the words of a name, skipping symbols like “&”. */
+const avatarName = (name: string) => name.replace(/[^\p{L}\p{N}\s]/gu, ' ').trim() || name
+
+function avatarColor(name: string): string {
+  let h = 0
+  for (const ch of name) h = (h * 31 + ch.charCodeAt(0)) >>> 0
+  return PALETTE[h % PALETTE.length]
+}
+
+interface ClientRow {
+  client: Client
+  jobs: Job[]
+  open: Job[]
+  stages: { job: Job; stage: Stage; hold: boolean }[]
+  toBill: number
+  awaiting: number
+}
 
 export function Clients() {
   const store = useData()
-  const nav = useNavigate()
+  const edit = useEditors()
+  const navigate = useNavigate()
   const [params, setParams] = useSearchParams()
-  const query = parseClientsQuery(params)
-  const [now, setNow] = useState(() => new Date())
-  const allRows = useMemo(() => clientRows(store, now), [store, now])
-  const baseRows = filterClientRows(allRows, { ...query, focus: 'all' }, now)
-  const rows = filterClientRows(allRows, query, now)
-  const [adding, setAdding] = useState(false)
-  const [editing, setEditing] = useState<Client | null>(null)
-  const [newJobFor, setNewJobFor] = useState<Client | null>(null)
-  const activeFilters = query.q.trim() !== '' || query.focus !== 'all'
-  const readyAmount = sum(baseRows.map(row => row.billing.unbilledAmount))
-  const waitingAmount = sum(baseRows.map(row => row.billing.outstanding))
-  const withOpen = baseRows.filter(row => row.openJobs.length > 0).length
-  const readyCount = baseRows.filter(row => row.billing.unbilledAmount > 0.005).length
-  const waitingCount = baseRows.filter(row => row.billing.outstanding > 0.005).length
+  const q = params.get('q') ?? ''
+  const sort = (['name', 'open', 'bill', 'recent'].includes(params.get('sort') ?? '') ? params.get('sort') : 'name') as Sort
+  const layout = (params.get('layout') === 'list' || params.get('layout') === 'cards' ? params.get('layout') : pref<Layout>('clients.layout', 'cards')) as Layout
+  const patch = (next: Record<string, string | null>) => setParams(p => {
+    const n = new URLSearchParams(p)
+    for (const [k, v] of Object.entries(next)) { if (v == null || v === '') n.delete(k); else n.set(k, v) }
+    return n
+  }, { replace: true })
+  const setLayout = (v: Layout) => { setPref('clients.layout', v); patch({ layout: v }) }
 
-  useEffect(() => {
-    const tick = () => setNow(new Date())
-    const interval = window.setInterval(tick, 60_000)
-    window.addEventListener('focus', tick)
-    return () => { window.clearInterval(interval); window.removeEventListener('focus', tick) }
-  }, [])
+  const all = useMemo<ClientRow[]>(() => store.clients.map(client => {
+    const jobs = store.jobs.filter(j => j.client_id === client.id)
+    const open = jobs.filter(j => j.status === 'active' || j.status === 'on_hold').sort((a, b) => a.priority - b.priority)
+    const money = jobs.filter(j => j.status !== 'archived').map(j => jobBilling(store, j))
+    return {
+      client, jobs, open,
+      stages: open.map(job => ({ job, stage: jobStage(store.phases, job.id).stage, hold: job.status === 'on_hold' })),
+      toBill: sum(money.map(m => m.unbilledAmount)),
+      awaiting: sum(money.map(m => m.outstanding)),
+    }
+  }), [store])
 
-  function patch(patch: Partial<ClientsQuery>, replace = false) {
-    setParams(current => writeClientsQuery(current, patch), { replace })
-  }
-  function chooseSort(sort: ClientsSort) {
-    patch({ sort, dir: sort === 'name' || sort === 'due' ? 'asc' : 'desc' })
-  }
-  function headerSort(sort: ClientsSort, text: string) {
-    return <button type="button" className="clients-sort-button" onClick={() => query.sort === sort ? patch({ dir: query.dir === 'asc' ? 'desc' : 'asc' }) : chooseSort(sort)} aria-label={`Sort by ${text.toLowerCase()}`}>{text}{query.sort === sort && <span aria-hidden="true">{query.dir === 'asc' ? ' ↑' : ' ↓'}</span>}</button>
-  }
-  const ariaSort = (sort: ClientsSort) => query.sort !== sort ? 'none' as const : query.dir === 'asc' ? 'ascending' as const : 'descending' as const
-  function exportClients() {
-    downloadCSV('clients.csv', ['Client', 'Contact', 'Email', 'Phone', 'Address', 'Jobs', 'Active jobs', 'On-hold jobs', 'Worked hours (including running)', 'Completed hours', 'Nonbillable hours', 'Recorded fees $', 'Effective hourly rate $', 'Ready to bill $', 'Awaiting payment $', 'Unused deposits $', 'Balance $'],
-      rows.map(row => [csvText(row.client.name), csvText(row.client.contact_name), csvText(row.client.email), csvText(row.client.phone), csvText(row.client.address), row.jobs.length, row.activeCount, row.onHoldCount, round2(row.actualHours), round2(row.completedHours), round2(row.nonBillableHours), round2(row.feeRevenue), row.effectiveHourlyRate == null ? null : round2(row.effectiveHourlyRate), round2(row.billing.unbilledAmount), round2(row.billing.outstanding), round2(row.billing.depositRemaining), round2(row.billing.balance)]))
-  }
-  function stat(focus: ClientsFocus, label: string, value: string | number, sub: string, icon: string) {
-    return <button type="button" className={`stat client-stat ${query.focus === focus ? 'is-selected' : ''}`} aria-pressed={query.focus === focus} onClick={() => patch({ focus })}><div className="label"><Icon name={icon} size={14} />{label}</div><div className="value">{value}</div><div className="sub">{sub}</div></button>
+  const rows = useMemo(() => {
+    const needle = q.trim().toLowerCase()
+    const match = (r: ClientRow) => !needle || [r.client.name, r.client.contact_name, r.client.email, r.client.phone, r.client.address, ...r.jobs.map(j => j.name), ...r.jobs.map(j => j.job_number)]
+      .some(v => v?.toLowerCase().includes(needle))
+    const list = all.filter(match)
+    switch (sort) {
+      case 'open': return list.sort((a, b) => b.open.length - a.open.length || a.client.name.localeCompare(b.client.name))
+      case 'bill': return list.sort((a, b) => b.toBill - a.toBill || a.client.name.localeCompare(b.client.name))
+      case 'recent': return list.sort((a, b) => b.client.created_at.localeCompare(a.client.created_at))
+      default: return list.sort((a, b) => a.client.name.localeCompare(b.client.name))
+    }
+  }, [all, q, sort])
+
+  const withOpen = all.filter(r => r.open.length).length
+
+  function exportCsv() {
+    downloadCSV('clients.csv', ['Client', 'Contact', 'Email', 'Phone', 'Address', 'Open jobs', 'All jobs', 'Ready to bill', 'Awaiting payment', 'Notes'],
+      rows.map(r => [r.client.name, r.client.contact_name, r.client.email, r.client.phone, r.client.address, r.open.length, r.jobs.length, Math.round(r.toBill), Math.round(r.awaiting), r.client.notes]))
   }
 
   return <div className="clients-page">
-    <div className="page-header clients-header"><div><h1>Clients</h1><p className="clients-subtitle">Find a contact, see their work, and follow up on billing.</p></div><div className="actions"><button className="btn primary" onClick={() => setAdding(true)}><Icon name="plus" size={16} /> New client</button></div></div>
-    <div className="stats clients-stats" aria-label="Quick client filters">
-      {stat('all', 'Clients in view', baseRows.length, query.q.trim() ? 'Matching the current search' : 'All saved clients', 'clients')}
-      {stat('open', 'With open jobs', withOpen, 'Active or on-hold work', 'jobs')}
-      {stat('unbilled', 'Ready to bill', fmtMoney(readyAmount), `${readyCount} ${readyCount === 1 ? 'client' : 'clients'} with unbilled work`, 'billing')}
-      {stat('outstanding', 'Awaiting payment', fmtMoney(waitingAmount), `${waitingCount} ${waitingCount === 1 ? 'client' : 'clients'} with unpaid invoices`, 'billing')}
-    </div>
-    <section className="card clients-controls" aria-label="Client filters">
-      <div className="clients-filter-grid"><div className="clients-search-field"><label htmlFor="clients-search">Search</label><div className="clients-search"><Icon name="search" size={16} /><input id="clients-search" type="search" aria-label="Search clients" placeholder="Client, contact, email, phone, or job…" value={query.q} onChange={event => patch({ q: event.target.value }, true)} /></div></div>
-        <div><label htmlFor="clients-focus">Show</label><select id="clients-focus" aria-label="Show clients" value={query.focus} onChange={event => patch({ focus: event.target.value as ClientsFocus })}><option value="all">All clients</option><option value="open">With open jobs</option><option value="billing">Billing follow-up</option><option value="unbilled">Ready to bill</option><option value="outstanding">Awaiting payment</option><option value="due">Due soon &amp; overdue</option><option value="no_open">No open jobs</option><option value="missing_contact">Missing phone &amp; email</option></select></div>
-        <div><label htmlFor="clients-sort">Sort</label><select id="clients-sort" aria-label="Sort clients" value={query.sort} onChange={event => chooseSort(event.target.value as ClientsSort)}><option value="name">Client name</option><option value="open">Open jobs</option><option value="unbilled">Ready to bill</option><option value="outstanding">Awaiting payment</option><option value="due">Next due</option></select></div>
-        <div className="clients-direction"><label>Order</label><button type="button" className="btn" aria-label="Sort direction" onClick={() => patch({ dir: query.dir === 'asc' ? 'desc' : 'asc' })}>{query.dir === 'asc' ? 'Ascending ↑' : 'Descending ↓'}</button></div>
+    <div className="page-head">
+      <div className="titles">
+        <h1>Clients</h1>
+        <p className="lede">{store.clients.length} client{store.clients.length === 1 ? '' : 's'} · {withOpen} with open jobs</p>
       </div>
-      <div className="clients-controls-footer"><span role="status">{rows.length} {rows.length === 1 ? 'client' : 'clients'}{activeFilters ? ` of ${allRows.length}` : ''}</span>{activeFilters && <button className="btn ghost" onClick={() => patch({ q: '', focus: 'all' })}>Reset filters</button>}<span className="grow" /><button className="btn" onClick={exportClients} disabled={rows.length === 0}><Icon name="download" size={14} /> Export CSV</button></div>
-    </section>
-    <p className="clients-basis tiny muted">Client totals include all job history, including archived jobs. Hourly return uses recorded fees divided by all completed hours, including nonbillable time.</p>
-    <div className="card clients-list-card">
-      {rows.length === 0 ? <div className="clients-empty"><Icon name="clients" size={28} /><h2>{allRows.length ? 'No clients match these filters' : 'Keep your clients and their work together'}</h2><p>{allRows.length ? 'Try another name, contact detail, or job, or clear the filters.' : 'Add a client to organize their jobs, contact details, and billing.'}</p><button className="btn primary" onClick={() => allRows.length ? patch({ q: '', focus: 'all' }) : setAdding(true)}>{allRows.length ? 'Reset filters' : 'Add your first client'}</button></div> : <div className="table-wrap"><table className="clients-overview-table"><thead><tr><th aria-sort={ariaSort('name')}>{headerSort('name', 'Client')}</th><th aria-sort={ariaSort('open')}>{headerSort('open', 'Open jobs')}</th><th>Hours &amp; return</th><th aria-sort={ariaSort('due')}>{headerSort('due', 'Next due')}</th><th aria-sort={query.sort === 'unbilled' ? ariaSort('unbilled') : ariaSort('outstanding')}><div>{headerSort('unbilled', 'Ready to bill')}</div><div>{headerSort('outstanding', 'Awaiting payment')}</div></th></tr></thead><tbody>
-        {rows.map(row => { const { client } = row; const highlightedJob = row.openJobs[0] ?? row.jobs[0]; return <tr key={client.id}>
-          <td className="clients-identity"><Link className="clients-name" to={`/clients/${client.id}`}>{client.name}</Link>{client.contact_name && <div className="small">{client.contact_name}</div>}<div className="clients-contact">{client.phone.trim() && <a href={`tel:${client.phone.trim()}`}>{client.phone}</a>}{client.email.trim() && <a href={`mailto:${client.email.trim()}`}>{client.email}</a>}</div>{client.address && <div className="tiny muted clients-address">{client.address}</div>}{row.contactMissing && <span className="clients-contact-missing">No phone or email saved</span>}<div className="clients-row-actions"><button className="btn sm" aria-label={`New job for ${client.name}`} onClick={() => setNewJobFor(client)}><Icon name="plus" size={13} /> Job</button><button className="btn sm ghost" aria-label={`Edit client: ${client.name}`} onClick={() => setEditing(client)}><Icon name="edit" size={13} /> Edit</button></div></td>
-          <td className="clients-work"><span className="clients-cell-label">Work</span><Link className="bold" to={`/clients/${client.id}?status=open`}>{row.openJobs.length} open</Link><div className="tiny muted">{row.activeCount} active · {row.onHoldCount} on hold</div><Link className="tiny" to={`/clients/${client.id}`}>{row.jobs.length} total {row.jobs.length === 1 ? 'job' : 'jobs'} →</Link>{highlightedJob && <div className="clients-job-preview"><Link to={`/jobs/${highlightedJob.job.id}`}>{highlightedJob.job.name}</Link></div>}</td>
-          <td className="clients-time"><span className="clients-cell-label">Hours &amp; return</span><div className="bold">{fmtHours(row.actualHours)} worked</div><div className="tiny muted">{fmtHours(row.nonBillableHours)} nonbillable{row.runningCount ? ` · ${row.runningCount} running` : ''}</div><Link to={`/clients/${client.id}?tab=billing`}>{fmtHourlyRate(row.effectiveHourlyRate)}<span className="tiny muted"> · fees / completed hours</span></Link></td>
-          <td className="clients-deadline"><span className="clients-cell-label">Next due</span>{row.nextDeadline ? <Link to={row.nextDeadline.link}><DueBadge date={row.nextDeadline.date} /><span>{row.nextDeadline.jobName}</span><span className="tiny muted">{fmtDate(row.nextDeadline.date, 'long')}</span></Link> : <span className="tiny muted">No pending date</span>}</td>
-          <td className="clients-billing"><span className="clients-cell-label">Billing</span><Link className={row.billing.unbilledAmount > 0.005 ? 'bold' : 'muted'} to={`/clients/${client.id}?tab=billing`}>{fmtMoney(row.billing.unbilledAmount)} ready to bill →</Link><Link className={row.billing.outstanding > 0.005 ? 'warn-text' : 'muted'} to={`/clients/${client.id}?tab=billing`}>{fmtMoney(row.billing.outstanding)} awaiting payment</Link><div className="tiny muted">Balance <span className={row.billing.balance < 0 ? 'money-neg' : 'money-pos'}>{fmtSigned(row.billing.balance)}</span></div></td>
-        </tr> })}
-      </tbody></table></div>}
+      <div className="actions">
+        <Segmented label="Layout" value={layout} onChange={setLayout} options={[{ value: 'cards', label: 'Cards', icon: <LayoutGrid size={15} /> }, { value: 'list', label: 'List', icon: <List size={15} /> }]} />
+        <button className="btn primary" onClick={() => edit.client(undefined, c => navigate(`/clients/${c.id}`))}><Plus size={16} /> New client</button>
+      </div>
     </div>
-    {adding && <ClientModal onClose={() => setAdding(false)} onCreated={client => nav(`/clients/${client.id}`)} />}
-    {editing && <ClientModal client={editing} onClose={() => setEditing(null)} />}
-    {newJobFor && <JobModal defaultClientId={newJobFor.id} onClose={() => setNewJobFor(null)} onCreated={job => nav(`/jobs/${job.id}`)} />}
+
+    {store.clients.length > 0 && <div className="toolbar">
+      <div className="input-wrap grow" style={{ maxWidth: 380 }}>
+        <Search size={16} />
+        <input className="input" value={q} onChange={e => patch({ q: e.target.value })} placeholder="Search name, contact, phone, job…" aria-label="Search clients" />
+      </div>
+      <select className="input" style={{ width: 'auto' }} value={sort} onChange={e => patch({ sort: e.target.value === 'name' ? null : e.target.value })} aria-label="Sort clients">
+        <option value="name">Sort: Name</option>
+        <option value="open">Sort: Most open jobs</option>
+        <option value="bill">Sort: Most to bill</option>
+        <option value="recent">Sort: Recently added</option>
+      </select>
+      <div className="grow hide-sm" />
+      <button className="btn" onClick={exportCsv} disabled={!rows.length}><Download size={15} /> CSV</button>
+    </div>}
+
+    {store.clients.length === 0
+      ? <div className="card"><Empty icon={<Building2 size={22} />} title="No clients yet" action={<button className="btn primary" onClick={() => edit.client(undefined, c => navigate(`/clients/${c.id}`))}><Plus size={16} /> Add your first client</button>}>Add the architects, builders and homeowners you work for. Their jobs, contact details and billing collect here.</Empty></div>
+      : rows.length === 0
+        ? <div className="card"><Empty icon={<Search size={22} />} title="No clients match" action={<button className="btn" onClick={() => patch({ q: null })}>Clear search</button>}>Nothing matches “{q}”.</Empty></div>
+        : layout === 'cards'
+          ? <div className="client-grid">{rows.map(r => <ClientCard key={r.client.id} row={r} />)}</div>
+          : <ClientTable rows={rows} />}
+  </div>
+}
+
+function ClientCard({ row }: { row: ClientRow }) {
+  const navigate = useNavigate()
+  const { client, open, stages, toBill, awaiting, jobs } = row
+  const shown = stages.slice(0, 3)
+  return <article className="card client-card" onClick={() => navigate(`/clients/${client.id}`)}>
+    <div className="client-card-top">
+      <Avatar name={avatarName(client.name)} color={avatarColor(client.name)} />
+      <div className="grow" style={{ minWidth: 0 }}>
+        <Link to={`/clients/${client.id}`} className="client-card-name truncate" onClick={e => e.stopPropagation()}>{client.name}</Link>
+        <div className="small muted truncate">{client.contact_name || (client.email ? client.email : 'No contact person')}</div>
+      </div>
+    </div>
+    <div className="client-card-jobs">
+      {open.length
+        ? <><span className="small strong">{open.length} open job{open.length === 1 ? '' : 's'}</span>
+          <div className="client-card-chips">
+            {shown.map(s => <StageChip key={s.job.id} stage={s.stage} hold={s.hold} label={s.hold ? 'On hold' : undefined} />)}
+            {stages.length > shown.length && <span className="badge">+{stages.length - shown.length}</span>}
+          </div></>
+        : <span className="small muted">{jobs.length ? `No open jobs · ${jobs.length} past` : 'No jobs yet'}</span>}
+    </div>
+    {(toBill > 0.5 || awaiting > 0.5) && <div className="client-card-money">
+      {toBill > 0.5 && <span className="badge ok">{fmtMoney(toBill)} to bill</span>}
+      {awaiting > 0.5 && <span className="badge warn">{fmtMoney(awaiting)} awaiting payment</span>}
+    </div>}
+    <div className="client-card-actions" onClick={e => e.stopPropagation()}>
+      {client.phone ? <a className="btn sm" href={`tel:${client.phone}`} aria-label={`Call ${client.name}`}><Phone size={14} />Call</a> : <span className="btn sm" aria-disabled="true" style={{ opacity: 0.45, pointerEvents: 'none' }}><Phone size={14} />Call</span>}
+      {client.email ? <a className="btn sm" href={`mailto:${client.email}`} aria-label={`Email ${client.name}`}><Mail size={14} />Email</a> : <span className="btn sm" aria-disabled="true" style={{ opacity: 0.45, pointerEvents: 'none' }}><Mail size={14} />Email</span>}
+      {client.phone && <span className="tiny muted truncate hide-sm" style={{ marginLeft: 'auto' }}>{client.phone}</span>}
+    </div>
+  </article>
+}
+
+function ClientTable({ rows }: { rows: ClientRow[] }) {
+  const navigate = useNavigate()
+  return <div className="card">
+    <div className="table-wrap"><table className="table">
+      <thead><tr><th>Client</th><th className="hide-sm">Contact</th><th className="hide-sm">Phone</th><th className="num">Open jobs</th><th className="num hide-sm">To bill</th><th className="num hide-sm">Awaiting</th></tr></thead>
+      <tbody>{rows.map(r => <tr key={r.client.id} className="clickable" onClick={() => navigate(`/clients/${r.client.id}`)}>
+        <td><div className="row" style={{ gap: 10 }}><Avatar name={avatarName(r.client.name)} color={avatarColor(r.client.name)} /><div style={{ minWidth: 0 }}><Link to={`/clients/${r.client.id}`} className="strong" style={{ color: 'var(--text)' }} onClick={e => e.stopPropagation()}>{r.client.name}</Link><div className="tiny muted show-sm">{r.client.contact_name}</div></div></div></td>
+        <td className="hide-sm small">{r.client.contact_name || <span className="muted">—</span>}{r.client.email && <div className="tiny muted"><a href={`mailto:${r.client.email}`} onClick={e => e.stopPropagation()}>{r.client.email}</a></div>}</td>
+        <td className="hide-sm small nowrap">{r.client.phone ? <a href={`tel:${r.client.phone}`} onClick={e => e.stopPropagation()}>{r.client.phone}</a> : <span className="muted">—</span>}</td>
+        <td className="num strong">{r.open.length || <span className="muted">0</span>}</td>
+        <td className="num hide-sm">{r.toBill > 0.5 ? <span className="ok-text strong">{fmtMoney(r.toBill)}</span> : <span className="muted">—</span>}</td>
+        <td className="num hide-sm">{r.awaiting > 0.5 ? <span className="warn-text strong">{fmtMoney(r.awaiting)}</span> : <span className="muted">—</span>}</td>
+      </tr>)}</tbody>
+    </table></div>
   </div>
 }

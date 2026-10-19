@@ -11,17 +11,30 @@ permissions:
 jobs:
   check:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: planner
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: planner/package-lock.json
-      - run: npm ci
-      - run: npm test
-      - run: npm run build
-      - run: npm run lint
+          cache-dependency-path: |
+            planner/package-lock.json
+            classic/package-lock.json
+      - name: Planner — install
+        working-directory: planner
+        run: npm ci
+      - name: Planner — tests
+        working-directory: planner
+        run: npm test
+      - name: Planner — build
+        working-directory: planner
+        run: npm run build
+      - name: Planner — lint
+        working-directory: planner
+        run: npm run lint
+      - name: Planner — demo build
+        working-directory: planner
+        run: npx vite build --mode demo --base /Who-knows/demo/ --outDir dist/demo
+      - name: Classic — build (published at /classic/)
+        working-directory: classic
+        run: npm ci && npm run build
