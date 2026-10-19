@@ -13,11 +13,12 @@ It contains:
 
 | Folder | What it is |
 |---|---|
-| `planner/` | **The project planning web app** (the main thing, version 2 — rebuilt Oct 2026). React + TypeScript + Vite, data in Supabase, hosted on GitHub Pages at `/Who-knows/`. `planner/supabase/` holds the database schema, migrations and the calendar-feed Edge Function. |
-| `classic/` | The **previous design** of the planner (frozen). Same database. Published at `/Who-knows/classic/` as a fallback; safe to delete later (also remove its steps from both workflows). Don't develop it further. |
-| `index.html`, `css/`, `js/` (repo root) | A standalone **segmented shear wall analyzer** (SDPWS-2021 §4.3). Plain HTML/JS, no build step. Published at `/Who-knows/shear-wall/`. |
+| `planner/` | **The project planning web app** (the main thing, version 2 — rebuilt Oct 2026). React + TypeScript + Vite, data in Supabase, hosted on GitHub Pages at https://brianwisner.github.io/Planner/ (the repository is `brianwisner/Planner`, renamed from `Who-knows` in Oct 2026; use the capital P in links). `planner/supabase/` holds the database schema, migrations and the calendar-feed Edge Function. |
+| `classic/` | The **previous design** of the planner (frozen). Same database. Published at `/Planner/classic/` as a fallback; safe to delete later (also remove its steps from both workflows). Don't develop it further. |
 
-`.github/workflows/deploy.yml` builds `planner/` (plus a demo build at `/Who-knows/demo/`, `classic/` at `/Who-knows/classic/`, and the shear wall tool) and publishes to GitHub Pages on every push to the default branch (`claude/shear-wall-analyzer-kQe3k`; `main` too if it ever exists). `.github/workflows/checks.yml` runs tests, build, lint, the demo build and the classic build on pull requests.
+`.github/workflows/deploy.yml` builds `planner/` (plus a demo build at `/Planner/demo/` and `classic/` at `/Planner/classic/`) and publishes to GitHub Pages on every push to the default branch, `main` (renamed in Oct 2026 from `claude/shear-wall-analyzer-kQe3k`, a name left over from when this repository started). `.github/workflows/checks.yml` runs tests, build, lint, the demo build and the classic build on pull requests.
+
+The shear wall analyzer that used to sit at this repository's root is kept in its own repository (`brianwisner/shear-wall`) as an archive; the owner doesn't use it, so it isn't published as a website. It is unrelated to the planner: don't link to it or add it back here.
 
 ---
 
@@ -133,7 +134,7 @@ Conventions:
 
 ### Demo mode
 
-`npm run demo` (in `planner/`) opens the app with made-up data in memory — no login, nothing saved, nothing sent to Supabase. Use it for screenshots and click-through testing; **never test against live customer data**. The demo is also published at `/Who-knows/demo/` with a banner. The production build excludes the demo code (`__DEMO__` is defined false at build time).
+`npm run demo` (in `planner/`) opens the app with made-up data in memory — no login, nothing saved, nothing sent to Supabase. Use it for screenshots and click-through testing; **never test against live customer data**. The demo is also published at `/Planner/demo/` with a banner. The production build excludes the demo code (`__DEMO__` is defined false at build time).
 
 ### Google Calendar
 
@@ -145,7 +146,7 @@ Conventions:
 - `vite.config.ts` and `classic/vite.config.ts` use relative paths (`base: './'`), so the built site works under any repository name (the address is `https://brianwisner.github.io/<repo name>/`). Renaming the repo needs no code change; only the Supabase Auth Site URL (password-reset emails) and docs mention the address. The demo is in `demo/`, so its links to the planner and classic go up one folder (`../`).
 - Vite reads `planner/.env.production` (Supabase URL and *publishable* key — public by design; deliberately un-ignored in `.gitignore`). `classic/` has its own copy.
 - Live Supabase project: `wisner-planner` (ref `axjyhkyvmbrhtivgofya`, us-east-1). Statements containing `drop …` make the Supabase MCP `execute_sql` tool wait for a confirmation that never arrives in a cloud session, so write migrations without DROP or run them from the dashboard.
-- Password resets by email need Site URL set in Supabase Auth settings, which the MCP cannot change.
+- Password resets by email need the Supabase Auth Site URL set to https://brianwisner.github.io/Planner/ (Dashboard → Authentication → URL Configuration), which the MCP cannot change.
 - The app is installable (`public/manifest.webmanifest`, icons in `public/`).
 
 ### Things the owner is likely to ask for

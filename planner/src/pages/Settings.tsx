@@ -1,7 +1,7 @@
 // Settings: your profile, business defaults, appearance, calendar sync,
 // reminders, installing on a phone, and links to other tools.
 import { useState } from 'react'
-import { Bell, Briefcase, CalendarDays, Copy, Download, ExternalLink, History, Keyboard, LogOut, Moon, Monitor, Palette, Ruler, Smartphone, Sun, Trash2, User } from 'lucide-react'
+import { Bell, Briefcase, CalendarDays, Copy, Download, ExternalLink, History, Keyboard, LogOut, Moon, Monitor, Palette, Smartphone, Sun, Trash2, User } from 'lucide-react'
 import { useData } from '../lib/store'
 import { DEMO, SUPABASE_URL, supabase } from '../lib/supabase'
 import { applyTheme, savedTheme, type Theme } from '../lib/theme'
@@ -197,7 +197,6 @@ export function Settings() {
         <section className="card">
           <div className="card-head"><h2>Other tools</h2></div>
           <div className="sheet-list settings-links">
-            <a href={`${base}shear-wall/`} target="_blank" rel="noreferrer"><span className="ico"><Ruler size={19} /></span><span className="grow">Shear wall analyzer<span className="desc">SDPWS segmented shear wall tool</span></span><ExternalLink size={16} className="muted" /></a>
             <a href={DEMO ? '../classic/' : `${base}classic/`}><span className="ico"><History size={19} /></span><span className="grow">Classic version<span className="desc">The previous design — it uses the same data, so anything you change shows up in both</span></span></a>
             <div className="settings-keys"><span className="ico"><Keyboard size={19} /></span><span className="grow">Keyboard shortcuts<span className="desc">Press <kbd>?</kbd> anywhere to see them</span></span></div>
           </div>

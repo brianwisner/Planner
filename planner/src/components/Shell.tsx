@@ -3,8 +3,8 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import {
-  Briefcase, Building2, CalendarDays, CircleDollarSign, Clock, Ellipsis, ExternalLink, FileText, History, Keyboard, MapPin, Play,
-  Plus, Ruler, Search, Settings, Square, Sun, Wallet, X,
+  Briefcase, Building2, CalendarDays, CircleDollarSign, Clock, Ellipsis, FileText, History, Keyboard, MapPin, Play,
+  Plus, Search, Settings, Square, Sun, Wallet, X,
 } from 'lucide-react'
 import { useData } from '../lib/store'
 import { runningTimers, startTimer, elapsedLabel } from '../lib/timer'
@@ -17,7 +17,6 @@ import { Menu, Modal, Avatar, type MenuEntry } from './ui'
 import { BrandMark } from './Brand'
 import { DEMO } from '../lib/supabase'
 
-const SHEAR_WALL_URL = `${import.meta.env.BASE_URL}shear-wall/`
 // The demo is published in demo/, one folder below the planner and classic/.
 const CLASSIC_URL = DEMO ? '../classic/' : `${import.meta.env.BASE_URL}classic/`
 
@@ -109,7 +108,6 @@ export function Shell({ children }: { children: ReactNode }) {
       </nav>
       <div className="spacer" />
       <nav className="nav">
-        <a href={SHEAR_WALL_URL} target="_blank" rel="noreferrer" title="Shear wall analyzer"><Ruler size={19} /><span>Shear wall tool</span></a>
         <NavLink to="/settings" title="Settings"><Settings size={19} /><span>Settings</span></NavLink>
       </nav>
       <div className="sidebar-foot">
@@ -167,7 +165,6 @@ export function Shell({ children }: { children: ReactNode }) {
         <SheetLink to="/money" icon={<CircleDollarSign size={19} />} tone="ok" label="Money" desc="Invoices, deposits, unbilled work, reports" onDone={() => setSheet(null)} />
         <SheetLink to="/clients" icon={<Building2 size={19} />} tone="accent" label="Clients" desc="Contacts and client history" onDone={() => setSheet(null)} />
         <SheetLink to="/settings" icon={<Settings size={19} />} label="Settings" desc="Rates, calendar sync, appearance" onDone={() => setSheet(null)} />
-        <a href={SHEAR_WALL_URL} target="_blank" rel="noreferrer"><span className="ico"><Ruler size={19} /></span><span className="grow">Shear wall tool<span className="desc">SDPWS segmented shear wall analyzer</span></span><ExternalLink size={16} className="muted" /></a>
         <a href={CLASSIC_URL}><span className="ico"><History size={19} /></span><span className="grow">Classic version<span className="desc">The previous design, same data</span></span></a>
       </div>
     </Modal>}
