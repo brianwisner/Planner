@@ -1,3 +1,13 @@
+> **This is the previous design of the planner, kept for reference.** The current app lives in
+> [`planner/`](../planner/) and is published at https://brianwisner.github.io/Who-knows/. This copy is
+> published at https://brianwisner.github.io/Who-knows/classic/ and uses the same database, so anything
+> changed here shows up in the new planner too. It is no longer being developed and can be deleted once
+> the new planner has everything you need (remove this folder and the "classic" steps in
+> `.github/workflows/deploy.yml` and `checks.yml`).
+>
+> The database (`planner/supabase/`) is shared; the paths below that mention `planner/` refer to the
+> old layout.
+
 # Wisner Engineering Project Planner
 
 A project planning app for a solo structural engineering business. It runs in any browser (desktop, laptop, iPhone, iPad), keeps your devices in sync, and is free to run.

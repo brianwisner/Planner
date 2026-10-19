@@ -5,5 +5,5 @@ import { defineConfig } from 'vite'
 // If the repo is ever renamed, change this one line.
 export default defineConfig({
   plugins: [react()],
-  base: '/Who-knows/',
+  base: '/Who-knows/classic/',
 })
