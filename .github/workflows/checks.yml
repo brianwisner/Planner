@@ -34,7 +34,7 @@ jobs:
         run: npm run lint
       - name: Planner — demo build
         working-directory: planner
-        run: npx vite build --mode demo --base /Who-knows/demo/ --outDir dist/demo
+        run: npx vite build --mode demo --outDir dist/demo
       - name: Classic — build (published at /classic/)
         working-directory: classic
         run: npm ci && npm run build
