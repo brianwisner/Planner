@@ -18,7 +18,7 @@ It contains:
 
 `.github/workflows/deploy.yml` builds `planner/` (plus a demo build at `/Planner/demo/` and `classic/` at `/Planner/classic/`) and publishes to GitHub Pages on every push to the default branch, `main` (renamed in Oct 2026 from `claude/shear-wall-analyzer-kQe3k`, a name left over from when this repository started). `.github/workflows/checks.yml` runs tests, build, lint, the demo build and the classic build on pull requests.
 
-The shear wall analyzer that used to sit at this repository's root now has its own repository (`brianwisner/shear-wall`, published at https://brianwisner.github.io/shear-wall/). It is unrelated to the planner: don't link to it or add it back here.
+The shear wall analyzer that used to sit at this repository's root is kept in its own repository (`brianwisner/shear-wall`) as an archive; the owner doesn't use it, so it isn't published as a website. It is unrelated to the planner: don't link to it or add it back here.
 
 ---
 
