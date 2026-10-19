@@ -16,8 +16,8 @@ The project planner for a solo structural engineering business: jobs, schedule, 
 | **A job** | The stage bar at the top (click a stage to move there), tasks, phases with estimates/dates/progress, client contact, scope, planned hours. Tabs for **Hours & charges**, **Billing** (create invoices, deposits, balance chart) and **Notes**. |
 | **Schedule** | **Week plan:** type how many hours you plan on each job each day; totals show against the hours you have, with deadlines on each day. **Timeline:** phases as bars — drag to change dates. **Calendar:** month view (or a list on phones) of deadlines, tasks and site visits. |
 | **Time** | Start/stop the timer, or type hours straight into the weekly timesheet. Every entry is listed below with its billing status; export to CSV. |
-| **Money** | What's ready to bill, unpaid invoices (with how long they've been out), deposits, and reports: hours by client and job, estimate vs actual, and what you earned per hour. Each invoice has a clean printable page — **Print / Save as PDF** to email it. |
-| **Clients** | Contacts with one-tap call/email, their open jobs and what they owe. |
+| **Money** | What's ready to bill, unpaid invoices (with how long they've been out), deposits, and reports: hours by client and job, estimate vs actual, and what you earned per hour. Each invoice has a clean printable page — **Print / Save as PDF**, then **Email client** opens a Gmail message ready to attach it to. |
+| **Clients** | Contacts with one-tap call or Gmail, their open jobs and what they owe. |
 | **Settings** | Your rate and weekly hours, business defaults, light/dark mode, Google Calendar sync, reminders, and how to put the app on your phone. |
 
 | Jobs board | A job | Week plan |

@@ -3,6 +3,7 @@ import { useMemo } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { Briefcase, ChevronRight, Mail, MapPin, Pencil, Phone, Plus, Receipt } from 'lucide-react'
 import { useData } from '../lib/store'
+import { EMAIL_TARGET, useEmailLink } from '../lib/email'
 import { useEditors } from '../components/editors'
 import { Avatar, DueText, Empty, StageChip } from '../components/ui'
 import { summarizeJob, type JobSummary } from '../lib/views'
@@ -21,6 +22,7 @@ function avatarColor(name: string): string {
 export function ClientPage() {
   const { id = '' } = useParams()
   const store = useData()
+  const emailLink = useEmailLink()
   const edit = useEditors()
   const navigate = useNavigate()
   const client = store.clients.find(c => c.id === id)
@@ -63,7 +65,7 @@ export function ClientPage() {
       </div>
       <div className="actions">
         {client.phone && <a className="btn" href={`tel:${client.phone}`}><Phone size={15} /> Call</a>}
-        {client.email && <a className="btn" href={`mailto:${client.email}`}><Mail size={15} /> Email</a>}
+        {client.email && <a className="btn" href={emailLink(client.email)} {...EMAIL_TARGET}><Mail size={15} /> Email</a>}
         <button className="btn" onClick={() => edit.client(client)}><Pencil size={15} /> Edit</button>
         <button className="btn primary" onClick={() => edit.job(undefined, { client_id: client.id })}><Plus size={16} /> New job</button>
       </div>
@@ -95,7 +97,7 @@ export function ClientPage() {
           <div className="card-body contact-list">
             {client.contact_name && <div className="contact-line"><span className="muted small">Contact</span><span>{client.contact_name}</span></div>}
             {client.phone && <div className="contact-line"><span className="muted small">Phone</span><a href={`tel:${client.phone}`}>{client.phone}</a></div>}
-            {client.email && <div className="contact-line"><span className="muted small">Email</span><a href={`mailto:${client.email}`} className="truncate">{client.email}</a></div>}
+            {client.email && <div className="contact-line"><span className="muted small">Email</span><a href={emailLink(client.email)} {...EMAIL_TARGET} className="truncate">{client.email}</a></div>}
             {client.address && <div className="contact-line"><span className="muted small">Address</span><a href={`https://maps.google.com/?q=${encodeURIComponent(client.address)}`} target="_blank" rel="noreferrer"><MapPin size={13} style={{ display: 'inline', verticalAlign: '-2px', marginRight: 3 }} />{client.address}</a></div>}
             {!client.contact_name && !client.phone && !client.email && !client.address && <p className="small muted">No contact details yet. <button className="btn ghost xs" onClick={() => edit.client(client)}>Add them</button></p>}
             {client.notes && <div className="client-notes">{client.notes}</div>}

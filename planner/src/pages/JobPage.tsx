@@ -5,6 +5,7 @@ import {
   Check, ChevronRight, Clock, Ellipsis, FileText, Mail, MapPin, MessageSquare, Pencil, Phone, Play, Plus, Receipt, Square, Trash2, Wallet,
 } from 'lucide-react'
 import { useData } from '../lib/store'
+import { EMAIL_TARGET, useEmailLink } from '../lib/email'
 import { useEditors } from '../components/editors'
 import { TaskRow } from '../components/TaskRow'
 import { JobMoneyPanel } from '../components/JobMoneyPanel'
@@ -145,6 +146,7 @@ function StageStepper({ jobId, current, held, clientChanges }: { jobId: string; 
 
 function Overview({ jobId }: { jobId: string }) {
   const store = useData()
+  const emailLink = useEmailLink()
   const edit = useEditors()
   const job = store.jobs.find(j => j.id === jobId)!
   const summary = summarizeJob(store, job)
@@ -190,7 +192,7 @@ function Overview({ jobId }: { jobId: string }) {
           {client.contact_name && <div className="small soft">{client.contact_name}</div>}
           <div className="contact-actions">
             {client.phone && <a className="btn sm" href={`tel:${client.phone}`}><Phone size={14} />{client.phone}</a>}
-            {client.email && <a className="btn sm" href={`mailto:${client.email}?subject=${encodeURIComponent(job.name)}`}><Mail size={14} />Email</a>}
+            {client.email && <a className="btn sm" href={emailLink(client.email, job.name)} {...EMAIL_TARGET}><Mail size={14} />Email</a>}
           </div>
         </div>
       </section>}
