@@ -241,81 +241,46 @@ describe('JobWork explicit phase editing', () => {
     expect(store.update).toHaveBeenCalledWith('phases', 'design', expect.objectContaining({ estimate_hours: 0, start_date: '2026-10-22', due_date: '2026-10-22' }))
   })
 
-  it('keeps a failed phase draft in the dialog and does not stamp the queue', async () => {
+  it('retains a failed workflow draft without writing queue dates', async () => {
     store.update = vi.fn(async () => false)
-    await render({ phases: [phase({ kind: 'queued', status: 'not_started' })] }); await openEditor(); await change('Phase status', 'in_progress'); await change('Phase notes', 'Keep this draft'); await save()
+    await render(); await openEditor(); await change('Phase status', 'waiting'); await change('Phase notes', 'Keep this draft'); await save()
     expect((field('Phase notes') as HTMLTextAreaElement).value).toBe('Keep this draft')
     expect(dialog().querySelector('[role="alert"]')?.textContent).toContain('changes are still here')
     expect(store.update).toHaveBeenCalledTimes(1)
     expect(vi.mocked(store.update).mock.calls[0][0]).toBe('phases')
+    expect(store.jobs[0].queued_date).toBeNull()
   })
 
-  it('stamps a newly entered queue only after saving, using the local calendar date', async () => {
-    vi.setSystemTime(new Date('2026-10-19T23:30:00'))
-    await render({ phases: [phase({ kind: 'queued', status: 'not_started' })] }); await openEditor(); await change('Phase status', 'in_progress'); await save()
-    expect(store.update).toHaveBeenNthCalledWith(1, 'phases', 'design', expect.objectContaining({ status: 'in_progress' }))
-    expect(store.update).toHaveBeenNthCalledWith(2, 'jobs', 'job', { queued_date: TODAY })
+  it('omits empty retired phases and retains meaningful planning history without workflow controls', async () => {
+    const retired = phase({ id: 'queued', kind: 'queued', name: 'Queued', estimate_hours: 0, notes: '', due_date: null, status: 'in_progress' })
+    await render({ phases: [retired, phase()] })
+    expect(container.textContent).not.toContain('Queued')
+    expect(container.querySelector('.job-planning-history')).toBeNull()
+    await render({ phases: [{ ...retired, notes: 'Saved planning note', due_date: '2026-10-01', estimate_hours: 4 }, phase()], timeEntries: [hours({ phase_id: 'queued', hours: 2 })] })
+    const history = container.querySelector('.job-planning-history')!
+    expect(history.textContent).toContain('Planning history · 2h worked')
+    expect(history.textContent).toContain('Recorded estimate: 4h')
+    expect(history.textContent).toContain('Saved planning note')
+    expect(history.textContent).toContain('2h nonbillable')
+    expect(history.querySelector('button, .badge')).toBeNull()
+    expect(card('General tasks').querySelector('.job-phase-summary')?.textContent).toContain('0h worked')
+    expect(container.querySelector('[aria-label="Edit phase: Queued"]')).toBeNull()
+    noWrites()
   })
 
-  it.each(['already-dated', 'already-started', 'still-not-started'])('does not rewrite the queue date for %s work', async situation => {
-    const queuedJob = situation === 'already-dated' ? job({ queued_date: '2026-10-01' }) : job()
-    store.jobs = [queuedJob]
-    await render({ job: queuedJob, phases: [phase({ kind: 'queued', status: situation === 'already-started' ? 'in_progress' : 'not_started' })] }); await openEditor()
-    if (situation !== 'still-not-started') await change('Phase status', 'waiting')
-    await save()
-    expect(store.update).toHaveBeenCalledTimes(1)
-  })
-
-  it('reports a queue stamp failure separately and retains the draft for retry', async () => {
-    store.update = vi.fn().mockResolvedValueOnce(true).mockResolvedValueOnce(false).mockResolvedValue(true)
-    await render({ phases: [phase({ kind: 'queued', status: 'not_started' })] }); await openEditor(); await change('Phase status', 'in_progress'); await change('Phase notes', 'Queue draft'); await save()
-    expect(dialog().querySelector('[role="alert"]')?.textContent).toContain('Phase saved, but its queue-entry date could not be confirmed')
-    expect((field('Phase notes') as HTMLTextAreaElement).value).toBe('Queue draft')
-    store.phases = [phase({ kind: 'queued', status: 'in_progress', notes: 'Queue draft' })]
-    await render({ phases: store.phases })
-    await save()
-    expect(container.querySelector('[role="dialog"]')).toBeNull()
-    expect(store.update).toHaveBeenNthCalledWith(4, 'jobs', 'job', { queued_date: TODAY })
-  })
-
-  it('keeps the original local queue-entry date across midnight latency and next-day retries', async () => {
-    let resolvePhase!: (value: boolean) => void
-    store.update = vi.fn().mockImplementationOnce(() => new Promise<boolean>(resolve => { resolvePhase = resolve })).mockResolvedValueOnce(false).mockResolvedValue(true)
-    vi.setSystemTime(new Date('2026-10-19T23:59:00'))
-    await render({ phases: [phase({ kind: 'queued', status: 'not_started' })] }); await openEditor(); await change('Phase status', 'in_progress')
-    await save()
-    vi.setSystemTime(new Date('2026-10-20T00:01:00'))
-    await act(async () => { resolvePhase(true) })
-    expect(store.update).toHaveBeenNthCalledWith(2, 'jobs', 'job', { queued_date: TODAY })
-    expect(store.refresh).toHaveBeenCalledWith('jobs')
-    vi.setSystemTime(new Date('2026-10-21T11:00:00'))
-    await save()
-    expect(store.update).toHaveBeenNthCalledWith(4, 'jobs', 'job', { queued_date: TODAY })
-    expect(container.querySelector('[role="dialog"]')).toBeNull()
-  })
-
-  it('waits for jobs to refresh after an unconfirmed queue stamp before allowing retry', async () => {
-    let resolveRefresh!: () => void
-    store.refresh = vi.fn(() => new Promise<void>(resolve => { resolveRefresh = resolve }))
-    store.update = vi.fn().mockResolvedValueOnce(true).mockResolvedValueOnce(false).mockResolvedValue(true)
-    await render({ phases: [phase({ kind: 'queued', status: 'not_started' })] }); await openEditor(); await change('Phase status', 'in_progress'); await save()
-    expect(store.refresh).toHaveBeenCalledWith('jobs')
-    expect(button('Saving…').disabled).toBe(true)
-    await act(async () => { resolveRefresh() })
-    expect(button('Save phase').disabled).toBe(false)
-    await save()
-    expect(store.update).toHaveBeenNthCalledWith(4, 'jobs', 'job', { queued_date: TODAY })
-  })
-
-  it('preserves an authoritative queue date returned after an unconfirmed stamp', async () => {
-    store.update = vi.fn().mockResolvedValueOnce(true).mockResolvedValueOnce(false).mockResolvedValue(true)
-    store.refresh = vi.fn(async () => { store = { ...store, jobs: [job({ queued_date: '2026-10-17' })] } })
-    await render({ phases: [phase({ kind: 'queued', status: 'not_started' })] }); await openEditor(); await change('Phase status', 'in_progress'); await save()
-    await render()
-    await save()
-    expect(container.querySelector('[role="dialog"]')).toBeNull()
-    expect(vi.mocked(store.update).mock.calls.filter(([table]) => table === 'jobs')).toHaveLength(1)
-    expect(store.jobs[0].queued_date).toBe('2026-10-17')
+  it('keeps saved planning tasks operable under General without assigning new time to history', async () => {
+    const retired = phase({ id: 'queued', kind: 'queued', name: 'Custom saved queue', estimate_hours: 0, notes: '' })
+    const saved = task({ phase_id: 'queued' })
+    await render({ phases: [retired, phase()], tasks: [saved] })
+    expect(visibleTasks()).toEqual(['Prepare framing plan'])
+    expect(card('General tasks').textContent).toContain('Planning history')
+    expect(card('General tasks').textContent).not.toContain('Unavailable phase')
+    await act(async () => { button('Log hours for task: Prepare framing plan').click(); button('Start billable timer for task: Prepare framing plan').click(); button('Edit task: Prepare framing plan').click() })
+    expect(props.onLog).toHaveBeenCalledWith(null, 'task')
+    expect(props.onStart).toHaveBeenCalledWith(null, 'task')
+    expect(props.onEditTask).toHaveBeenCalledWith(saved)
+    expect(saved.phase_id).toBe('queued')
+    noWrites()
   })
 
   it('saves a pending phase only once and prevents closing before the result', async () => {

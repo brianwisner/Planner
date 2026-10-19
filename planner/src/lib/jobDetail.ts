@@ -5,6 +5,7 @@ import { jobRows } from './jobs'
 import type { Store } from './store'
 import type { Task, TimeEntry } from './types'
 import { sum } from './utils'
+import { isWorkflowPhase, phaseLabel } from './phases'
 
 type JobDetailStore = Pick<Store, 'jobs' | 'clients' | 'phases' | 'tasks' | 'timeEntries' | 'invoices' | 'deposits' | 'items' | 'profiles' | 'settings' | 'schedule' | 'comments' | 'me'>
 
@@ -61,7 +62,9 @@ export function jobDetailData(store: JobDetailStore, jobId: string, now = new Da
   const upcomingPlans = store.schedule.filter(entry => entry.job_id === jobId && entry.date >= today)
     .sort((a, b) => a.date.localeCompare(b.date) || createdOrder(a, b))
     .map(entry => ({ entry, phase: entry.phase_id ? phaseMap.get(entry.phase_id) : undefined,
-      phaseName: (entry.phase_id ? phaseMap.get(entry.phase_id)?.name : undefined) ?? 'General', isOwner: entry.user_id === store.me?.id }))
+      phaseName: phaseMap.has(entry.phase_id ?? '') ? phaseLabel(phaseMap.get(entry.phase_id!)!) : 'General', isOwner: entry.user_id === store.me?.id }))
+  const historyUpcomingPlans = upcomingPlans.filter(plan => plan.phase && !isWorkflowPhase(plan.phase))
+  const workflowUpcomingPlans = upcomingPlans.filter(plan => !plan.phase || isWorkflowPhase(plan.phase))
   const deadlines = operational ? calendarItems({ ...store, jobs: [job] }).filter(item => !item.done)
     .sort((a, b) => a.date.localeCompare(b.date) || compare(timestampKey(a.time ?? ''), timestampKey(b.time ?? '')) || a.id.localeCompare(b.id)) : []
   const nowMs = now.getTime()
@@ -71,21 +74,25 @@ export function jobDetailData(store: JobDetailStore, jobId: string, now = new Da
     return {
       phase, actualHours,
       completedHours: sum(entries.filter(entry => entry.hours != null).map(entry => entry.hours!)),
-      remainingHours: operational && phase.status !== 'complete' ? Math.max(0, phase.estimate_hours - actualHours) : 0,
-      overHours: phase.estimate_hours > 0 ? Math.max(0, actualHours - phase.estimate_hours) : 0,
+      remainingHours: operational && isWorkflowPhase(phase) && phase.status !== 'complete' ? Math.max(0, phase.estimate_hours - actualHours) : 0,
+      overHours: isWorkflowPhase(phase) && phase.estimate_hours > 0 ? Math.max(0, actualHours - phase.estimate_hours) : 0,
       readyTasks: readyTasks.filter(task => task.phase_id === phase.id),
       waitingTasks: waitingTasks.filter(task => task.phase_id === phase.id),
       doneTasks: doneTasks.filter(task => task.phase_id === phase.id),
     }
   })
   return {
-    overview, today, operational, client, phases, tasks, readyTasks, waitingTasks, doneTasks,
+    overview, today, operational, client, phases, workflowPhases: overview.workflowPhases, historyPhases: overview.historyPhases,
+    tasks, readyTasks, waitingTasks, doneTasks,
     nextActionableTask: operational ? readyTasks[0] ?? null : null,
     deadlines, overdueDeadlines: deadlines.filter(item => item.date < today),
     upcomingDeadlines: deadlines.filter(item => item.date >= today),
     recentEntries, items, comments, upcomingPlans, upcomingPlannedHours: sum(upcomingPlans.map(plan => plan.entry.hours)),
+    workflowUpcomingPlans, historyUpcomingPlans,
+    workflowUpcomingPlannedHours: sum(workflowUpcomingPlans.map(plan => plan.entry.hours)),
+    historyUpcomingPlannedHours: sum(historyUpcomingPlans.map(plan => plan.entry.hours)),
     runningEntries, myRunningEntries, phaseSummaries,
-    waitingTaskCount: waitingTasks.length, waitingPhaseCount: phases.filter(phase => phase.status === 'waiting').length,
+    waitingTaskCount: waitingTasks.length, waitingPhaseCount: overview.workflowPhases.filter(phase => phase.status === 'waiting').length,
   }
 }
 

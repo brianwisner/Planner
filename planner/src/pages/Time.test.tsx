@@ -37,6 +37,19 @@ function noWrites() { expect(store.update).not.toHaveBeenCalled(); expect(store.
 async function cancel() { const dialog = container.querySelector('[role="dialog"]')!; await act(async () => ([...dialog.querySelectorAll('button')].find(button => button.textContent?.trim() === 'Cancel') as HTMLButtonElement).click()); expect(container.querySelector('[role="dialog"]')).toBeNull() }
 
 describe('Time page', () => {
+  it('labels retained completed hours and timers Planning history and finds them under that label', async () => {
+    store.phases[0] = { ...store.phases[0], kind: 'queued', name: 'Retired custom queue label' }
+    await render('/time?range=all')
+    expect(container.querySelector('[aria-label="Your running timers"]')?.textContent).toContain('Planning history')
+    expect(container.querySelector('.time-history-table')?.textContent).toContain('Planning history')
+    expect(container.textContent).not.toContain('Retired custom queue label')
+    await change(field('Search time entries'), 'Planning history')
+    expect(ids().sort()).toEqual(['a', 'b', 'future', 'past', 'running'])
+    await act(async () => button('Export CSV').click())
+    expect(vi.mocked(downloadCSV).mock.calls[0][2].every(row => row[4] === 'Planning history')).toBe(true)
+    expect(store.phases[0].name).toBe('Retired custom queue label')
+    noWrites()
+  })
   it('separates completed, billable, nonbillable, and running totals and bounds the week', async () => {
     await render()
     expect([...container.querySelectorAll('.time-stats .value')].map(value => value.textContent)).toEqual(['3.5h', '2.5h', '1h', '1'])

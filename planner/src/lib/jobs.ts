@@ -4,8 +4,9 @@ import { jobBilling, workPhase as defaultWorkPhase, type JobBilling } from './ca
 import type { Store } from './store'
 import type { Job, JobStatus, Phase, Task } from './types'
 import { sum } from './utils'
+import { jobPhaseGroups } from './phases'
 
-export type JobsView = 'table' | 'board' | 'gantt' | 'calendar'
+export type JobsView = 'table' | 'sheet' | 'board' | 'gantt' | 'calendar'
 export type JobsStatus = JobStatus | 'open' | 'all'
 export type JobsFocus = 'all' | 'due' | 'waiting' | 'over_estimate' | 'billing'
 export interface JobsQuery { view: JobsView; status: JobsStatus; client: string; q: string; focus: JobsFocus }
@@ -15,7 +16,9 @@ export interface JobOverview {
   job: Job
   clientName: string
   assigneeName: string // historical phase ownership, for exports only
-  phases: Phase[]
+  phases: Phase[] // all saved phases, including retained planning history
+  workflowPhases: Phase[]
+  historyPhases: Phase[]
   currentPhase: Phase | undefined
   workPhase: Phase | undefined
   actualHours: number // all completed effort plus running timers as of the supplied now
@@ -38,7 +41,7 @@ export interface JobOverview {
   billing: JobBilling
 }
 
-const VIEWS: JobsView[] = ['table', 'board', 'gantt', 'calendar']
+const VIEWS: JobsView[] = ['table', 'sheet', 'board', 'gantt', 'calendar']
 const STATUSES: JobsStatus[] = ['open', 'active', 'on_hold', 'complete', 'cancelled', 'archived', 'all']
 const FOCUSES: JobsFocus[] = ['all', 'due', 'waiting', 'over_estimate', 'billing']
 
@@ -83,9 +86,9 @@ export function jobRows(store: JobsStore, now = new Date()): JobOverview[] {
   const nowMs = now.getTime()
   return [...store.jobs].sort((a, b) => a.priority - b.priority ||
     (a.created_at < b.created_at ? -1 : a.created_at > b.created_at ? 1 : 0) || a.id.localeCompare(b.id)).map(job => {
-    const phases = store.phases.filter(phase => phase.job_id === job.id).sort((a, b) => a.sort_order - b.sort_order || a.id.localeCompare(b.id))
-    const openPhases = phases.filter(phase => phase.status !== 'complete')
-    const currentPhase = openPhases[0] ?? phases.at(-1)
+    const { all: phases, workflow: workflowPhases, history: historyPhases } = jobPhaseGroups(store.phases, job.id)
+    const openPhases = workflowPhases.filter(phase => phase.status !== 'complete')
+    const currentPhase = openPhases[0] ?? workflowPhases.at(-1)
     const entries = store.timeEntries.filter(entry => entry.job_id === job.id)
     const actualByPhase = new Map<string, number>()
     const actualHours = sum(entries.map(entry => {
@@ -107,10 +110,10 @@ export function jobRows(store: JobsStore, now = new Date()): JobOverview[] {
     return {
       job, clientName: store.clients.find(client => client.id === job.client_id)?.name ?? '',
       assigneeName: store.profiles.find(profile => profile.id === currentPhase?.assignee_id)?.full_name ?? '',
-      phases, currentPhase, workPhase: defaultWorkPhase(phases, job.id), actualHours,
+      phases, workflowPhases, historyPhases, currentPhase, workPhase: defaultWorkPhase(workflowPhases, job.id), actualHours,
       completedHours: billing.loggedHours, billableHours: billing.billableHours, nonBillableHours: billing.nonBillableHours,
       runningCount: entries.filter(entry => entry.hours == null && entry.started_at).length,
-      estimatedHours: sum(phases.map(phase => phase.estimate_hours)),
+      estimatedHours: sum(workflowPhases.map(phase => phase.estimate_hours)),
       remainingHours: operational.has(job.id) ? sum(openPhases.map(phase => Math.max(0, phase.estimate_hours - (actualByPhase.get(phase.id) ?? 0)))) : 0,
       currentPhaseHours: currentPhase ? actualByPhase.get(currentPhase.id) ?? 0 : 0,
       nextDeadline, nextTask, nextTaskDate: nextTask ? taskDate(nextTask) : null,

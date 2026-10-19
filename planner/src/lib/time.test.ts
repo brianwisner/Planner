@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Store } from './store'
-import type { Job, TimeEntry } from './types'
+import type { Job, Phase, TimeEntry } from './types'
 import { filterTimeRows, parseTimeQuery, timeCSV, timeDays, timeRangeError, timeRows, timeTotals, timeWeek, validTimeDate, writeTimeQuery } from './time'
 
 const now = new Date(2026, 9, 19, 12)
@@ -43,6 +43,16 @@ describe('time query and local dates', () => {
   })
 })
 describe('time rows and totals', () => {
+  it('searches and exports retained phase hours as Planning history without changing their saved phase', () => {
+    const data = store([entry('old-work', { phase_id: 'history' })])
+    const history: Phase = { id: 'history', job_id: 'job', kind: 'queued', name: 'Retired custom queue label', sort_order: 2, status: 'waiting', estimate_hours: 4, start_date: null, due_date: null, assignee_id: null, notes: '' }
+    const rows = timeRows({ ...data, phases: [history] }, now)
+    expect(filterTimeRows(rows, query('q=planning+history'))).toHaveLength(1)
+    expect(filterTimeRows(rows, query('q=Retired+custom+queue'))).toHaveLength(0)
+    expect(timeCSV(rows)[0][4]).toBe('Planning history')
+    expect(rows[0].entry.phase_id).toBe('history')
+    expect(history.name).toBe('Retired custom queue label')
+  })
   it('keeps archived jobs and historical owners while excluding running time from completed totals', () => {
     const data = store([entry('billable'), entry('nonbillable', { hours: 1, billable: false }), entry('running', { hours: null, started_at: new Date(2026, 9, 19, 11).toISOString() })])
     const rows = filterTimeRows(timeRows(data, now), query())

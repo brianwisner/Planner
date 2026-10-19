@@ -3,7 +3,8 @@ import { Link, useSearchParams } from 'react-router-dom'
 import { useData, type TableName } from '../lib/store'
 import { allHours, balanceHistory, depositUsage, entryRate, HOUR_STATUS_LABEL, jobBilling, jobCharges, type HourStatus, type JobBilling } from '../lib/calc'
 import { billingJobRows, canInvoice, filterBillingJobs, invoiceSelection, matchesBillingText, matchesWork, parseBillingQuery, WORK_FILTERS, workAmount, workRows, writeBillingQuery, type BillingJobRow, type BillingQuery, type BillingWork } from '../lib/billingView'
-import type { Deposit, Invoice, JobItem, TimeEntry } from '../lib/types'
+import type { Deposit, Invoice, JobItem, Phase, TimeEntry } from '../lib/types'
+import { phaseLabel } from '../lib/phases'
 import { JOB_STATUS_LABEL } from '../lib/types'
 import { downloadCSV, fmtDate, fmtHourlyRate, fmtHours, fmtMoney, fmtSigned, sum, todayISO } from '../lib/utils'
 import { DepositModal, InvoiceModal, ItemModal, TimeModal } from '../components/editors'
@@ -19,7 +20,7 @@ function useBillingQuery() {
   return { query: parseBillingQuery(params), params,
     patch: (values: Partial<BillingQuery>, replace = false) => setParams(current => writeBillingQuery(current, values), { replace }) }
 }
-function phaseName(phases: { id: string; name: string }[], id: string | null) { return phases.find(phase => phase.id === id)?.name ?? 'General' }
+function phaseName(phases: Phase[], id: string | null) { const phase = phases.find(phase => phase.id === id); return phase ? phaseLabel(phase) : 'General' }
 
 export function Billing() {
   const { query } = useBillingQuery()

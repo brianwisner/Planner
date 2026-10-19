@@ -3,6 +3,7 @@
 import { addDays, format } from 'date-fns'
 import type { Store } from './store'
 import { PHASE_KIND_SHORT } from './types'
+import { isWorkflowPhase } from './phases'
 
 export interface CalItem {
   id: string
@@ -65,7 +66,7 @@ export function calendarItems(store: Pick<Store, 'jobs' | 'phases' | 'tasks' | '
   }
   for (const p of store.phases) {
     const job = store.jobs.find(j => j.id === p.job_id)
-    if (!p.due_date || !job || job.status === 'archived' || job.status === 'cancelled') continue
+    if (!isWorkflowPhase(p) || !p.due_date || !job || job.status === 'archived' || job.status === 'cancelled') continue
     items.push({ id: `phase-${p.id}`, date: p.due_date, time: null, title: `${PHASE_KIND_SHORT[p.kind]} due — ${job.name}`, kind: 'phase', jobId: p.job_id, jobName: job.name, ...context(job.id), assigneeId: p.assignee_id, done: p.status === 'complete' || job.status === 'complete', link: `/jobs/${p.job_id}` })
   }
   for (const t of store.tasks) {

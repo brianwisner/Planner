@@ -79,8 +79,24 @@ describe('dashboard action scopes and queue', () => {
         phase({ id: 'first', kind: 'queued', sort_order: 1 })],
     }), sunday)
     expect(d.queue.map(row => row.job.id)).toEqual(['active', 'second', 'third'])
-    expect(d.queue[0].phase?.id).toBe('first')
+    expect(d.queue[0].phase?.id).toBe('late')
     expect(d.queue[1].phase).toBeUndefined()
+  })
+
+  it('retires planning-history phase alerts but keeps its linked tasks, effort, money and saved capacity commitments', () => {
+    const s = store({ jobs: [job()], phases: [phase({ id: 'history', kind: 'queued', status: 'waiting', sort_order: 1, estimate_hours: 1, due_date: '2026-10-18' }), phase()],
+      tasks: [task({ phase_id: 'history', status: 'waiting', due_date: '2026-10-18' })],
+      timeEntries: [time({ phase_id: 'history', hours: 4, billable: false })],
+      schedule: [schedule({ phase_id: 'history', user_id: 'legacy', hours: 3 }), schedule({ id: 'workflow-plan', phase_id: 'phase', hours: 2 })],
+    })
+    const d = dashboardData(s, sunday)
+    expect(d.queue[0].phase?.id).toBe('phase')
+    expect(d.watch.map(row => row.kind)).toEqual(['waiting_task'])
+    expect(d.dueToday.map(item => item.id)).toEqual(['task-task'])
+    expect(d.week).toMatchObject({ hours: 4, nonBillableHours: 4, plannedHours: 5 })
+    expect(d.money).toMatchObject({ toBillAmount: 0, loggedHours: 4 })
+    expect(d.money.all[0]).toMatchObject({ workValue: 600, nonBillableValue: 600, balance: -600 })
+    expect(s.schedule[0]).toMatchObject({ phase_id: 'history', user_id: 'legacy', hours: 3 })
   })
 
   it('orders open tasks by date, job priority, then task order without mutating store arrays', () => {

@@ -222,6 +222,85 @@ describe('task and credited-work forms', () => {
   })
 })
 
+describe('retired planning phase forms', () => {
+  function phaseSelect() {
+    const field = [...container.querySelectorAll('.field')].find(field => field.querySelector('label')?.textContent === 'Phase')
+    return field!.querySelector('select')!
+  }
+  beforeEach(() => {
+    const base = { job_id: 'job', status: 'in_progress' as const, estimate_hours: 4, start_date: null, due_date: null, assignee_id: null, notes: '' }
+    store.phases = [
+      { ...base, id: 'queue', kind: 'queued', name: 'Old custom queue label', sort_order: 2 },
+      { ...base, id: 'other-history', kind: 'queued', name: 'Another retired label', sort_order: 3 },
+      { ...base, id: 'design', kind: 'design', name: 'Original design', sort_order: 4 },
+    ]
+  })
+
+  it('does not offer retired phases or persist a retired default on a new task', async () => {
+    store.insert = vi.fn(async () => task) as Store['insert']
+    await render(<TaskModal defaults={{ job_id: 'job', phase_id: 'queue', title: 'New planning task' }} onClose={vi.fn()} />)
+    expect([...phaseSelect().options].map(option => option.value)).toEqual(['', 'design'])
+    expect(phaseSelect().value).toBe('')
+    await clickButton('Add task')
+    expect(store.insert).toHaveBeenCalledWith('tasks', expect.objectContaining({ phase_id: null }))
+  })
+
+  it('retains only the saved retired phase for an existing task and relabels it without renaming history', async () => {
+    const original = { ...task, phase_id: 'queue' }
+    store.tasks = [original]
+    await render(<TaskModal task={original} onClose={vi.fn()} />)
+    expect(phaseSelect().value).toBe('queue')
+    expect([...phaseSelect().options].map(option => [option.value, option.textContent])).toEqual([['', 'No phase (general)'], ['queue', 'Planning history'], ['design', 'Original design']])
+    await clickButton('Save')
+    expect(store.update).toHaveBeenCalledWith('tasks', 'task', expect.objectContaining({ phase_id: 'queue' }))
+    expect(store.phases[0].name).toBe('Old custom queue label')
+  })
+
+  it('defaults new hours away from a retired phase and excludes every retired option', async () => {
+    store.insert = vi.fn(async () => store.timeEntries[0]) as Store['insert']
+    await render(<TimeModal defaults={{ job_id: 'job', phase_id: 'queue', hours: 1 }} onClose={vi.fn()} />)
+    expect([...phaseSelect().options].map(option => option.value)).toEqual(['', 'design'])
+    expect(phaseSelect().value).toBe('design')
+    await clickButton('Save')
+    expect(store.insert).toHaveBeenCalledWith('time_entries', expect.objectContaining({ phase_id: 'design', hours: 1, rate: 150 }))
+  })
+
+  it('keeps saved credited hours on their original history phase and preserves the billing locks and rate', async () => {
+    const original = { ...store.timeEntries[0], phase_id: 'queue', billed: true, invoice_id: 'invoice', deposit_applied: 100, rate: 125 }
+    store.timeEntries = [original]
+    await render(<TimeModal entry={original} onClose={vi.fn()} />)
+    expect(phaseSelect().value).toBe('queue')
+    expect([...phaseSelect().options].map(option => [option.value, option.textContent])).toEqual([['', 'General'], ['queue', 'Planning history'], ['design', 'Original design']])
+    expect(container.querySelector<HTMLSelectElement>('select')!.disabled).toBe(true)
+    expect(container.querySelector<HTMLInputElement>('input[type="checkbox"]')!.disabled).toBe(true)
+    await clickButton('Save')
+    expect(store.update).toHaveBeenCalledWith('time_entries', original.id, expect.objectContaining({ phase_id: 'queue', job_id: 'job', rate: 125, billable: true }))
+    expect(store.phases[0].name).toBe('Old custom queue label')
+  })
+
+  it('omits queue-entry dates from job edits without clearing the stored historical value', async () => {
+    const original = { ...store.jobs[0], queued_date: '2026-01-03' }
+    await render(<JobModal job={original} onClose={vi.fn()} />)
+    expect(container.textContent).not.toContain('Entered queue')
+    await change('Job name', 'Updated job label')
+    await clickButton('Save')
+    const patch = vi.mocked(store.update).mock.calls[0][2]
+    expect(patch).not.toHaveProperty('queued_date')
+    expect(patch).toMatchObject({ name: 'Updated job label' })
+    expect(original.queued_date).toBe('2026-01-03')
+  })
+
+  it('describes five phases for a new job and omits the retired date from inserts', async () => {
+    store.insert = vi.fn(async () => store.jobs[0]) as Store['insert']
+    await render(<JobModal defaultClientId="client" onClose={vi.fn()} />)
+    expect(container.textContent).toContain('Five standard phases (Bidding, Original design, County / plan-check comments, Construction changes, Client-requested changes)')
+    expect(container.textContent).not.toContain('Queued')
+    await change('Job name', 'New five-phase job')
+    await clickButton('Create job')
+    expect(vi.mocked(store.insert).mock.calls[0][1]).not.toHaveProperty('queued_date')
+  })
+})
+
 describe('job fees and effective hourly rate', () => {
   it('shows $100 per hour for $1,000 of fees and ten hours including two non-billable hours', async () => {
     const original = store.timeEntries[0]

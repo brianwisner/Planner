@@ -46,7 +46,7 @@ export interface Job {
   status: JobStatus
   priority: number
   fee: number | null
-  queued_date: string | null      // when the job entered the queue
+  queued_date: string | null      // legacy storage; no longer an active workflow control
   start_date: string | null
   due_date: string | null
   created_at: string
@@ -187,7 +187,7 @@ export const TASK_STATUS_LABEL: Record<TaskStatus, string> = {
 
 export const PHASE_KIND_LABEL: Record<PhaseKind, string> = {
   bidding: 'Bidding',
-  queued: 'Queued',
+  queued: 'Planning history',
   design: 'Original design',
   plan_check: 'County / plan-check comments',
   construction: 'Construction changes',
@@ -196,7 +196,7 @@ export const PHASE_KIND_LABEL: Record<PhaseKind, string> = {
 
 export const PHASE_KIND_SHORT: Record<PhaseKind, string> = {
   bidding: 'Bidding',
-  queued: 'Queued',
+  queued: 'Planning history',
   design: 'Design',
   plan_check: 'Plan check',
   construction: 'Construction',

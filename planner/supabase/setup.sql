@@ -124,7 +124,8 @@ create table if not exists jobs (
   created_at timestamptz not null default now()
 );
 
--- ---------- Phases (every job gets the same six) ----------
+-- ---------- Phases (new jobs get five workflow phases) ----------
+-- Retain the queued kind for existing phase IDs and their historical references.
 create table if not exists phases (
   id uuid primary key default gen_random_uuid(),
   job_id uuid not null references jobs(id) on delete cascade,
@@ -139,17 +140,17 @@ create table if not exists phases (
   notes text default ''
 );
 
--- When a job is created, automatically add the standard phases.
+-- When a job is created, automatically add the five workflow phases.
+-- Existing queued rows and jobs.queued_date remain untouched.
 create or replace function add_standard_phases() returns trigger
 language plpgsql security definer set search_path = public as $$
 begin
   insert into phases (job_id, kind, name, sort_order) values
     (new.id, 'bidding',        'Bidding',                      1),
-    (new.id, 'queued',         'Queued',                       2),
-    (new.id, 'design',         'Original design',              3),
-    (new.id, 'plan_check',     'County / plan-check comments', 4),
-    (new.id, 'construction',   'Construction changes',         5),
-    (new.id, 'client_changes', 'Client-requested changes',     6);
+    (new.id, 'design',         'Original design',              2),
+    (new.id, 'plan_check',     'County / plan-check comments', 3),
+    (new.id, 'construction',   'Construction changes',         4),
+    (new.id, 'client_changes', 'Client-requested changes',     5);
   return new;
 end $$;
 
@@ -543,7 +544,7 @@ begin
             current_date - 120, current_date - 90, 'Site observation and repair letter.')
     returning id into j4;
 
-  -- Phase details (the trigger already created the four phases per job)
+  -- Phase details (the trigger already created the five workflow phases per job)
   update phases set estimate_hours = 32, status = 'in_progress', start_date = current_date - 21, due_date = current_date + 10 where job_id = j1 and kind = 'design';
   update phases set estimate_hours = 8,  status = 'not_started', start_date = current_date + 12, due_date = current_date + 30 where job_id = j1 and kind = 'plan_check';
   update phases set estimate_hours = 6,  status = 'not_started' where job_id = j1 and kind = 'construction';
@@ -561,8 +562,8 @@ begin
 
   update phases set estimate_hours = 5,  status = 'complete', start_date = current_date - 120, due_date = current_date - 100 where job_id = j4 and kind = 'design';
   update phases set status = 'complete' where job_id = j4;
-  -- Sample jobs are past bidding and the queue.
-  update phases set status = 'complete' where kind in ('bidding','queued') and job_id in (j1, j2, j3, j4);
+  -- Sample jobs are past bidding. Their historical queue-entry dates stay separate.
+  update phases set status = 'complete' where kind = 'bidding' and job_id in (j1, j2, j3, j4);
   update jobs set queued_date = start_date - 10 where id in (j1, j2, j3, j4);
 
   -- Tasks

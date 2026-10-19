@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { balanceHistory, depositUsage, jobBilling, jobCharges } from './calc'
-import type { Deposit, Invoice, Job, JobItem, TimeEntry } from './types'
+import { balanceHistory, depositUsage, jobBilling, jobCharges, soloWorkload, teamWorkload, workPhase } from './calc'
+import type { Deposit, Invoice, Job, JobItem, Phase, Profile, TimeEntry } from './types'
 
 type MoneyStore = Parameters<typeof jobBilling>[0]
 
@@ -54,6 +54,32 @@ function store(patch: Partial<MoneyStore> = {}): MoneyStore {
 function billedEntry(patch: Partial<TimeEntry> = {}): TimeEntry {
   return entry({ billed: true, invoice_id: 'invoice', deposit_applied: 100, ...patch })
 }
+
+describe('retired planning phases', () => {
+  const phase = (patch: Partial<Phase> = {}): Phase => ({ id: 'design', job_id: 'job', name: 'Design', kind: 'design',
+    status: 'in_progress', sort_order: 2, estimate_hours: 10, start_date: null, due_date: null, assignee_id: 'owner', notes: '', ...patch })
+  it('never defaults new work to planning history, including jobs with only retained phases', () => {
+    const history = phase({ id: 'history', kind: 'queued', sort_order: 1 })
+    const design = phase({ status: 'complete' })
+    expect(workPhase([history, design], 'job')).toBe(design)
+    expect(workPhase([history], 'job')).toBeUndefined()
+    expect(workPhase([phase({ id: 'late', kind: 'construction', sort_order: 5 }), phase(), history], 'job')?.id).toBe('design')
+  })
+  it('removes historical estimates from solo and legacy workload while keeping actual time and money', () => {
+    const owner: Profile = { id: 'owner', full_name: 'Owner', email: null, color: '#123456', hourly_rate: 150,
+      weekly_hours: 40, ics_token: '', created_at: '' }
+    const s = { ...store({ timeEntries: [entry({ hours: 4, phase_id: 'design' }), entry({ id: 'history-time', phase_id: 'history', hours: 2, billable: false })] }),
+      jobs: [job], profiles: [owner], me: owner,
+      phases: [phase(), phase({ id: 'history', kind: 'queued', status: 'waiting', estimate_hours: 80 })],
+    }
+    expect(soloWorkload(s)).toMatchObject({ remainingHours: 6, weeksOut: 0.15 })
+    expect(soloWorkload(s).openPhases.map(phase => phase.id)).toEqual(['design'])
+    expect(teamWorkload(s)[0]).toMatchObject({ remainingHours: 6, weeksOut: 0.15 })
+    expect(teamWorkload(s)[0].openPhases.map(phase => phase.id)).toEqual(['design'])
+    expect(jobBilling(s, job)).toMatchObject({ loggedHours: 6, billableHours: 4, nonBillableHours: 2,
+      hoursValue: 900, nonBillableValue: 300, deposits: 100, unbilledAmount: 500, balance: -800 })
+  })
+})
 
 describe('deposit allocation across invoicing', () => {
   it('matches database timestamp order for whole seconds, fractions, and microseconds', () => {

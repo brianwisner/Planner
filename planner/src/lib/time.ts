@@ -2,6 +2,7 @@ import { addDays, format, isValid, parseISO, startOfWeek } from 'date-fns'
 import { allHours, entryRate, HOUR_STATUS_LABEL, type HourStatus } from './calc'
 import type { Store } from './store'
 import type { Client, Job, Phase, Task, TimeEntry } from './types'
+import { phaseLabel } from './phases'
 
 export type TimeRange = 'week' | 'all' | 'custom'
 export type TimeStatus = 'all' | 'completed' | 'running' | HourStatus
@@ -77,7 +78,7 @@ export function filterTimeRows(rows: TimeRow[], query: TimeQuery): TimeRow[] {
     if (query.range === 'custom' && (entry.date < query.from || entry.date > query.to)) return false
     if (query.billable === 'billable' && entry.billable === false || query.billable === 'nonbillable' && entry.billable !== false) return false
     if (query.status === 'completed' ? entry.hours == null : query.status !== 'all' && row.status !== query.status) return false
-    const text = [row.job?.name, row.job?.job_number, row.client?.name, row.phase?.name, row.task?.title, entry.notes, row.ownerName].join(' ').toLowerCase()
+    const text = [row.job?.name, row.job?.job_number, row.client?.name, row.phase ? phaseLabel(row.phase) : '', row.task?.title, entry.notes, row.ownerName].join(' ').toLowerCase()
     return words.every(word => text.includes(word))
   })
 }
@@ -98,7 +99,7 @@ export function timeStatusLabel(row: TimeRow): string {
 const csvText = (value: string) => /^\s*[=+\-@]/.test(value) ? `'${value}` : value
 const round = (value: number, places = 2) => Math.round(value * 10 ** places) / 10 ** places
 export function timeCSV(rows: TimeRow[]): (string | number | null)[][] {
-  return rows.map(row => [row.entry.date, csvText(row.client?.name ?? 'Client unavailable'), csvText(row.job?.job_number ?? ''), csvText(row.job?.name ?? 'Job unavailable'), csvText(row.phase?.name ?? 'General / unavailable phase'), csvText(row.task?.title ?? ''), csvText(row.ownerName),
+  return rows.map(row => [row.entry.date, csvText(row.client?.name ?? 'Client unavailable'), csvText(row.job?.job_number ?? ''), csvText(row.job?.name ?? 'Job unavailable'), csvText(row.phase ? phaseLabel(row.phase) : 'General / unavailable phase'), csvText(row.task?.title ?? ''), csvText(row.ownerName),
     row.entry.hours == null ? null : round(row.entry.hours, 4), row.status === 'running' ? round(row.elapsedHours, 4) : null, round(row.rate), row.amount == null ? null : round(row.amount), row.entry.billable === false ? 'No' : 'Yes', timeStatusLabel(row), csvText(row.entry.notes)])
 }
 export const TIME_CSV_HEADERS = ['Date', 'Client', 'Job #', 'Job', 'Phase', 'Task', 'Recorded owner', 'Completed hours', 'Elapsed running hours', 'Rate $', 'Recorded work value $', 'Billable', 'Billing status', 'Notes']

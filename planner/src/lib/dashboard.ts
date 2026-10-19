@@ -4,6 +4,7 @@ import { isBillable, jobBilling } from './calc'
 import type { Store } from './store'
 import type { Job, Phase, Task } from './types'
 import { sum } from './utils'
+import { isWorkflowPhase } from './phases'
 
 type DashboardStore = Pick<Store, 'jobs' | 'phases' | 'tasks' | 'clients' | 'timeEntries' | 'invoices' | 'deposits' | 'items' | 'profiles' | 'settings' | 'me' | 'schedule'>
 
@@ -34,7 +35,7 @@ export function dashboardData(store: DashboardStore, now = new Date()) {
   const queue = activeJobs.map(job => ({
     job,
     clientName: store.clients.find(client => client.id === job.client_id)?.name ?? '',
-    phase: store.phases.filter(phase => phase.job_id === job.id && phase.status !== 'complete')
+    phase: store.phases.filter(phase => isWorkflowPhase(phase) && phase.job_id === job.id && phase.status !== 'complete')
       .sort((a, b) => a.sort_order - b.sort_order || a.id.localeCompare(b.id))[0],
   }))
 
@@ -77,13 +78,13 @@ export function dashboardData(store: DashboardStore, now = new Date()) {
 
   const loggedByPhase = new Map<string, number>()
   for (const entry of completed) if (entry.phase_id) loggedByPhase.set(entry.phase_id, (loggedByPhase.get(entry.phase_id) ?? 0) + entry.hours!)
-  const overEstimate = store.phases.filter(phase => jobMap.get(phase.job_id)?.status === 'active' && phase.status !== 'complete' &&
+  const overEstimate = store.phases.filter(phase => isWorkflowPhase(phase) && jobMap.get(phase.job_id)?.status === 'active' && phase.status !== 'complete' &&
     phase.estimate_hours > 0 && (loggedByPhase.get(phase.id) ?? 0) > phase.estimate_hours)
     .map(phase => ({ kind: 'over_estimate' as const, job: jobMap.get(phase.job_id)!, phase,
       loggedHours: loggedByPhase.get(phase.id)!, overHours: loggedByPhase.get(phase.id)! - phase.estimate_hours }))
     .sort((a, b) => b.overHours - a.overHours || jobOrder(a.job, b.job) || a.phase.sort_order - b.phase.sort_order || a.phase.id.localeCompare(b.phase.id))
   const overEstimateIds = new Set(overEstimate.map(row => row.phase.id))
-  const waitingPhases = store.phases.filter(phase => phase.status === 'waiting' && actionIds.has(phase.job_id) && !overEstimateIds.has(phase.id))
+  const waitingPhases = store.phases.filter(phase => isWorkflowPhase(phase) && phase.status === 'waiting' && actionIds.has(phase.job_id) && !overEstimateIds.has(phase.id))
     .sort((a, b) => (a.due_date ?? '9999-12-31').localeCompare(b.due_date ?? '9999-12-31') ||
       jobOrder(jobMap.get(a.job_id)!, jobMap.get(b.job_id)!) || a.sort_order - b.sort_order || a.id.localeCompare(b.id))
     .map(phase => ({ kind: 'waiting_phase' as const, job: jobMap.get(phase.job_id)!, phase }))

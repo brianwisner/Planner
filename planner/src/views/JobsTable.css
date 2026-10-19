@@ -1,0 +1,28 @@
+/* Keep identity and primary figures visible; secondary actions open on demand. */
+.jobs-overview-table tbody td { padding-top: 8px; padding-bottom: 8px; vertical-align: middle; }
+.jobs-overview-table .jobs-job-cell { position: relative; padding-right: 48px; }
+.jobs-overview-table .job-row-heading { gap: 8px; }
+.jobs-overview-table .jobs-client-context { margin-top: 2px; }
+.jobs-overview-table .jobs-billing-column a { min-height: 0; font-size: 12px; }
+.jobs-overview-table .jobs-billing-column { font-size: 12px; }
+.jobs-overview-table .jobs-work-column { min-width: 125px; }
+.jobs-row-details summary { list-style: none; display: flex; align-items: center; justify-content: center; position: absolute; top: 8px; right: 4px; width: 40px; height: 40px; border-radius: 6px; color: var(--muted); cursor: pointer; }
+.jobs-row-details summary::-webkit-details-marker { display: none; }
+.jobs-row-details summary:hover { background: var(--surface-2); color: var(--text); }
+.jobs-row-details summary:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.jobs-row-details[open] summary svg { transform: rotate(90deg); }
+.jobs-row-expanded { padding-top: 6px; }
+.jobs-row-expanded p { margin: 6px 0 0; }
+.jobs-row-expanded .jobs-row-actions { margin-top: 4px; }
+@media (max-width: 760px) {
+  .jobs-overview-table .jobs-mobile-summary { margin-top: 4px; font-size: 11px; line-height: 1.45; }
+  .jobs-overview-table .jobs-mobile-summary > div { display: inline; }
+  .jobs-overview-table .jobs-mobile-summary > div::before { content: ' · '; }
+  .jobs-overview-table .jobs-mobile-summary .badge { padding: 1px 4px; font-size: 10px; }
+  .jobs-overview-table .jobs-job-cell { padding-right: 43px; }
+}
+.jobs-overview-table .job-row-heading { flex-wrap: nowrap; }
+.jobs-overview-table .jobs-job-cell .job-row-heading > a { display: block; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.jobs-overview-table .jobs-client-context { display: flex; white-space: nowrap; overflow: hidden; }
+.jobs-overview-table .jobs-client-context > span { flex-shrink: 0; }
+.jobs-overview-table .jobs-client-context > a { min-width: 0; overflow: hidden; text-overflow: ellipsis; }

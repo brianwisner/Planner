@@ -12,6 +12,14 @@ beforeEach(() => { vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(new 
 afterEach(() => vi.useRealTimers())
 
 describe('calendar source dates', () => {
+  it('omits retired planning phase dates while retaining tasks and local visits on that saved phase', () => {
+    const history = phase({ id: 'history', kind: 'queued', name: 'Custom queued label', status: 'waiting', due_date: '2026-10-01' })
+    const items = calendarItems({ jobs: [job()], phases: [history], tasks: [task({ phase_id: 'history' }),
+      task({ id: 'follow-up', phase_id: 'history', title: 'Follow up', is_site_visit: false, scheduled_at: null, due_date: '2026-10-20' })], clients: [client()] })
+    expect(items.map(item => item.id)).toEqual(['job-job', 'task-task', 'task-follow-up'])
+    expect(items.find(item => item.id === 'task-task')).toMatchObject({ date: '2026-10-19', kind: 'site_visit', link: '/jobs/job?task=task' })
+    expect(history).toMatchObject({ name: 'Custom queued label', status: 'waiting', due_date: '2026-10-01' })
+  })
   it('keeps a scheduled visit on its local day without requiring a due date', () => {
     const items = calendarItems({ jobs: [job()], phases: [phase()], tasks: [task()], clients: [client()] })
     expect(items.find(item => item.kind === 'site_visit')).toMatchObject({ date: '2026-10-19', time: new Date('2026-10-19T23:30:00').toISOString(), link: '/jobs/job?task=task', assigneeId: 'legacy', clientName: 'Synthetic Builders', jobNumber: 'SYN-001' })

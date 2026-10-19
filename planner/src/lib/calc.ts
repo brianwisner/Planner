@@ -2,6 +2,7 @@
 import { addDays, format } from 'date-fns'
 import type { Store } from './store'
 import type { Job, JobItem, Phase, Profile, TimeEntry } from './types'
+import { isWorkflowPhase, jobPhaseGroups } from './phases'
 import { sum } from './utils'
 
 /** Hours for a timer that is being stopped now: quarter hours, minimum 0.25. */
@@ -9,10 +10,10 @@ export function timerHours(e: TimeEntry): number {
   return Math.max(0.25, Math.round(entryHours(e) * 4) / 4)
 }
 
-/** Default phase for new hours/schedule on a job: first unfinished phase, skipping Queued. */
+/** Default new work to a workflow phase; retired planning history stays intact. */
 export function workPhase(phases: Phase[], jobId: string): Phase | undefined {
-  const jp = phases.filter(p => p.job_id === jobId)
-  return jp.find(p => p.status !== 'complete' && p.kind !== 'queued') ?? jp.find(p => p.kind === 'design') ?? jp[0]
+  const jp = jobPhaseGroups(phases, jobId).workflow
+  return jp.find(p => p.status !== 'complete') ?? jp.find(p => p.kind === 'design') ?? jp[0]
 }
 
 export function entryHours(e: TimeEntry): number {
@@ -282,7 +283,7 @@ export function teamWorkload(store: Pick<Store, 'profiles' | 'phases' | 'jobs' |
   const openJobs = new Set(store.jobs.filter(j => j.status === 'active').map(j => j.id))
   const weekStart = startOfWeekISO()
   return store.profiles.map(user => {
-    const openPhases = store.phases.filter(p => p.assignee_id === user.id && p.status !== 'complete' && openJobs.has(p.job_id))
+    const openPhases = store.phases.filter(p => isWorkflowPhase(p) && p.assignee_id === user.id && p.status !== 'complete' && openJobs.has(p.job_id))
     const remaining = sum(openPhases.map(p => Math.max(0, p.estimate_hours - hoursForPhase(store.timeEntries, p.id))))
     const capacity = user.weekly_hours || store.settings.weekly_capacity || 40
     const weeksOut = capacity > 0 ? remaining / capacity : 0
@@ -295,7 +296,7 @@ export function teamWorkload(store: Pick<Store, 'profiles' | 'phases' | 'jobs' |
 /** The owner's full workload, including phases with legacy or no assignments. */
 export function soloWorkload(store: Pick<Store, 'me' | 'phases' | 'jobs' | 'timeEntries' | 'settings'>): Omit<Workload, 'user'> {
   const openJobs = new Set(store.jobs.filter(j => j.status === 'active').map(j => j.id))
-  const openPhases = store.phases.filter(p => p.status !== 'complete' && openJobs.has(p.job_id))
+  const openPhases = store.phases.filter(p => isWorkflowPhase(p) && p.status !== 'complete' && openJobs.has(p.job_id))
   const remainingHours = sum(openPhases.map(p => Math.max(0, p.estimate_hours - hoursForPhase(store.timeEntries, p.id))))
   const capacity = store.me?.weekly_hours || store.settings.weekly_capacity || 40
   const weeksOut = capacity > 0 ? remainingHours / capacity : 0

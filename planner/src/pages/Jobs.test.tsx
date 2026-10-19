@@ -101,6 +101,7 @@ function query(): URLSearchParams {
   return new URLSearchParams(location.split('?')[1] ?? '')
 }
 function ids(view = 'list'): string[] {
+  if (view === 'sheet') return [...container.querySelectorAll<HTMLAnchorElement>('.jobs-spreadsheet-table tbody th a')].map(link => link.getAttribute('href')!.split('/').at(-1)!).sort()
   const rendered = container.querySelector(`[data-testid="jobs-${view}"]`)
   if (!rendered) throw new Error(`Missing ${view} view`)
   return (rendered.getAttribute('data-job-ids') ?? '').split(',').filter(Boolean).sort()
@@ -130,9 +131,9 @@ describe('Jobs page', () => {
     noWrites()
   })
 
-  it('preserves filters while switching all four views', async () => {
+  it('preserves filters while switching all five views', async () => {
     await render('/jobs?status=active&client=client-a&q=cedar')
-    for (const [label, view, parameter] of [['Task board', 'board', 'board'], ['Timeline', 'timeline', 'gantt'], ['Calendar', 'calendar', 'calendar'], ['List', 'list', 'table']]) {
+    for (const [label, view, parameter] of [['Spreadsheet', 'sheet', 'sheet'], ['Task board', 'board', 'board'], ['Timeline', 'timeline', 'gantt'], ['Calendar', 'calendar', 'calendar'], ['List', 'list', 'table']]) {
       await act(async () => button(label).click())
       expect(button(label).getAttribute('aria-pressed')).toBe('true')
       expect(ids(view)).toEqual(['cedar'])
@@ -157,6 +158,73 @@ describe('Jobs page', () => {
     expect(button('Timeline').getAttribute('aria-pressed')).toBe('true')
     expect(ids('timeline')).toEqual(['held'])
     noWrites()
+  })
+
+  it('opens a bookmarked spreadsheet with shared filters and preserves its view when resetting', async () => {
+    await render('/jobs?view=sheet&status=all&client=client-a&q=project&source=synthetic')
+    expect(button('Spreadsheet').getAttribute('aria-pressed')).toBe('true')
+    expect(ids('sheet')).toEqual(['archived', 'cancelled', 'complete'])
+    expect(container.querySelectorAll('.jobs-spreadsheet-table tbody tr')).toHaveLength(3)
+    await act(async () => button('Reset filters').click())
+    expect(ids('sheet')).toEqual(['atlas', 'cedar', 'held'])
+    expect(query().get('view')).toBe('sheet')
+    expect(query().get('source')).toBe('synthetic')
+    noWrites()
+  })
+
+  it('keeps spreadsheet job-edit drafts through cancellation and unchanged URL filters', async () => {
+    await render('/jobs?view=sheet&client=client-a&q=cedar')
+    const before = query().toString()
+    const edit = container.querySelector<HTMLButtonElement>('button[aria-label="Edit job: Cedar residence"]')!
+    await act(async () => edit.click())
+    const dialog = container.querySelector('[role="dialog"]')!
+    expect(dialog.querySelector('h2')?.textContent).toBe('Edit job')
+    const name = [...dialog.querySelectorAll<HTMLInputElement>('input')].find(input => input.value === 'Cedar residence')!
+    await change(name, 'Synthetic draft')
+    await act(async () => button('Cancel').click())
+    expect(container.querySelector('[role="dialog"]')).toBeNull()
+    expect(query().toString()).toBe(before)
+    expect(store.jobs.find(job => job.id === 'cedar')?.name).toBe('Cedar residence')
+    noWrites()
+  })
+
+  it('retains the editing snapshot and draft if an optimistic failed deletion removes the sheet row', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    let finish: (saved: boolean) => void = () => {}
+    vi.mocked(store.remove).mockImplementationOnce(() => {
+      store = { ...store, jobs: store.jobs.filter(job => job.id !== 'cedar') }
+      return new Promise<boolean>(resolve => { finish = resolve })
+    })
+    await render('/jobs?view=sheet&q=residence')
+    await act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="Edit job: Cedar residence"]')!.click())
+    const name = [...container.querySelectorAll<HTMLInputElement>('[role="dialog"] input')].find(input => input.value === 'Cedar residence')!
+    await change(name, 'Unsaved synthetic draft')
+    await act(async () => button('Delete job').click())
+    await render('/jobs?view=sheet&q=residence')
+    expect(container.textContent).toContain('No jobs match this selection')
+    expect(container.querySelector('[role="dialog"]')).toBeTruthy()
+    expect(name.isConnected).toBe(true)
+    expect(name.value).toBe('Unsaved synthetic draft')
+    await act(async () => finish(false))
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain('not deleted')
+    expect(name.value).toBe('Unsaved synthetic draft')
+    expect(query().get('view')).toBe('sheet')
+    expect(query().get('q')).toBe('residence')
+    expect(store.refresh).toHaveBeenCalledWith('jobs')
+  })
+
+  it('closes the sheet editor only after a confirmed deletion and keeps the current selection', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    vi.mocked(store.remove).mockImplementationOnce(async () => { store = { ...store, jobs: store.jobs.filter(job => job.id !== 'cedar') }; return true })
+    await render('/jobs?view=sheet&client=client-a&q=cedar')
+    await act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="Edit job: Cedar residence"]')!.click())
+    await act(async () => button('Delete job').click())
+    await render('/jobs?view=sheet&client=client-a&q=cedar')
+    expect(container.querySelector('[role="dialog"]')).toBeNull()
+    expect(query().get('view')).toBe('sheet')
+    expect(query().get('client')).toBe('client-a')
+    expect(query().get('q')).toBe('cedar')
+    expect(store.remove).toHaveBeenCalledExactlyOnceWith('jobs', 'cedar')
   })
 
   it('filters by status and client through named controls without changing records', async () => {

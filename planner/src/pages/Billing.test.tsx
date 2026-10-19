@@ -68,6 +68,21 @@ function stat(label: string) { return [...container.querySelectorAll('.billing-s
 function noWrites() { expect(store.insert).not.toHaveBeenCalled(); expect(store.update).not.toHaveBeenCalled(); expect(store.remove).not.toHaveBeenCalled(); expect(store.recordInvoice).not.toHaveBeenCalled() }
 
 describe('Billing overview', () => {
+  it.each(['/billing?tab=hours', '/billing?job=alpha&work=all'])('shows and searches retained planning hours under their history label at %s', async url => {
+    store.phases[0] = { ...store.phases[0], kind: 'queued', name: 'Retired custom queue label' }
+    await render(url)
+    expect(container.textContent).toContain('Planning history')
+    expect(container.textContent).not.toContain('Retired custom queue label')
+    const overview = !url.includes('job=')
+    await change(field(overview ? 'Search billing list' : 'Search job billing work'), 'Planning history')
+    expect(container.querySelectorAll(overview ? '.billing-hour-row' : '.billing-work-row')).toHaveLength(2)
+    if (overview) {
+      await act(async () => button('Export visible CSV').click())
+      expect(vi.mocked(downloadCSV).mock.calls[0][2].every(row => row[3] === 'Planning history')).toBe(true)
+    }
+    expect(store.phases[0].name).toBe('Retired custom queue label')
+    noWrites()
+  })
   it('includes completed obligations but excludes archived records by default with reachable links', async () => {
     await render()
     expect(stat('Ready to bill')).toBe('$280')
