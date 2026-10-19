@@ -1,0 +1,59 @@
+.week-label { font-size: 15px; }
+.week-total { font-size: 13px; color: var(--text-2); }
+.week-total.over strong { color: var(--warn); }
+.plan-card { overflow: hidden; }
+.plan-scroll { overflow-x: auto; }
+.plan-table { width: 100%; border-collapse: separate; border-spacing: 0; min-width: calc(220px + var(--days) * 78px); }
+.plan-table th, .plan-table td { border-bottom: 1px solid var(--border); }
+.plan-table thead th { background: var(--surface-2); font-size: 12px; font-weight: 600; color: var(--text-3); padding: 8px 6px; text-align: center; vertical-align: bottom; }
+.plan-job-col { position: sticky; left: 0; z-index: 2; background: var(--surface); text-align: left !important; width: 240px; min-width: 200px; max-width: 260px; padding: 8px 12px 8px 16px !important; border-right: 1px solid var(--border); font-weight: 400; }
+thead .plan-job-col, tfoot .plan-job-col { background: var(--surface-2); font-size: 12px; font-weight: 600; color: var(--text-3); }
+.plan-day { position: relative; min-width: 72px; }
+.plan-day .pd-name { display: block; color: var(--text-2); font-weight: 650; font-size: 12.5px; }
+.plan-day .pd-date { display: block; font-weight: 500; }
+.plan-day.today { background: var(--accent-soft) !important; }
+.plan-day.today .pd-name, .plan-day.today .pd-date { color: var(--accent-text); }
+.pd-due { position: absolute; top: 5px; right: 5px; display: inline-flex; align-items: center; gap: 2px; height: 18px; padding: 0 5px; border-radius: 999px; background: var(--warn-soft); color: var(--warn); font-size: 11px; font-weight: 700; cursor: help; }
+.pj { display: flex; align-items: center; gap: 7px; min-width: 0; }
+.pj .dot { flex: none; }
+.pj-name { color: var(--text); font-weight: 580; font-size: 13.5px; display: block; }
+.pj-name:hover { color: var(--accent-text); text-decoration: none; }
+.pj-sub { display: block; font-size: 12px; color: var(--text-3); padding-left: 15px; }
+.plan-cell { padding: 5px 5px; text-align: center; position: relative; }
+.plan-cell.today { background: color-mix(in srgb, var(--accent-soft) 55%, transparent); }
+.plan-input {
+  width: 100%; max-width: 64px; height: 36px; border: 1px solid transparent; border-radius: 8px; background: var(--surface-3);
+  text-align: center; font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--text);
+}
+.plan-input::placeholder { color: var(--border-strong); }
+.plan-input:hover { border-color: var(--border-strong); }
+.plan-input:focus { outline: none; background: var(--surface); border-color: var(--accent); box-shadow: var(--focus); }
+.plan-cell.has .plan-input { background: var(--accent-soft); color: var(--accent-text); }
+.plan-input.multi { cursor: pointer; background: var(--accent-soft); color: var(--accent-text); border-style: dashed; border-color: var(--accent); }
+.plan-note { display: block; font-size: 10.5px; color: var(--ok); font-weight: 600; margin-top: 2px; line-height: 1; }
+.plan-sum { width: 64px; text-align: center; font-size: 13px; color: var(--text-2); padding: 8px; }
+.plan-table tbody tr:hover .plan-job-col, .plan-table tbody tr:hover td { background-color: var(--surface-2); }
+.plan-total { padding: 8px 6px; text-align: center; background: var(--surface-2); }
+.plan-total > span { display: block; }
+.cap-bar { display: block; height: 5px; margin: 5px auto 3px; max-width: 58px; border-radius: 999px; background: var(--surface-3); overflow: hidden; }
+.cap-bar span { display: block; height: 100%; background: var(--accent); }
+.plan-total.over .cap-bar span { background: var(--m-billed); }
+.plan-total.over .strong { color: var(--warn); }
+.logged-row td, .logged-row th { background: var(--surface-2); color: var(--text-3); padding: 6px; text-align: center; border-bottom: 0 !important; }
+@media (max-width: 760px) {
+  .plan-table { min-width: calc(128px + var(--days) * 46px); }
+  .plan-job-col { width: 128px; min-width: 128px; max-width: 128px; padding: 6px 8px 6px 10px !important; }
+  .pj-sub { display: none; }
+  .pj-name { font-size: 12.5px; white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .plan-day { min-width: 44px; padding: 6px 2px !important; }
+  .plan-day .pd-date { font-size: 11px; }
+  .pd-due { top: 2px; right: 1px; padding: 0 3px; height: 15px; font-size: 10px; }
+  .plan-cell { padding: 4px 2px; }
+  .plan-input { height: 40px; font-size: 14px; }
+  .plan-total { padding: 6px 2px; }
+  .plan-total .tiny { display: none; }
+}
+@media (max-width: 760px) {
+  .plan-day .pd-name { font-size: 11.5px; }
+  .pd-due { position: static; display: inline-flex; margin-top: 3px; }
+}

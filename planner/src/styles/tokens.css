@@ -1,0 +1,189 @@
+/* Design tokens: every color, size and shadow the app uses.
+   Light theme by default; dark theme follows the device unless the person
+   picks one in Settings (stored as data-theme on <html>). */
+:root {
+  --font: 'Inter Variable', Inter, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+
+  --bg: #f5f6f8;
+  --surface: #ffffff;
+  --surface-2: #f9fafb;
+  --surface-3: #f1f3f6;
+  --hover: #f2f4f7;
+  --border: #e4e7ec;
+  --border-strong: #d0d5dd;
+  --text: #101828;
+  --text-2: #475467;
+  --text-3: #667085;
+  --placeholder: #98a2b3;
+
+  --accent: #2f5bea;
+  --accent-hover: #2249c4;
+  --accent-soft: #eef3ff;
+  --accent-soft-2: #dde7ff;
+  --accent-text: #2347bd;
+  --on-accent: #ffffff;
+  --focus: 0 0 0 3px rgba(47, 91, 234, 0.28);
+
+  --ok: #12813f;
+  --ok-soft: #e3f8ea;
+  --warn: #b25e09;
+  --warn-soft: #fff4dc;
+  --danger: #d1293d;
+  --danger-soft: #fdecee;
+  --info: #0e7490;
+  --info-soft: #e2f6fa;
+  --visit: #7a3fe4;
+  --visit-soft: #f1ebff;
+
+  /* Pipeline stages: used on the board, timeline, badges and charts. */
+  --st-bidding: #d97a06;
+  --st-bidding-soft: #fff3e0;
+  --st-ready: #0b8a7e;
+  --st-ready-soft: #ddf6f2;
+  --st-design: #2f5bea;
+  --st-design-soft: #e8efff;
+  --st-plan_check: #7a3fe4;
+  --st-plan_check-soft: #f0eaff;
+  --st-construction: #e35a12;
+  --st-construction-soft: #ffece1;
+  --st-client: #cf2f7d;
+  --st-client-soft: #fde8f2;
+  --st-hold: #8a94a6;
+  --st-hold-soft: #eef0f4;
+
+  /* Money status (shared with charts) */
+  --m-paid: #12813f;
+  --m-deposit: #4aa36b;
+  --m-billed: #e2a312;
+  --m-unbilled: #d1293d;
+  --m-nonbillable: #98a2b3;
+
+  --radius-xs: 5px;
+  --radius-sm: 7px;
+  --radius: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 18px;
+
+  --shadow-xs: 0 1px 2px rgba(16, 24, 40, 0.05);
+  --shadow-sm: 0 1px 3px rgba(16, 24, 40, 0.07), 0 1px 2px rgba(16, 24, 40, 0.04);
+  --shadow: 0 4px 10px -2px rgba(16, 24, 40, 0.07), 0 2px 4px -2px rgba(16, 24, 40, 0.04);
+  --shadow-lg: 0 18px 40px -8px rgba(16, 24, 40, 0.2), 0 6px 12px -6px rgba(16, 24, 40, 0.08);
+
+  --sidebar-w: 236px;
+  --topbar-h: 60px;
+  --bottom-h: 64px;
+  --content-max: 1320px;
+
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --bg: #0e1217;
+    --surface: #161b22;
+    --surface-2: #1b2129;
+    --surface-3: #212833;
+    --hover: #222a35;
+    --border: #2a323d;
+    --border-strong: #3a4452;
+    --text: #e8ecf1;
+    --text-2: #b4bfcc;
+    --text-3: #8b97a7;
+    --placeholder: #6b7686;
+    --accent: #5b82ff;
+    --accent-hover: #7797ff;
+    --accent-soft: #1b2645;
+    --accent-soft-2: #233259;
+    --accent-text: #9db4ff;
+    --focus: 0 0 0 3px rgba(91, 130, 255, 0.35);
+    --ok: #3ccf74;
+    --ok-soft: #12301f;
+    --warn: #f1aa45;
+    --warn-soft: #33260f;
+    --danger: #ff6b7d;
+    --danger-soft: #3a1820;
+    --info: #3ec5dd;
+    --info-soft: #0f2d33;
+    --visit: #b593ff;
+    --visit-soft: #2a1f45;
+    --st-bidding: #f1a33c;
+    --st-bidding-soft: #33250f;
+    --st-ready: #35c8b8;
+    --st-ready-soft: #0f2e2b;
+    --st-design: #6d90ff;
+    --st-design-soft: #1b2645;
+    --st-plan_check: #b593ff;
+    --st-plan_check-soft: #2a1f45;
+    --st-construction: #ff8a4c;
+    --st-construction-soft: #3a2010;
+    --st-client: #ff76b3;
+    --st-client-soft: #3a1729;
+    --st-hold: #8b97a7;
+    --st-hold-soft: #232a34;
+    --m-paid: #3ccf74;
+    --m-deposit: #2f9d5a;
+    --m-billed: #f1b43c;
+    --m-unbilled: #ff6b7d;
+    --m-nonbillable: #6b7686;
+    --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.3);
+    --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.35);
+    --shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+    --shadow-lg: 0 18px 44px rgba(0, 0, 0, 0.55);
+    color-scheme: dark;
+  }
+}
+
+:root[data-theme='dark'] {
+  --bg: #0e1217;
+  --surface: #161b22;
+  --surface-2: #1b2129;
+  --surface-3: #212833;
+  --hover: #222a35;
+  --border: #2a323d;
+  --border-strong: #3a4452;
+  --text: #e8ecf1;
+  --text-2: #b4bfcc;
+  --text-3: #8b97a7;
+  --placeholder: #6b7686;
+  --accent: #5b82ff;
+  --accent-hover: #7797ff;
+  --accent-soft: #1b2645;
+  --accent-soft-2: #233259;
+  --accent-text: #9db4ff;
+  --focus: 0 0 0 3px rgba(91, 130, 255, 0.35);
+  --ok: #3ccf74;
+  --ok-soft: #12301f;
+  --warn: #f1aa45;
+  --warn-soft: #33260f;
+  --danger: #ff6b7d;
+  --danger-soft: #3a1820;
+  --info: #3ec5dd;
+  --info-soft: #0f2d33;
+  --visit: #b593ff;
+  --visit-soft: #2a1f45;
+  --st-bidding: #f1a33c;
+  --st-bidding-soft: #33250f;
+  --st-ready: #35c8b8;
+  --st-ready-soft: #0f2e2b;
+  --st-design: #6d90ff;
+  --st-design-soft: #1b2645;
+  --st-plan_check: #b593ff;
+  --st-plan_check-soft: #2a1f45;
+  --st-construction: #ff8a4c;
+  --st-construction-soft: #3a2010;
+  --st-client: #ff76b3;
+  --st-client-soft: #3a1729;
+  --st-hold: #8b97a7;
+  --st-hold-soft: #232a34;
+  --m-paid: #3ccf74;
+  --m-deposit: #2f9d5a;
+  --m-billed: #f1b43c;
+  --m-unbilled: #ff6b7d;
+  --m-nonbillable: #6b7686;
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.35);
+  --shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+  --shadow-lg: 0 18px 44px rgba(0, 0, 0, 0.55);
+  color-scheme: dark;
+}

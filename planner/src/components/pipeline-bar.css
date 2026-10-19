@@ -1,0 +1,6 @@
+.pipeline-bar { display: flex; gap: 3px; height: 12px; border-radius: 999px; overflow: hidden; }
+.pipeline-bar span { background: var(--stage); min-width: 6px; }
+.pipeline-legend { list-style: none; margin: 14px 0 0; padding: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 2px 14px; }
+.pipeline-legend a { display: flex; align-items: center; gap: 8px; padding: 5px 6px; margin: 0 -6px; border-radius: 7px; color: var(--text-2); font-size: 13px; text-decoration: none; }
+.pipeline-legend a:hover { background: var(--surface-2); color: var(--text); text-decoration: none; }
+.pipeline-legend .dot { background: var(--stage); }

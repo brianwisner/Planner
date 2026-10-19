@@ -1,0 +1,56 @@
+/* ---------- Client directory ---------- */
+.client-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+@media (max-width: 1100px) { .client-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 760px) { .client-grid { grid-template-columns: minmax(0, 1fr); gap: 10px; } }
+
+.client-card {
+  display: flex; flex-direction: column; gap: 12px; padding: 16px; cursor: pointer;
+  transition: box-shadow 0.12s, border-color 0.12s;
+}
+.client-card:hover { border-color: var(--border-strong); box-shadow: var(--shadow); }
+.client-card-top { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.client-card-name { display: block; font-weight: 640; font-size: 15px; color: var(--text); }
+.client-card-name:hover { color: var(--accent-text); text-decoration: none; }
+.client-card-jobs { display: flex; flex-direction: column; gap: 7px; min-height: 48px; }
+.client-card-chips { display: flex; flex-wrap: wrap; gap: 5px; }
+.client-card-chips .stage-chip { height: 22px; font-size: 11.5px; }
+.client-card-money { display: flex; flex-wrap: wrap; gap: 6px; }
+.client-card-actions { display: flex; align-items: center; gap: 8px; padding-top: 12px; border-top: 1px solid var(--border); margin-top: auto; min-width: 0; }
+@media (max-width: 760px) {
+  .client-card-actions .btn { height: 40px; flex: 1; }
+}
+
+/* ---------- One client ---------- */
+.client-page .page-head .titles h1 { word-break: break-word; }
+.client-layout { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(280px, 1fr); gap: 20px; align-items: start; }
+@media (max-width: 1100px) { .client-layout { grid-template-columns: minmax(0, 1fr); } }
+
+.client-job .title { color: var(--text); }
+.client-job .title:hover { color: var(--accent-text); text-decoration: none; }
+.client-job-stage { flex: none; }
+.client-job-due { flex: none; width: 96px; }
+.client-job-hours { flex: none; width: 76px; text-align: right; }
+.client-job-bill { flex: none; width: 70px; text-align: right; }
+@media (max-width: 760px) {
+  .client-job { flex-wrap: wrap; gap: 8px 12px; padding: 12px 14px; }
+  .client-job > .grow { flex-basis: 100%; }
+  .client-job-bill { margin-left: auto; }
+}
+
+.contact-list { display: flex; flex-direction: column; gap: 10px; }
+.contact-line { display: grid; grid-template-columns: 74px minmax(0, 1fr); gap: 10px; align-items: baseline; font-size: 14px; }
+.contact-line a { overflow-wrap: anywhere; }
+.client-notes { white-space: pre-wrap; font-size: 13.5px; color: var(--text-2); padding: 10px 12px; border-radius: var(--radius); background: var(--surface-2); border: 1px solid var(--border); }
+
+.client-page .glance { display: flex; flex-direction: column; gap: 10px; }
+.client-page .glance-row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; font-size: 14px; color: var(--text-2); }
+.client-page .glance-row strong { color: var(--text); font-size: 15px; }
+.client-page .glance-row strong.ok-text { color: var(--ok); }
+.client-page .glance-row strong.warn-text { color: var(--warn); }
+.client-page .glance-row span[title] { text-decoration: underline dotted var(--border-strong); text-underline-offset: 3px; cursor: help; }
+.client-page .list-row .title { color: var(--text); }
+
+@media (max-width: 760px) {
+  .client-page .page-head .actions { width: 100%; }
+  .client-page .page-head .actions .btn { flex: 1 1 auto; height: 40px; }
+}

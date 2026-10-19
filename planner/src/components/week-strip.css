@@ -1,0 +1,14 @@
+.week-strip { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
+.ws-col { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 6px 0 4px; border-radius: 10px; border: 0; background: none; font: inherit; color: inherit; }
+button.ws-col:hover { background: var(--surface-2); }
+.ws-col.today { background: var(--accent-soft); }
+.ws-bar { position: relative; width: 22px; height: 76px; border-radius: 6px; background: var(--surface-3); overflow: hidden; }
+.ws-col.weekend .ws-bar { background: repeating-linear-gradient(135deg, var(--surface-3), var(--surface-3) 4px, transparent 4px, transparent 8px); }
+.ws-planned { position: absolute; left: 0; right: 0; bottom: 0; background: var(--accent); border-radius: 0; opacity: 0.85; }
+.ws-planned.over { background: var(--m-billed); }
+.ws-logged { position: absolute; left: 7px; right: 7px; bottom: 0; background: var(--ok); border-radius: 3px 3px 0 0; }
+.ws-cap { position: absolute; left: -2px; right: -2px; height: 2px; background: var(--text-2); opacity: 0.5; }
+.ws-hours { font-size: 12px; font-weight: 650; color: var(--text); }
+.ws-day { display: flex; flex-direction: column; align-items: center; font-size: 11px; font-weight: 650; color: var(--text-3); line-height: 1.2; }
+.ws-date { font-weight: 500; }
+.ws-col.today .ws-day { color: var(--accent-text); }
