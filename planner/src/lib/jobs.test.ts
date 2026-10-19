@@ -41,7 +41,9 @@ describe('job overview rows', () => {
     Object.freeze(s.phases)
     const row = jobRows(s, now)[0]
     expect(row.phases.map(p => p.id)).toEqual(['done', 'queue', 'design', 'later'])
-    expect(row.currentPhase?.id).toBe('queue')
+    expect(row.currentPhase?.id).toBe('design')
+    expect(row.workflowPhases.map(p => p.id)).toEqual(['done', 'design', 'later'])
+    expect(row.historyPhases.map(p => p.id)).toEqual(['queue'])
     expect(row.workPhase?.id).toBe('design')
     expect(s.phases.map(p => p.id)).toEqual(original)
   })
@@ -114,6 +116,31 @@ describe('job overview rows', () => {
     expect(rows[0].currentPhase?.id).toBe('last')
     expect(rows[0].remainingHours).toBe(0)
   })
+
+  it('keeps planning-history effort and tasks while excluding its estimate, deadline and phase alerts', () => {
+    const history = phase({ id: 'history', kind: 'queued', name: 'Legacy queue', status: 'waiting', estimate_hours: 50, due_date: '2026-01-01' })
+    const s = store({ phases: [history, phase({ estimate_hours: 10 })],
+      timeEntries: [time({ hours: 4 }), time({ id: 'history-time', phase_id: 'history', hours: 80, billable: false, user_id: 'legacy' })],
+      tasks: [task({ phase_id: 'history', due_date: '2026-10-19' })],
+    })
+    const row = jobRows(s, now)[0]
+    expect(row).toMatchObject({ estimatedHours: 10, remainingHours: 6, actualHours: 84, completedHours: 84,
+      nonBillableHours: 80, waitingPhaseCount: 0, overEstimate: false })
+    expect(row.currentPhase?.id).toBe('phase')
+    expect(row.nextDeadline).toMatchObject({ id: 'task-task', date: '2026-10-19' })
+    expect(row.nextTask?.phase_id).toBe('history')
+    expect(row.billing).toMatchObject({ workValue: 8400, nonBillableValue: 8000, unbilledAmount: 400, balance: -8400 })
+    expect(s.phases[0]).toBe(history)
+    expect(history).toMatchObject({ name: 'Legacy queue', status: 'waiting', estimate_hours: 50, due_date: '2026-01-01' })
+  })
+
+  it('does not fall back to planning history when it is the only saved phase', () => {
+    const row = jobRows(store({ phases: [phase({ kind: 'queued', status: 'waiting', estimate_hours: 80 })] }), now)[0]
+    expect(row).toMatchObject({ currentPhase: undefined, workPhase: undefined, estimatedHours: 0, remainingHours: 0,
+      waiting: false, overEstimate: false, nextDeadline: null })
+    expect(row.phases).toHaveLength(1)
+    expect(row.workflowPhases).toEqual([])
+  })
 })
 
 describe('job filters', () => {
@@ -164,6 +191,11 @@ describe('job filters', () => {
 })
 
 describe('job URL filters', () => {
+  it('accepts spreadsheet view and preserves the established default table view', () => {
+    expect(parseJobsQuery(new URLSearchParams('view=sheet'))).toEqual({ ...defaults, view: 'sheet' })
+    expect(writeJobsQuery(new URLSearchParams('view=calendar&source=client'), { view: 'sheet' }).toString()).toBe('view=sheet&source=client')
+    expect(parseJobsQuery(new URLSearchParams())).toEqual(defaults)
+  })
   it('uses recognized defaults for malformed view, status and focus values', () => {
     expect(parseJobsQuery(new URLSearchParams('view=unknown&status=deleted&focus=urgent&client=%20abc%20&q=%20%20')))
       .toEqual({ ...defaults, client: 'abc' })

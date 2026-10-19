@@ -4,9 +4,10 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useData } from '../lib/store'
 import { calendarItems } from '../lib/calendar'
 import { filterJobRows, jobRows, parseJobsQuery, writeJobsQuery, type JobsFocus, type JobsQuery, type JobsView } from '../lib/jobs'
-import { JOB_STATUS_LABEL } from '../lib/types'
+import { JOB_STATUS_LABEL, type Job } from '../lib/types'
 import { fmtMoney } from '../lib/utils'
 import { JobsTable } from '../views/JobsTable'
+import { JobsSpreadsheet } from '../views/JobsSpreadsheet'
 import { Kanban } from '../views/Kanban'
 import { Gantt } from '../views/Gantt'
 import { CalendarView } from '../views/CalendarView'
@@ -15,6 +16,7 @@ import { Icon } from '../components/ui'
 
 const VIEWS: { key: JobsView; label: string; icon: string; hint: string }[] = [
   { key: 'table', label: 'List', icon: 'jobs', hint: 'Next steps, deadlines, hours, and billing in one place. Turn on Plan hours when you want to schedule work.' },
+  { key: 'sheet', label: 'Spreadsheet', icon: 'jobs', hint: 'Compare jobs in compact rows. Scroll across for planning and billing columns, choose the columns you need, or export this selection.' },
   { key: 'board', label: 'Task board', icon: 'dashboard', hint: 'Tasks for the jobs in this selection. Open a card to edit it, or move it to update its status.' },
   { key: 'gantt', label: 'Timeline', icon: 'reports', hint: 'Phase dates and planned hours over time. Expand a job to see its phases.' },
   { key: 'calendar', label: 'Calendar', icon: 'calendar', hint: 'Job deadlines, phase dates, and site visits for this selection.' },
@@ -31,6 +33,7 @@ export function Jobs() {
   const query = parseJobsQuery(params)
   const nav = useNavigate()
   const [newJob, setNewJob] = useState(false)
+  const [editingJob, setEditingJob] = useState<Job | null>(null)
   const [logging, setLogging] = useState<string | null>(null)
   const [addingTask, setAddingTask] = useState<string | null>(null)
   const [now, setNow] = useState(() => new Date())
@@ -101,12 +104,14 @@ export function Jobs() {
     {query.view === 'calendar' && filteredJobs.some(job => job.status === 'cancelled' || job.status === 'archived') && <p className="jobs-history-note">Cancelled and archived jobs keep their records, but do not add deadlines to the calendar.</p>}
     {filteredJobs.length === 0 ? <div className="card jobs-empty"><Icon name="search" size={24} /><h2>No jobs match this selection</h2><p>Try another search, status, client, or quick filter.</p>{hasFilters ? <button className="btn" onClick={reset}>Reset filters</button> : <button className="btn primary" onClick={() => setNewJob(true)}>{store.jobs.length ? 'Create a job' : 'Create your first job'}</button>}</div> : <>
       {query.view === 'table' && <div className="card jobs-list-card"><JobsTable jobs={filteredJobs} schedulable={query.status === 'open' || query.status === 'active' || query.status === 'on_hold'} allowReorder={allowReorder} onLogHours={setLogging} onAddTask={setAddingTask} /></div>}
+      {query.view === 'sheet' && <div className="card jobs-list-card"><JobsSpreadsheet rows={filteredRows} onEditJob={setEditingJob} /></div>}
       {query.view === 'board' && <Kanban tasks={filteredTasks} />}
       {query.view === 'gantt' && <Gantt jobs={filteredJobs} />}
       {query.view === 'calendar' && <CalendarView items={calItems} />}
     </>}
 
     {newJob && <JobModal defaultClientId={selectedClient?.id} onClose={() => setNewJob(false)} onCreated={job => nav(`/jobs/${job.id}`)} />}
+    {editingJob && <JobModal key={editingJob.id} job={editingJob} onClose={() => setEditingJob(null)} onDeleted={() => setEditingJob(null)} />}
     {loggingRow && <TimeModal defaults={{ job_id: loggingRow.job.id, phase_id: loggingRow.workPhase?.id ?? null }} onClose={() => setLogging(null)} />}
     {taskRow && <TaskModal defaults={{ job_id: taskRow.job.id, phase_id: taskRow.workPhase?.id ?? null }} onClose={() => setAddingTask(null)} />}
   </div>

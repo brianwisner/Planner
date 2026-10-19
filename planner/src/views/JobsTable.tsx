@@ -10,9 +10,10 @@ import { useData } from '../lib/store'
 import { jobRows, type JobOverview } from '../lib/jobs'
 import type { Job, ScheduleEntry } from '../lib/types'
 import { PHASE_KIND_SHORT } from '../lib/types'
-import { daysUntil, downloadCSV, fmtDate, fmtHourlyRate, fmtHours, fmtMoney, sum, todayISO } from '../lib/utils'
+import { downloadCSV, fmtDate, fmtHourlyRate, fmtHours, fmtMoney, sum, todayISO } from '../lib/utils'
+import './JobsTable.css'
 import { ScheduleModal } from '../components/ScheduleModal'
-import { DueBadge, Empty, Icon, JobStatusSelect, Progress } from '../components/ui'
+import { DueBadge, Empty, Icon, JobStatusSelect } from '../components/ui'
 
 type SortKey = 'priority' | 'name' | 'client' | 'due'
 type Props = {
@@ -116,8 +117,8 @@ export function JobsTable({ jobs, showExport = true, schedulable = false, allowR
   }
 
   function exportCSV() {
-    downloadCSV('jobs.csv', ['Priority', 'Job #', 'Job', 'Client', 'Status', 'Current phase', 'Phase status', 'Historical assignee', 'Entered queue', 'Next due', 'Job due (recorded)', 'Phase due (recorded)', 'Deadline', 'Next task', 'Estimate h', 'Actual h', 'Billable completed h', 'Nonbillable completed h', 'Fee', 'Ready to bill $', 'Awaiting payment $', 'Fees recorded $', 'Effective hourly rate $'],
-      sorted.map(row => [row.job.priority, row.job.job_number, row.job.name, row.clientName, row.job.status, row.currentPhase ? PHASE_KIND_SHORT[row.currentPhase.kind] : '', row.currentPhase?.status ?? '', row.assigneeName, row.job.queued_date ?? '', row.nextDeadline?.date ?? '', row.job.due_date ?? '', row.currentPhase?.due_date ?? '', row.nextDeadline?.title ?? '', row.nextTask?.title ?? '', row.estimatedHours, round2(row.actualHours), round2(row.billableHours), round2(row.nonBillableHours), row.job.fee, round2(row.billing.unbilledAmount), round2(row.billing.outstanding), round2(row.billing.feeRevenue), row.billing.effectiveHourlyRate == null ? '' : round2(row.billing.effectiveHourlyRate)]))
+    downloadCSV('jobs.csv', ['Priority', 'Job #', 'Job', 'Client', 'Status', 'Current phase', 'Phase status', 'Historical assignee', 'Next due', 'Job due (recorded)', 'Phase due (recorded)', 'Deadline', 'Next task', 'Estimate h', 'Actual h', 'Billable completed h', 'Nonbillable completed h', 'Fee', 'Ready to bill $', 'Awaiting payment $', 'Fees recorded $', 'Effective hourly rate $'],
+      sorted.map(row => [row.job.priority, row.job.job_number, row.job.name, row.clientName, row.job.status, row.currentPhase ? PHASE_KIND_SHORT[row.currentPhase.kind] : '', row.currentPhase?.status ?? '', row.assigneeName, row.nextDeadline?.date ?? '', row.job.due_date ?? '', row.currentPhase?.due_date ?? '', row.nextDeadline?.title ?? '', row.nextTask?.title ?? '', row.estimatedHours, round2(row.actualHours), round2(row.billableHours), round2(row.nonBillableHours), row.job.fee, round2(row.billing.unbilledAmount), round2(row.billing.outstanding), round2(row.billing.feeRevenue), row.billing.effectiveHourlyRate == null ? '' : round2(row.billing.effectiveHourlyRate)]))
   }
 
   if (jobs.length === 0) return <Empty>No jobs match.</Empty>
@@ -134,7 +135,7 @@ export function JobsTable({ jobs, showExport = true, schedulable = false, allowR
         <button type="button" className={`chip ${weekends ? 'on' : ''}`} aria-pressed={weekends} onClick={() => { setWeekends(!weekends); writePref('table-plan-weekends', !weekends) }}>Weekends</button>
       </>}
     </div>}
-    {showPlan && <p className="small muted">Plan your hours on the job's current work phase. A queued job uses Original design. Clear a box to remove your hours; additional saved plans are shown below it. Totals include every saved plan on active jobs.<span className="show-mobile">Swipe the table to see each day.</span></p>}
+    {showPlan && <p className="small muted">Plan your hours on the job's current work phase. Clear a box to remove your hours; additional saved plans are shown below it. Totals include every saved plan on active jobs.<span className="show-mobile">Swipe the table to see each day.</span></p>}
     <div className="jobs-mobile-sort show-mobile"><label>Sort jobs <select aria-label="Sort jobs" value={`${sort}-${asc ? 'asc' : 'desc'}`} onChange={event => { const [key, direction] = event.target.value.split('-'); setSort(key as SortKey); setAsc(direction === 'asc') }}>
       <option value="priority-asc">Priority: highest first</option><option value="priority-desc">Priority: lowest first</option><option value="name-asc">Job: A–Z</option><option value="name-desc">Job: Z–A</option><option value="client-asc">Client: A–Z</option><option value="client-desc">Client: Z–A</option><option value="due-asc">Due: earliest first</option><option value="due-desc">Due: latest first</option>
     </select></label></div>
@@ -186,19 +187,24 @@ function Row({ row, reorderVisible, reorderEnabled, first, last, onMove, onLogHo
       </>}
     </div></td>
     <td className="jobs-job-cell">
-      <div className="job-row-heading"><Link className="bold" to={`/jobs/${job.id}`} title={job.address || undefined}>{job.name}</Link><JobStatusSelect value={job.status} label={`Status for ${job.name}`} onChange={status => update('jobs', job.id, { status })} /></div>
-      <div className="tiny muted jobs-client-context"><Link to={`/clients/${job.client_id}`}>{row.clientName || 'Client'}</Link>{job.job_number && ` · ${job.job_number}`}</div>
-      {job.queued_date && phase?.kind === 'queued' && <div className="tiny muted">Queued {fmtDate(job.queued_date)}{(() => { const days = -(daysUntil(job.queued_date) ?? 0); return days > 0 ? ` · ${days}d` : '' })()}</div>}
+      <div className="job-row-heading"><Link className="bold" to={`/jobs/${job.id}`} title={`${job.name}${job.address ? ` · ${job.address}` : ''}`}>{job.name}</Link><JobStatusSelect value={job.status} label={`Status for ${job.name}`} onChange={status => update('jobs', job.id, { status })} /></div>
+      <div className="tiny muted jobs-client-context">{job.job_number && <span>{job.job_number} · </span>}<Link to={`/clients/${job.client_id}`} title={row.clientName}>{row.clientName || 'Client'}</Link></div>
+      <div className="jobs-mobile-summary">{phase && <span>{PHASE_KIND_SHORT[phase.kind]} · </span>}{fmtHours(row.actualHours)} / {fmtHours(row.estimatedHours)} worked{row.nonBillableHours > 0 && <span> · {fmtHours(row.nonBillableHours)} nonbillable</span>}{row.nextDeadline && <div><Link to={row.nextDeadline.link}><DueBadge date={row.nextDeadline.date} /></Link></div>}{!row.nextDeadline && !operational && job.due_date && <div className="muted">Recorded due {fmtDate(job.due_date)}</div>}{!plan && <><div><Link to={`/billing?job=${job.id}`} title={rateBasis}>{billingLabel} · {fmtHourlyRate(billing.effectiveHourlyRate)}</Link></div>{billing.outstanding > 0.005 && <div><Link to={`/billing?job=${job.id}`}>{fmtMoney(billing.outstanding)} awaiting payment</Link></div>}</>}</div>
+      <details className="jobs-row-details">
+        <summary aria-label={`Details for ${job.name}`} title={`Details for ${job.name}`}><Icon name="chevronR" size={15} /><span className="sr-only">Details</span></summary>
+        <div className="jobs-row-expanded">
       {row.nextTask && <div className="jobs-next-task"><Link to={`/jobs/${job.id}?task=${row.nextTask.id}`}>Next: {row.nextTask.title}</Link>{row.nextTask.status === 'waiting' && <span className="badge waiting">Waiting</span>}{row.nextTask.status === 'doing' && <span className="badge doing">In progress</span>}</div>}
       {(row.waitingPhaseCount > 0 || row.overEstimatePhases.length > 0) && <div className="jobs-row-flags">{row.waitingPhaseCount > 0 && <span className="badge waiting">{row.waitingPhaseCount} waiting phase{row.waitingPhaseCount === 1 ? '' : 's'}</span>}{row.overEstimatePhases.length > 0 && <span className="badge warn">Phase over estimate</span>}</div>}
-      <div className="jobs-mobile-summary">{phase && <span>{PHASE_KIND_SHORT[phase.kind]} · </span>}{fmtHours(row.actualHours)} / {fmtHours(row.estimatedHours)} worked{row.nonBillableHours > 0 && <span> · {fmtHours(row.nonBillableHours)} nonbillable</span>}{row.nextDeadline && <div><Link to={row.nextDeadline.link}><DueBadge date={row.nextDeadline.date} /> {row.nextDeadline.title}</Link></div>}{!row.nextDeadline && !operational && job.due_date && <div className="muted">Recorded due {fmtDate(job.due_date)}</div>}{!plan && <><div><Link to={`/billing?job=${job.id}`} title={rateBasis}>{billingLabel} · {fmtHourlyRate(billing.effectiveHourlyRate)}</Link></div>{billing.outstanding > 0.005 && <div><Link to={`/billing?job=${job.id}`}>{fmtMoney(billing.outstanding)} awaiting payment</Link></div>}</>}</div>
+          {row.nextDeadline && <p className="tiny"><Link to={row.nextDeadline.link}>{row.nextDeadline.title} · {fmtDate(row.nextDeadline.date)}</Link></p>}
       {operational && (onLogHours || onAddTask) && <div className="jobs-row-actions">{onLogHours && <button type="button" className="btn sm ghost" onClick={() => onLogHours(job.id)} aria-label={`Log hours for ${job.name}`}><Icon name="time" size={13} /> Log hours</button>}{onAddTask && <button type="button" className="btn sm ghost" onClick={() => onAddTask(job.id)} aria-label={`Add task for ${job.name}`}><Icon name="plus" size={13} /> Task</button>}</div>}
+        </div>
+      </details>
     </td>
     <td className={`jobs-phase-column ${plan ? 'plan-hide-mobile' : 'hide-mobile'}`}>{phase ? <><span className={`badge ${phase.status}`}>{PHASE_KIND_SHORT[phase.kind]}</span><div className="tiny muted">{fmtHours(row.currentPhaseHours)} / {fmtHours(phase.estimate_hours)}</div></> : <span className="muted">–</span>}</td>
-    <td className={`jobs-deadline-column ${plan ? 'plan-hide-mobile' : ''}`}>{row.nextDeadline ? <Link to={row.nextDeadline.link} aria-label={`${row.nextDeadline.title}, ${fmtDate(row.nextDeadline.date)}`}><DueBadge date={row.nextDeadline.date} /><div className="tiny muted jobs-deadline-title">{row.nextDeadline.title}</div></Link> : !operational && job.due_date ? <span className="small muted">Recorded {fmtDate(job.due_date)}</span> : <span className="muted">–</span>}</td>
+    <td className={`jobs-deadline-column ${plan ? 'plan-hide-mobile' : ''}`}>{row.nextDeadline ? <Link to={row.nextDeadline.link} title={row.nextDeadline.title} aria-label={`${row.nextDeadline.title}, ${fmtDate(row.nextDeadline.date)}`}><DueBadge date={row.nextDeadline.date} /></Link> : !operational && job.due_date ? <span className="small muted">Recorded {fmtDate(job.due_date)}</span> : <span className="muted">–</span>}</td>
     {!plan && <>
-      <td className="jobs-work-column hide-mobile"><div className="small nowrap">{fmtHours(row.actualHours)} / {fmtHours(row.estimatedHours)}</div><Progress value={row.actualHours} max={row.estimatedHours} /><div className="tiny muted">{fmtHours(row.nonBillableHours)} nonbillable{row.runningCount > 0 ? ' · timer running' : ''}</div></td>
-      <td className="jobs-billing-column hide-mobile"><Link to={`/billing?job=${job.id}`}>{billingLabel} →</Link>{billing.outstanding > 0.005 && <div className="tiny warn-text">{fmtMoney(billing.outstanding)} awaiting payment</div>}<div className="tiny muted" title={rateBasis}>{fmtHourlyRate(billing.effectiveHourlyRate)} · fees / completed hours</div></td>
+      <td className="jobs-work-column hide-mobile"><div className="small nowrap">{fmtHours(row.actualHours)} / {fmtHours(row.estimatedHours)}</div><div className="tiny muted">{row.nonBillableHours > 0 && `${fmtHours(row.nonBillableHours)} nonbillable`}{row.runningCount > 0 ? `${row.nonBillableHours > 0 ? ' · ' : ''}timer running` : ''}</div></td>
+      <td className="jobs-billing-column hide-mobile"><Link to={`/billing?job=${job.id}`}>{billingLabel} →</Link>{billing.outstanding > 0.005 && <div className="tiny warn-text">{fmtMoney(billing.outstanding)} awaiting payment</div>}<div className="tiny muted" title={rateBasis}>{fmtHourlyRate(billing.effectiveHourlyRate)}</div></td>
     </>}
     {plan && plan.days.map(date => <DayCell key={date} date={date} jobId={job.id} jobName={job.name} phaseId={row.workPhase?.id ?? null} who={plan.who} entries={plan.entries.filter(entry => entry.date === date && entry.user_id === plan.who)} savedHours={sum(plan.entries.filter(entry => entry.date === date && entry.user_id !== plan.who).map(entry => entry.hours))} onComplex={() => plan.onComplex(date)} />)}
     {plan && <td className="plan-col num bold plan-hide-mobile" title="All saved plans for this job this week">{fmtHours(sum(plan.entries.map(entry => entry.hours)))}</td>}

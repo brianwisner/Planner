@@ -3,7 +3,7 @@ import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useData } from '../lib/store'
 import { allHours, entryHours, hoursForPhase } from '../lib/calc'
-import { PHASE_KIND_SHORT } from '../lib/types'
+import { phaseLabel } from '../lib/phases'
 import { downloadCSV, fmtHours, sum, todayISO } from '../lib/utils'
 import { Icon, Progress } from '../components/ui'
 import { format, subDays } from 'date-fns'
@@ -30,7 +30,7 @@ export function Reports() {
   const estimateRows = jobs.filter(j => j.status !== 'archived').flatMap(j => phases.filter(p => p.job_id === j.id && (p.estimate_hours > 0 || hoursForPhase(timeEntries, p.id) > 0)).map(p => ({ job: j, phase: p, logged: hoursForPhase(timeEntries, p.id) })))
 
   function exportCSV() {
-    if (tab === 'estimate') downloadCSV('estimate-vs-actual.csv', ['Job #', 'Job', 'Phase', 'Status', 'Estimate h', 'Actual h', 'Variance h', '% used'], estimateRows.map(r => [r.job.job_number, r.job.name, r.phase.name, r.phase.status, r.phase.estimate_hours, Math.round(r.logged * 100) / 100, Math.round((r.logged - r.phase.estimate_hours) * 100) / 100, r.phase.estimate_hours ? Math.round(r.logged / r.phase.estimate_hours * 100) : '']))
+    if (tab === 'estimate') downloadCSV('estimate-vs-actual.csv', ['Job #', 'Job', 'Phase', 'Status', 'Estimate h', 'Actual h', 'Variance h', '% used'], estimateRows.map(r => [r.job.job_number, r.job.name, phaseLabel(r.phase), r.phase.status, r.phase.estimate_hours, Math.round(r.logged * 100) / 100, Math.round((r.logged - r.phase.estimate_hours) * 100) / 100, r.phase.estimate_hours ? Math.round(r.logged / r.phase.estimate_hours * 100) : '']))
     else downloadCSV(`hours-by-${tab}.csv`, [tab === 'job' ? 'Job' : 'Client', 'Detail', 'Total hours', 'Billable h', 'Nonbillable h', 'Billed or deposit h', 'Billable not billed h', 'Share %'], rows.map(r => [r.label, r.sub, Math.round(r.hours * 100) / 100, Math.round(r.billable * 100) / 100, Math.round(r.nonbillable * 100) / 100, Math.round(r.billed * 100) / 100, Math.round(Math.max(0, r.billable - r.billed) * 100) / 100, total ? Math.round(r.hours / total * 100) : 0]))
   }
 
@@ -84,7 +84,7 @@ export function Reports() {
                 return (
                   <tr key={r.phase.id}>
                     <td><Link to={`/jobs/${r.job.id}`} className="bold">{r.job.name}</Link></td>
-                    <td><span className={`badge ${r.phase.status}`}>{PHASE_KIND_SHORT[r.phase.kind]}</span></td>
+                    <td><span className={`badge ${r.phase.status}`}>{phaseLabel(r.phase)}</span></td>
                     <td className="hide-mobile"><Progress value={r.logged} max={r.phase.estimate_hours} /></td>
                     <td className="num">{fmtHours(r.phase.estimate_hours)}</td>
                     <td className="num">{fmtHours(r.logged)}</td>

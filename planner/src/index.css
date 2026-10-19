@@ -674,7 +674,7 @@ td.plan-over { background: #fde68a !important; color: #92400e; }
   .jobs-filter-grid select, .jobs-search input { font-size: 16px; min-height: 44px; }
   .jobs-search > svg { top: 14px; }
   .jobs-view-bar { gap: 5px 10px; margin-top: 12px; padding-top: 6px; }
-  .jobs-view-tabs { width: 100%; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 2px; }
+  .jobs-view-tabs { width: 100%; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 2px; }
   .jobs-view-tabs button { padding: 8px 2px; font-size: 12px; gap: 4px; flex-direction: column; line-height: 1.2; min-height: 56px; }
   .jobs-result-count { margin-left: 0; flex: 1; padding: 7px 0; }
   .jobs-stat .label { font-size: 10px; gap: 4px; }
@@ -1080,4 +1080,24 @@ td.plan-over { background: #fde68a !important; color: #92400e; }
   .client-stat .value, .client-linked-stat .value { font-size: 19px; }
   .clients-overview-table tr { padding: 12px; gap: 12px 10px; }
   .client-stat, .client-linked-stat { padding: 10px; }
+}
+.job-planning-history { margin: 10px 0; padding: 10px 14px; border: 1px solid var(--border); border-radius: 8px; }
+.job-planning-history summary { display: list-item; min-height: 40px; padding-top: 10px; cursor: pointer; font-weight: 600; font-size: 13px; }
+.job-planning-history p { margin: 6px 0; }
+/* Leave more of the Jobs workspace available for the actual rows. */
+.jobs-stats { gap: 10px; margin-bottom: 14px; }
+.jobs-stats .jobs-stat { padding: 11px 13px; }
+.jobs-stats .value { font-size: 24px; }
+@media (max-width: 760px) {
+  .jobs-header { display: flex; align-items: center; flex-wrap: nowrap; margin-bottom: 14px; }
+  .jobs-header h1 { margin: 0; }
+  .jobs-header .jobs-subtitle { display: none; }
+  .jobs-header .actions { width: auto; margin-left: auto; }
+  .jobs-stats { gap: 8px; }
+  .jobs-stats .jobs-stat { padding: 9px 10px; }
+  .jobs-stats .label { font-size: 10px; line-height: 1.35; }
+  .jobs-stats .value { font-size: 21px; margin-top: 3px; }
+  .jobs-stats .sub { font-size: 10px; line-height: 1.4; }
+  .jobs-view-tabs { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .jobs-view-tabs button { min-height: 44px; padding: 6px 3px; flex-direction: row; }
 }

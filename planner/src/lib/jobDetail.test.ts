@@ -154,6 +154,30 @@ describe('job detail worked time, money, and saved plans', () => {
     expect(d.phaseSummaries.find(row => row.phase.id === 'done')).toMatchObject({ actualHours: 3, remainingHours: 0, overHours: 2 })
     expect(d.phaseSummaries.find(row => row.phase.id === 'phase')).toMatchObject({ actualHours: 2, remainingHours: 0, overHours: 1 })
   })
+
+  it('retains planning-history tasks, notes, effort, and all saved plans without reviving its phase estimate', () => {
+    const historical = phase({ id: 'history', kind: 'queued', name: 'Custom queued name', status: 'waiting', estimate_hours: 80,
+      due_date: '2026-10-01', notes: 'Keep these phase notes' })
+    const s = store({ phases: [historical, phase()], tasks: [task({ phase_id: 'history', due_date: '2026-10-19' })],
+      timeEntries: [time({ phase_id: 'history', hours: 3, user_id: 'legacy', billable: false })],
+      schedule: [plan({ id: 'history-plan', phase_id: 'history', user_id: 'legacy', hours: 5 }), plan({ id: 'design-plan', hours: 2 }),
+        plan({ id: 'general-plan', phase_id: null, hours: 1 })],
+    })
+    const d = jobDetailData(s, 'job', now)!
+    expect(d.historyPhases).toEqual([historical])
+    expect(d.workflowPhases.map(phase => phase.id)).toEqual(['phase'])
+    expect(d.overview).toMatchObject({ actualHours: 3, completedHours: 3, estimatedHours: 10, remainingHours: 10 })
+    expect(d.phaseSummaries.find(summary => summary.phase.id === 'history')).toMatchObject({ actualHours: 3, completedHours: 3, remainingHours: 0, overHours: 0 })
+    expect(d.waitingPhaseCount).toBe(0)
+    expect(d.nextActionableTask?.phase_id).toBe('history')
+    expect(d.deadlines.map(deadline => deadline.id)).toEqual(['task-task'])
+    expect(d.upcomingPlannedHours).toBe(8)
+    expect(d.historyUpcomingPlannedHours).toBe(5)
+    expect(d.workflowUpcomingPlannedHours).toBe(3)
+    expect(d.historyUpcomingPlans[0]).toMatchObject({ phaseName: 'Planning history', isOwner: false, entry: { phase_id: 'history', user_id: 'legacy' } })
+    expect(d.overview.billing).toMatchObject({ nonBillableHours: 3, nonBillableValue: 300, unbilledAmount: 0, balance: -300 })
+    expect(s.phases[0]).toMatchObject({ name: 'Custom queued name', notes: 'Keep these phase notes', estimate_hours: 80 })
+  })
 })
 
 describe('job detail recent history ordering', () => {

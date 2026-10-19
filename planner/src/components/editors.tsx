@@ -10,6 +10,7 @@ import { JOB_STATUS_LABEL, RECURRENCE_LABEL, TASK_STATUS_LABEL } from '../lib/ty
 import { fmtMoney, todayISO } from '../lib/utils'
 import { saveTask } from '../lib/taskActions'
 import { invoiceWorkLinks } from '../lib/billingActions'
+import { isWorkflowPhase, phaseLabel } from '../lib/phases'
 import { Modal } from './ui'
 
 export { toggleTaskDone } from '../lib/taskActions'
@@ -66,19 +67,20 @@ export function TaskModal({ task, defaults, onClose }: { task?: Task; defaults?:
   const store = useData()
   const { jobs, phases, clients, remove, me, toast } = store
   const activeJobs = jobs.filter(j => (j.status !== 'archived' && j.status !== 'cancelled') || j.id === task?.job_id || j.id === defaults?.job_id)
+  const defaultJobId = defaults?.job_id ?? activeJobs[0]?.id ?? ''
   const [d, setD] = useState<TaskDraft>(() => task ? {
     id: task.id, job_id: task.job_id, phase_id: task.phase_id, title: task.title, description: task.description, status: task.status,
     assignee_id: task.assignee_id, due_date: task.due_date, scheduled_at: task.scheduled_at, is_site_visit: task.is_site_visit,
     estimate_hours: task.estimate_hours, recurrence: task.recurrence,
   } : {
-    job_id: defaults?.job_id ?? activeJobs[0]?.id ?? '', phase_id: defaults?.phase_id ?? null, title: defaults?.title ?? '', description: '',
+    job_id: defaultJobId, phase_id: phases.find(p => p.id === defaults?.phase_id && p.job_id === defaultJobId && isWorkflowPhase(p))?.id ?? null, title: defaults?.title ?? '', description: '',
     status: 'todo', assignee_id: me?.id ?? null, due_date: defaults?.due_date ?? null, scheduled_at: null,
     is_site_visit: defaults?.is_site_visit ?? false, estimate_hours: null, recurrence: 'none',
   })
   const [saving, setSaving] = useState(false)
   const savingRef = useRef(false)
   const persistedTask = useRef<Task | undefined>(task)
-  const jobPhases = phases.filter(p => p.job_id === d.job_id)
+  const jobPhases = phases.filter(p => p.job_id === d.job_id && (isWorkflowPhase(p) || p.id === task?.phase_id))
   const set = <K extends keyof TaskDraft>(k: K, v: TaskDraft[K]) => setD(x => ({ ...x, [k]: v }))
 
   // Keep the site-visit time's date in step with the due date.
@@ -134,7 +136,8 @@ export function TaskModal({ task, defaults, onClose }: { task?: Task; defaults?:
           <label>Phase</label>
           <select value={d.phase_id ?? ''} onChange={e => set('phase_id', e.target.value || null)}>
             <option value="">No phase (general)</option>
-            {jobPhases.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+            {d.phase_id && !jobPhases.some(phase => phase.id === d.phase_id) && <option value={d.phase_id}>Unavailable phase (saved)</option>}
+            {jobPhases.map(p => <option key={p.id} value={p.id}>{phaseLabel(p)}</option>)}
           </select>
         </div>
       </div>
@@ -196,7 +199,6 @@ export function JobModal({ job, defaultClientId, onClose, onCreated, onDeleted }
     name: job?.name ?? '', description: job?.description ?? '', address: job?.address ?? '',
     status: (job?.status ?? 'active') as JobStatus,
     fee: job?.fee ?? null as number | null,
-    queued_date: job?.queued_date ?? null as string | null,
     start_date: job?.start_date ?? null as string | null,
     due_date: job?.due_date ?? null as string | null,
   }))
@@ -279,10 +281,6 @@ export function JobModal({ job, defaultClientId, onClose, onCreated, onDeleted }
       </div>
       <div className="row">
         <div className="field">
-          <label>Entered queue</label>
-          <input type="date" value={d.queued_date ?? ''} onChange={e => set('queued_date', e.target.value || null)} />
-        </div>
-        <div className="field">
           <label>Start date</label>
           <input type="date" value={d.start_date ?? ''} onChange={e => set('start_date', e.target.value || null)} />
         </div>
@@ -301,7 +299,7 @@ export function JobModal({ job, defaultClientId, onClose, onCreated, onDeleted }
         <label>Description</label>
         <textarea value={d.description} onChange={e => set('description', e.target.value)} placeholder="Scope, structure type, and other job details" />
       </div>
-      {!job && <p className="small muted">The standard phases (Bidding, Queued, Original design, County / plan-check comments, Construction changes, Client-requested changes) are added automatically. New jobs start in Bidding.</p>}
+      {!job && <p className="small muted">Five standard phases (Bidding, Original design, County / plan-check comments, Construction changes, Client-requested changes) are added automatically. New jobs start in Bidding.</p>}
       </fieldset>
     </Modal>
   )
@@ -387,7 +385,7 @@ export function TimeModal({ entry, defaults, onClose }: { entry?: TimeEntry; def
   const defaultPhase = (jobId: string) => workPhase([...phases].sort((a, b) => a.sort_order - b.sort_order), jobId)?.id ?? null
   const [d, setD] = useState({
     job_id: defaultJobId,
-    phase_id: entry ? entry.phase_id : defaults?.phase_id !== undefined ? defaults.phase_id : defaultPhase(defaultJobId),
+    phase_id: entry ? entry.phase_id : defaults?.phase_id === null ? null : phases.find(p => p.id === defaults?.phase_id && p.job_id === defaultJobId && isWorkflowPhase(p))?.id ?? defaultPhase(defaultJobId),
     task_id: entry?.task_id ?? defaults?.task_id ?? null as string | null,
     user_id: entry?.user_id ?? me?.id ?? '',
     date: entry?.date ?? defaults?.date ?? todayISO(),
@@ -399,7 +397,7 @@ export function TimeModal({ entry, defaults, onClose }: { entry?: TimeEntry; def
   const currentEntry = entry ? timeEntries.find(e => e.id === entry.id) ?? entry : undefined
   const billingLocked = Boolean(currentEntry?.billed || currentEntry?.invoice_id || (currentEntry?.deposit_applied ?? 0) > 0)
   const set = <K extends keyof typeof d>(k: K, v: (typeof d)[K]) => setD(x => ({ ...x, [k]: v }))
-  const jobPhases = phases.filter(p => p.job_id === d.job_id)
+  const jobPhases = phases.filter(p => p.job_id === d.job_id && (isWorkflowPhase(p) || p.id === entry?.phase_id))
   const jobTasks = tasks.filter(t => t.job_id === d.job_id && (!d.phase_id || t.phase_id === d.phase_id))
 
   async function save() {
@@ -443,7 +441,7 @@ export function TimeModal({ entry, defaults, onClose }: { entry?: TimeEntry; def
           <select id={`${form.id}-field-1`} value={d.phase_id ?? ''} onChange={e => { set('phase_id', e.target.value || null); set('task_id', null) }}>
             <option value="">General</option>
             {d.phase_id && !jobPhases.some(phase => phase.id === d.phase_id) && <option value={d.phase_id}>Unavailable phase (saved)</option>}
-            {jobPhases.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+            {jobPhases.map(p => <option key={p.id} value={p.id}>{phaseLabel(p)}</option>)}
           </select>
         </div>
         <div className="field">

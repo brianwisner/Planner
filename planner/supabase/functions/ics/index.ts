@@ -47,7 +47,8 @@ Deno.serve(async (req) => {
   }
 
   for (const j of jobs ?? []) if (!mine) add(`job-${j.id}`, `Job due: ${j.name}`, j.name, j.due_date, null, j.status === 'complete')
-  for (const p of phases ?? []) if (okJob(p.job_id) && (!mine || p.assignee_id === profile.id)) add(`phase-${p.id}`, `${SHORT[p.kind] ?? p.name} due — ${jobName.get(p.job_id)}`, p.name, p.due_date, null, p.status === 'complete' || completedJobs.has(p.job_id))
+  // Queued rows remain as planning history; their linked tasks still emit below.
+  for (const p of phases ?? []) if (p.kind !== 'queued' && okJob(p.job_id) && (!mine || p.assignee_id === profile.id)) add(`phase-${p.id}`, `${SHORT[p.kind] ?? p.name} due — ${jobName.get(p.job_id)}`, p.name, p.due_date, null, p.status === 'complete' || completedJobs.has(p.job_id))
   for (const t of tasks ?? []) if (okJob(t.job_id) && (!mine || t.assignee_id === profile.id || t.assignee_id == null)) add(`task-${t.id}`, (t.is_site_visit ? 'Site visit: ' : '') + t.title, jobName.get(t.job_id) ?? '', t.due_date, t.scheduled_at, t.status === 'done' || completedJobs.has(t.job_id))
   lines.push('END:VCALENDAR')
 

@@ -1,11 +1,12 @@
-import { useEffect, useId, useRef, useState } from 'react'
+import { useId, useRef, useState } from 'react'
 import { format } from 'date-fns'
 import { entryHours, workPhase } from '../lib/calc'
+import { jobPhaseGroups, phaseLabel } from '../lib/phases'
 import { useData } from '../lib/store'
 import { toggleTaskDone } from '../lib/taskActions'
 import type { Job, Phase, PhaseStatus, Task, TimeEntry } from '../lib/types'
 import { PHASE_STATUS_LABEL, RECURRENCE_LABEL, TASK_STATUS_LABEL } from '../lib/types'
-import { fmtDate, fmtDateTime, fmtHours, sum, todayISO } from '../lib/utils'
+import { fmtDate, fmtDateTime, fmtHours, sum } from '../lib/utils'
 import { DueBadge, Icon, Modal, Progress } from './ui'
 
 export interface JobWorkProps {
@@ -34,11 +35,13 @@ export function JobWork(props: JobWorkProps) {
 function WorkContents(props: JobWorkProps) {
   const { job, operational, timerBillable, timerBusy, onAddTask, onEditTask, onLog, onStart } = props
   const id = useId()
-  const phases = props.phases.filter(phase => phase.job_id === job.id).sort((a, b) => a.sort_order - b.sort_order || a.id.localeCompare(b.id))
+  const { schedule } = useData()
+  const { all: allPhases, workflow: phases, history } = jobPhaseGroups(props.phases, job.id)
+  const allPhaseIds = new Set(allPhases.map(phase => phase.id))
   const phaseIds = new Set(phases.map(phase => phase.id))
   const tasks = props.tasks.filter(task => task.job_id === job.id).sort(taskOrder)
   const entries = props.timeEntries.filter(entry => entry.job_id === job.id)
-  const currentPhaseId = props.currentPhaseId ?? workPhase(phases, job.id)?.id
+  const currentPhaseId = props.currentPhaseId && phaseIds.has(props.currentPhaseId) ? props.currentPhaseId : workPhase(phases, job.id)?.id
   const general = tasks.filter(task => !task.phase_id || !phaseIds.has(task.phase_id))
   const [expanded, setExpanded] = useState(() => new Set([currentPhaseId ?? '', ...(general.some(task => task.status !== 'done') ? ['general'] : [])]))
   const [search, setSearch] = useState('')
@@ -63,12 +66,12 @@ function WorkContents(props: JobWorkProps) {
     const shown = all.filter(matches)
     const done = all.filter(task => task.status === 'done').length
     const waiting = all.filter(task => task.status === 'waiting').length
-    const logged = phase ? sum(entries.filter(entry => entry.phase_id === phase.id).map(entryHours)) : sum(entries.filter(entry => !entry.phase_id || !phaseIds.has(entry.phase_id)).map(entryHours))
-    const nonbillable = sum(entries.filter(entry => (phase ? entry.phase_id === phase.id : !entry.phase_id || !phaseIds.has(entry.phase_id)) && entry.billable === false && entry.hours != null).map(entryHours))
+    const logged = phase ? sum(entries.filter(entry => entry.phase_id === phase.id).map(entryHours)) : sum(entries.filter(entry => !entry.phase_id || !allPhaseIds.has(entry.phase_id)).map(entryHours))
+    const nonbillable = sum(entries.filter(entry => (phase ? entry.phase_id === phase.id : !entry.phase_id || !allPhaseIds.has(entry.phase_id)) && entry.billable === false && entry.hours != null).map(entryHours))
     const over = phase && phase.status !== 'complete' && phase.estimate_hours > 0 && logged > phase.estimate_hours
     const matchedGroup = filtering && shown.length > 0
     const isOpen = matchedGroup ? !filteredCollapsed.has(key) : expanded.has(key)
-    const title = phase?.name ?? 'General tasks'
+    const title = phase ? phaseLabel(phase) : 'General tasks'
     const bodyId = `${id}-${key}`
     return <section className={`phase-card job-phase-card ${phase?.id === currentPhaseId ? 'is-current' : ''}`} key={key} aria-label={title}>
       <div className="job-phase-header">
@@ -92,8 +95,8 @@ function WorkContents(props: JobWorkProps) {
         </div>
         {phase && phase.estimate_hours > 0 && <Progress value={logged} max={phase.estimate_hours} />}
         {phase?.notes && <p className="job-phase-notes small">{phase.notes}</p>}
-        {!phase && <p className="small muted">Admin, calls and other work outside a phase. Tasks with an unavailable phase remain here.</p>}
-        {shown.length > 0 ? <ul className="list job-task-list">{shown.map(task => <TaskRow key={task.id} task={task} unavailablePhase={Boolean(!phase && task.phase_id)} operational={operational} timerBillable={timerBillable} timerBusy={timerBusy} onEdit={() => onEditTask(task)} onLog={() => onLog(task.phase_id && phaseIds.has(task.phase_id) ? task.phase_id : null, task.id)} onStart={() => onStart(task.phase_id && phaseIds.has(task.phase_id) ? task.phase_id : null, task.id)} />)}</ul> : <p className="job-task-empty small muted">{all.length === 0 ? 'No tasks yet.' : filtering ? 'No tasks match these filters.' : 'No open tasks. Choose All or Done to see completed work.'}</p>}
+        {!phase && <p className="small muted">Admin, calls and other work outside a phase. Tasks from planning history or an unavailable phase remain here.</p>}
+        {shown.length > 0 ? <ul className="list job-task-list">{shown.map(task => <TaskRow key={task.id} task={task} savedPhaseLabel={!phase && task.phase_id ? history.some(phase => phase.id === task.phase_id) ? 'Planning history' : 'Unavailable phase' : undefined} operational={operational} timerBillable={timerBillable} timerBusy={timerBusy} onEdit={() => onEditTask(task)} onLog={() => onLog(task.phase_id && phaseIds.has(task.phase_id) ? task.phase_id : null, task.id)} onStart={() => onStart(task.phase_id && phaseIds.has(task.phase_id) ? task.phase_id : null, task.id)} />)}</ul> : <p className="job-task-empty small muted">{all.length === 0 ? 'No tasks yet.' : filtering ? 'No tasks match these filters.' : 'No open tasks. Choose All or Done to see completed work.'}</p>}
         <div className="job-phase-actions">
           <button type="button" className="btn sm" aria-label={`Add task to ${title}`} onClick={() => onAddTask(phase?.id ?? null)}><Icon name="plus" size={13} /> Task</button>
           <button type="button" className="btn sm ghost" aria-label={`Log hours for ${title}`} onClick={() => onLog(phase?.id ?? null)}><Icon name="time" size={13} /> Log hours</button>
@@ -112,11 +115,18 @@ function WorkContents(props: JobWorkProps) {
     {phases.length === 0 && <p className="small muted">No phases are set up for this job. Its tasks and time remain available below.</p>}
     {phases.map(group)}
     {group(null)}
-    {editPhase && <PhaseEditor job={job} phase={editPhase} onClose={() => setEditPhase(null)} />}
+    {history.map(phase => {
+      const recorded = entries.filter(entry => entry.phase_id === phase.id)
+      const plans = schedule.filter(entry => entry.job_id === job.id && entry.phase_id === phase.id)
+      const savedTasks = tasks.filter(task => task.phase_id === phase.id)
+      if (!phase.notes && !phase.estimate_hours && !phase.start_date && !phase.due_date && !recorded.length && !plans.length && !savedTasks.length) return null
+      return <details className="job-planning-history" key={phase.id}><summary>Planning history · {fmtHours(sum(recorded.map(entryHours)))} worked</summary><div className="small muted"><p>Saved planning records remain part of this job. Their hours and billing are included in the job totals.</p>{phase.estimate_hours > 0 && <p>Recorded estimate: {fmtHours(phase.estimate_hours)}</p>}{phase.start_date && <p>Recorded start: {fmtDate(phase.start_date)}</p>}{phase.due_date && <p>Recorded due: {fmtDate(phase.due_date)}</p>}{phase.notes && <p className="job-phase-notes">{phase.notes}</p>}{savedTasks.length > 0 && <p>{savedTasks.length} saved task{savedTasks.length === 1 ? '' : 's'} available under General tasks.</p>}{plans.length > 0 && <p>{fmtHours(sum(plans.map(entry => entry.hours)))} saved plans remain on the timeline.</p>}{recorded.some(entry => entry.billable === false && entry.hours != null) && <p>{fmtHours(sum(recorded.filter(entry => entry.billable === false && entry.hours != null).map(entryHours)))} nonbillable</p>}</div></details>
+    })}
+    {editPhase && <PhaseEditor phase={editPhase} onClose={() => setEditPhase(null)} />}
   </section>
 }
 
-function TaskRow({ task, unavailablePhase, operational, timerBillable, timerBusy, onEdit, onLog, onStart }: { task: Task; unavailablePhase: boolean; operational: boolean; timerBillable: boolean; timerBusy?: boolean; onEdit: () => void; onLog: () => void; onStart: () => void }) {
+function TaskRow({ task, savedPhaseLabel, operational, timerBillable, timerBusy, onEdit, onLog, onStart }: { task: Task; savedPhaseLabel?: string; operational: boolean; timerBillable: boolean; timerBusy?: boolean; onEdit: () => void; onLog: () => void; onStart: () => void }) {
   const store = useData()
   const busy = useRef(false)
   const [saving, setSaving] = useState(false)
@@ -140,7 +150,7 @@ function TaskRow({ task, unavailablePhase, operational, timerBillable, timerBusy
         {task.scheduled_at ? <span>{fmtDateTime(task.scheduled_at)}</span> : task.due_date && <span>{operational ? 'Due' : 'Recorded due'} {fmtDate(task.due_date)}</span>}
         {task.estimate_hours != null && <span>{fmtHours(task.estimate_hours)} estimate</span>}
         {task.recurrence !== 'none' && <span>{RECURRENCE_LABEL[task.recurrence]}</span>}
-        {unavailablePhase && <span>Unavailable phase</span>}
+        {savedPhaseLabel && <span>{savedPhaseLabel}</span>}
       </div>
       {error && <p className="small danger-text" role="alert">{error}</p>}
     </div>
@@ -149,14 +159,11 @@ function TaskRow({ task, unavailablePhase, operational, timerBillable, timerBusy
   </li>
 }
 
-function PhaseEditor({ job, phase, onClose }: { job: Job; phase: Phase; onClose: () => void }) {
-  const { jobs, update, refresh } = useData()
+function PhaseEditor({ phase, onClose }: { phase: Phase; onClose: () => void }) {
+  const { update } = useData()
   const formId = useId()
   const estimateInput = useRef<HTMLInputElement>(null)
   const busy = useRef(false)
-  const latestJobs = useRef(jobs)
-  const queueEntryDate = useRef<string | null>(null)
-  useEffect(() => { latestJobs.current = jobs }, [jobs])
   const [saving, setSaving] = useState(false)
   const [estimate, setEstimate] = useState(String(phase.estimate_hours))
   const [start, setStart] = useState(phase.start_date ?? '')
@@ -170,23 +177,13 @@ function PhaseEditor({ job, phase, onClose }: { job: Job; phase: Phase; onClose:
     const hours = Number(estimate)
     if (!estimate.trim() || estimateInput.current?.validity.badInput || !Number.isFinite(hours) || hours < 0) { setError('Enter an estimate of zero hours or more.'); return }
     if (start && due && start > due) { setError('The due date must be on or after the start date.'); return }
-    const enteringQueue = phase.kind === 'queued' && phase.status === 'not_started' && status !== 'not_started'
-    if (enteringQueue) queueEntryDate.current ??= todayISO()
-    else queueEntryDate.current = null
     busy.current = true; setSaving(true); setError('')
-    let phaseSaved = false
     try {
-      phaseSaved = await update('phases', phase.id, { estimate_hours: hours, start_date: start || null, due_date: due || null, status, notes })
+      const phaseSaved = await update('phases', phase.id, { estimate_hours: hours, start_date: start || null, due_date: due || null, status, notes })
       if (!phaseSaved) { setError('The phase could not be saved. Your changes are still here; try again.'); return }
-      const currentJob = latestJobs.current.find(row => row.id === job.id) ?? job
-      if (enteringQueue && !currentJob.queued_date && !await update('jobs', job.id, { queued_date: queueEntryDate.current })) {
-        await refresh('jobs')
-        setError('Phase saved, but its queue-entry date could not be confirmed. Your changes are still here; save again to retry.'); return
-      }
       onClose()
     } catch {
-      if (phaseSaved) await refresh('jobs')
-      setError(phaseSaved ? 'Phase saved, but its queue-entry date could not be confirmed. Your changes are still here; save again to retry.' : 'The phase could not be saved. Your changes are still here; try again.')
+      setError('The phase could not be saved. Your changes are still here; try again.')
     }
     finally { busy.current = false; setSaving(false) }
   }
