@@ -14,6 +14,38 @@ import { Modal } from './ui'
 
 export { toggleTaskDone } from '../lib/taskActions'
 
+// Hold the draft and block closing/repeated actions until the store confirms a
+// financial edit. Refetch after a failed optimistic write before allowing retry.
+function useRecordForm(name: string, onClose: () => void, restore: () => Promise<void>) {
+  const id = useId()
+  const busy = useRef(false)
+  const [pending, setPending] = useState<'save' | 'delete' | null>(null)
+  const [error, setError] = useState('')
+  const close = () => { if (!busy.current) onClose() }
+  async function run(action: 'save' | 'delete', operation: () => Promise<boolean>) {
+    if (busy.current) return
+    busy.current = true; setPending(action); setError('')
+    try {
+      if (await operation()) onClose()
+      else {
+        await restore()
+        setError(`The ${name} was not ${action === 'save' ? 'saved' : 'deleted'}. Your changes are still here.`)
+      }
+    } catch {
+      try { await restore() } catch { /* The store also displays connection errors. */ }
+      setError(`Could not confirm the ${action === 'save' ? 'save' : 'deletion'}. Your changes are still here; check the records before trying again.`)
+    } finally { busy.current = false; setPending(null) }
+  }
+  return { id, busy, pending, error, fail: setError, close, run }
+}
+
+function validRecordDate(value: string) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false
+  const date = new Date(`${value}T12:00:00`)
+  const [year, month, day] = value.split('-').map(Number)
+  return date.getFullYear() === year && date.getMonth() + 1 === month && date.getDate() === day
+}
+
 /* =============== Task =============== */
 export interface TaskDraft {
   id?: string
@@ -347,7 +379,8 @@ export function ClientModal({ client, onClose, onCreated, onDeleted }: { client?
 
 /* =============== Time entry =============== */
 export function TimeModal({ entry, defaults, onClose }: { entry?: TimeEntry; defaults?: Partial<TimeEntry>; onClose: () => void }) {
-  const { jobs, phases, tasks, timeEntries, clients, me, profiles, settings, insert, update, remove, toast } = useData()
+  const { jobs, phases, tasks, timeEntries, clients, me, profiles, settings, insert, update, remove, refresh, toast } = useData()
+  const form = useRecordForm('time entry', onClose, () => refresh('time_entries'))
   const activeJobs = jobs.filter(j => j.status !== 'archived' || j.id === entry?.job_id || j.id === defaults?.job_id)
   const personRate = (uid: string) => rateFor(profiles.find(p => p.id === uid), settings.default_rate)
   const defaultJobId = entry?.job_id ?? defaults?.job_id ?? activeJobs[0]?.id ?? ''
@@ -365,75 +398,78 @@ export function TimeModal({ entry, defaults, onClose }: { entry?: TimeEntry; def
   })
   const currentEntry = entry ? timeEntries.find(e => e.id === entry.id) ?? entry : undefined
   const billingLocked = Boolean(currentEntry?.billed || currentEntry?.invoice_id || (currentEntry?.deposit_applied ?? 0) > 0)
-  const busy = useRef(false)
-  const [saving, setSaving] = useState(false)
   const set = <K extends keyof typeof d>(k: K, v: (typeof d)[K]) => setD(x => ({ ...x, [k]: v }))
   const jobPhases = phases.filter(p => p.job_id === d.job_id)
   const jobTasks = tasks.filter(t => t.job_id === d.job_id && (!d.phase_id || t.phase_id === d.phase_id))
 
   async function save() {
-    if (busy.current) return
-    if (!d.job_id || d.hours == null || d.hours <= 0) { toast('Enter the job and the hours', 'error'); return }
+    if (form.busy.current) return
+    if (!d.job_id || d.hours == null || !Number.isFinite(d.hours) || d.hours <= 0) { form.fail('Choose a job and enter hours greater than zero.'); return }
+    if (!validRecordDate(d.date)) { form.fail('Enter a valid work date.'); return }
+    if (d.rate != null && (!Number.isFinite(d.rate) || d.rate < 0)) { form.fail('Enter a rate of zero or more.'); return }
     if (!d.billable && billingLocked) { toast('Unbill these hours in Billing before making them nonbillable.', 'error'); return }
+    if (currentEntry && billingLocked && d.job_id !== currentEntry.job_id) {
+      toast('Unbill these hours before moving them to another job.', 'error'); return
+    }
     const credit = currentEntry?.billed ? currentEntry.deposit_applied ?? 0 : 0
     if (currentEntry && credit > 0 && (d.job_id !== currentEntry.job_id || d.hours * (d.rate ?? personRate(d.user_id)) < credit)) {
       toast('Unbill these hours before moving them to another job or reducing their value below the applied deposit.', 'error'); return
     }
-    busy.current = true; setSaving(true)
-    try {
-      if (entry) { if (!await update('time_entries', entry.id, { ...d, started_at: null })) return }
-      else if (!await insert('time_entries', { ...d, started_at: null })) return
-      onClose()
-    } finally { busy.current = false; setSaving(false) }
+    await form.run('save', async () => entry
+      ? update('time_entries', entry.id, { ...d, started_at: null })
+      : Boolean(await insert('time_entries', { ...d, started_at: null })))
   }
-  async function del() { if (entry && confirm('Delete this time entry?')) { await remove('time_entries', entry.id); onClose() } }
+  async function del() { if (!form.busy.current && entry && confirm('Delete this time entry?')) await form.run('delete', () => remove('time_entries', entry.id)) }
 
   return (
-    <Modal title={entry ? 'Edit hours' : 'Log hours'} onClose={onClose} footer={<>
-      {entry && <button className="btn danger left" onClick={del}>Delete</button>}
-      <button className="btn" onClick={onClose}>Cancel</button>
-      <button className="btn primary" onClick={save} disabled={saving}>{saving ? 'Saving…' : 'Save'}</button>
+    <Modal title={entry ? 'Edit hours' : 'Log hours'} onClose={form.close} footer={<>
+      {entry && <button className="btn danger left" onClick={del} disabled={form.pending !== null}>{form.pending === 'delete' ? 'Deleting…' : 'Delete'}</button>}
+      <button className="btn" onClick={form.close} disabled={form.pending !== null}>Cancel</button>
+      <button className="btn primary" type="submit" form={form.id} disabled={form.pending !== null}>{form.pending === 'save' ? 'Saving…' : 'Save'}</button>
     </>}>
+      {form.error && <p className="client-form-error" role="alert">{form.error}</p>}
+      <form id={form.id} onSubmit={event => { event.preventDefault(); void save() }} noValidate><fieldset className="editor-fields" disabled={form.pending !== null}>
       <div className="row">
         <div className="field">
-          <label>Job</label>
-          <select value={d.job_id} onChange={e => setD(current => ({ ...current, job_id: e.target.value, phase_id: defaultPhase(e.target.value), task_id: null }))}>
+          <label htmlFor={`${form.id}-field-0`}>Job</label>
+          <select id={`${form.id}-field-0`} value={d.job_id} disabled={billingLocked} onChange={e => setD(current => ({ ...current, job_id: e.target.value, phase_id: defaultPhase(e.target.value), task_id: null }))}>
             {activeJobs.map(j => <option key={j.id} value={j.id}>{j.job_number ? `${j.job_number} · ` : ''}{j.name} ({clients.find(c => c.id === j.client_id)?.name})</option>)}
           </select>
         </div>
       </div>
       <div className="row">
         <div className="field">
-          <label>Phase</label>
-          <select value={d.phase_id ?? ''} onChange={e => { set('phase_id', e.target.value || null); set('task_id', null) }}>
+          <label htmlFor={`${form.id}-field-1`}>Phase</label>
+          <select id={`${form.id}-field-1`} value={d.phase_id ?? ''} onChange={e => { set('phase_id', e.target.value || null); set('task_id', null) }}>
             <option value="">General</option>
             {d.phase_id && !jobPhases.some(phase => phase.id === d.phase_id) && <option value={d.phase_id}>Unavailable phase (saved)</option>}
             {jobPhases.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
           </select>
         </div>
         <div className="field">
-          <label>Task (optional)</label>
-          <select value={d.task_id ?? ''} onChange={e => set('task_id', e.target.value || null)}>
+          <label htmlFor={`${form.id}-field-2`}>Task (optional)</label>
+          <select id={`${form.id}-field-2`} value={d.task_id ?? ''} onChange={e => set('task_id', e.target.value || null)}>
             <option value="">—</option>
             {jobTasks.map(t => <option key={t.id} value={t.id}>{t.title}</option>)}
           </select>
         </div>
       </div>
       <div className="row">
-        <div className="field"><label>Date</label><input type="date" value={d.date} onChange={e => set('date', e.target.value)} /></div>
-        <div className="field"><label>Hours</label><input autoFocus type="number" step="0.25" min="0" value={d.hours ?? ''} onChange={e => set('hours', e.target.value === '' ? null : Number(e.target.value))} /></div>
+        <div className="field"><label htmlFor={`${form.id}-field-3`}>Date</label><input id={`${form.id}-field-3`} type="date" value={d.date} onChange={e => set('date', e.target.value)} /></div>
+        <div className="field"><label htmlFor={`${form.id}-field-4`}>Hours</label><input id={`${form.id}-field-4`} autoFocus type="number" step="0.25" min="0" value={d.hours ?? ''} onChange={e => set('hours', e.target.value === '' ? null : Number(e.target.value))} /></div>
       </div>
       <div className="field time-billability">
         <label className="chip"><input type="checkbox" checked={d.billable} disabled={billingLocked} onChange={e => set('billable', e.target.checked)} /> Billable</label>
         <p className="small muted">{d.billable ? 'Eligible for invoices and deposit coverage.' : 'Nonbillable — counts toward job hours and effective hourly rate, excluded from invoices.'}</p>
-        {billingLocked && <p className="small muted">Unbill these hours in <Link to={`/billing?job=${currentEntry?.job_id}`} onClick={onClose}>Billing</Link> before changing this.</p>}
+        {billingLocked && <p className="small muted">Unbill these hours in <Link to={`/billing?job=${currentEntry?.job_id}`} aria-disabled={form.pending !== null} onClick={event => { if (form.busy.current) event.preventDefault(); else form.close() }}>Billing</Link> before changing the job or billable status.</p>}
       </div>
       <div className="row">
-        <div className="field" style={{ flex: '0 1 140px' }}><label>Rate ($/hour)</label><input type="number" min="0" step="5" value={d.rate ?? ''} onChange={e => set('rate', e.target.value === '' ? null : Number(e.target.value))} /></div>
-        <div className="field"><label>Notes</label><input value={d.notes} onChange={e => set('notes', e.target.value)} placeholder="What did you work on?" /></div>
+        <div className="field" style={{ flex: '0 1 140px' }}><label htmlFor={`${form.id}-field-5`}>Rate ($/hour)</label><input id={`${form.id}-field-5`} type="number" min="0" step="5" value={d.rate ?? ''} onChange={e => set('rate', e.target.value === '' ? null : Number(e.target.value))} /></div>
+        <div className="field"><label htmlFor={`${form.id}-field-6`}>Notes</label><input id={`${form.id}-field-6`} value={d.notes} onChange={e => set('notes', e.target.value)} placeholder="What did you work on?" /></div>
       </div>
       {d.hours != null && d.rate != null && <p className="small muted">{d.billable ? `Billable value: ${fmtMoney(d.hours * d.rate)}.` : `Work value: ${fmtMoney(d.hours * d.rate)}. This time will not be invoiced.`}</p>}
       {currentEntry?.billed && <p className="small muted">These hours are already on an invoice. Changing them won't change the invoice amount.</p>}
+      </fieldset></form>
     </Modal>
   )
 }
@@ -441,58 +477,72 @@ export function TimeModal({ entry, defaults, onClose }: { entry?: TimeEntry; def
 /* =============== Invoice =============== */
 export function InvoiceModal({ invoice, jobId, entryIds, itemIds, defaultAmount, onClose }: { invoice?: Invoice; jobId: string; entryIds?: string[]; itemIds?: string[]; defaultAmount?: number; onClose: () => void }) {
   const store = useData()
-  const { invoices, recordInvoice, update, remove, toast } = store
+  const { invoices, recordInvoice, update, remove, refresh, toast } = store
+  const form = useRecordForm('invoice', onClose, () => refresh())
   const [selection] = useState(() => {
     try { return { links: invoiceWorkLinks(store, jobId, entryIds ?? [], itemIds ?? []), error: null } }
     catch (e) { return { links: [], error: (e as Error).message } }
   })
-  const busy = useRef(false)
-  const [saving, setSaving] = useState(false)
   const [d, setD] = useState({
     number: invoice?.number ?? suggestInvoiceNumber(invoices),
-    amount: invoice?.amount ?? Math.round(defaultAmount ?? 0),
+    amount: (invoice?.amount ?? Math.round(((defaultAmount ?? 0) + Number.EPSILON) * 100) / 100) as number | null,
     issued_date: invoice?.issued_date ?? todayISO(),
     paid_date: invoice?.paid_date ?? null as string | null,
     notes: invoice?.notes ?? '',
   })
   const set = <K extends keyof typeof d>(k: K, v: (typeof d)[K]) => setD(x => ({ ...x, [k]: v }))
   async function save() {
-    if (busy.current) return
-    busy.current = true; setSaving(true)
-    try {
+    if (form.busy.current) return
+    if (!d.number.trim()) { form.fail('Enter an invoice number.'); return }
+    const amount = d.amount
+    if (amount == null || !Number.isFinite(amount) || amount < 0) { form.fail('Enter an amount of zero or more.'); return }
+    if (!validRecordDate(d.issued_date) || d.paid_date && !validRecordDate(d.paid_date)) { form.fail('Enter valid issued and payment dates.'); return }
+    if (!invoice && selection.error) { form.fail(selection.error); return }
+    await form.run('save', async () => {
+      const row = { ...d, amount, number: d.number.trim() }
       if (invoice) {
-        if (!await update('invoices', invoice.id, d)) return
+        // An open editor is a draft, not a fresh copy of the record. Saving a
+        // notes-only edit must not reset a payment recorded on another device.
+        const changes: Partial<Invoice> = {}
+        if (row.number !== invoice.number) changes.number = row.number
+        if (row.amount !== invoice.amount) changes.amount = row.amount
+        if (row.issued_date !== invoice.issued_date) changes.issued_date = row.issued_date
+        if (row.paid_date !== invoice.paid_date) changes.paid_date = row.paid_date
+        if (row.notes !== invoice.notes) changes.notes = row.notes
+        return Object.keys(changes).length ? update('invoices', invoice.id, changes) : true
       } else {
-        if (selection.error) { toast(selection.error, 'error'); return }
         // The database validates these opening values and saves the invoice
         // and every selected row together, or rolls the whole operation back.
-        if (!await recordInvoice({ ...d, job_id: jobId }, selection.links)) return
+        if (!await recordInvoice({ ...row, job_id: jobId }, selection.links)) return false
         if (selection.links.length) toast('Selected hours and charges marked as billed')
+        return true
       }
-      onClose()
-    } catch (e) { toast((e as Error).message, 'error') }
-    finally { busy.current = false; setSaving(false) }
+    })
   }
   async function del() {
-    if (!invoice || !confirm('Delete this invoice? Hours on it will become unbilled again.')) return
-    if (await remove('invoices', invoice.id)) onClose()
+    if (form.busy.current || !invoice || !confirm('Delete this invoice? Linked hours and charges will become unbilled again.')) return
+    await form.run('delete', () => remove('invoices', invoice.id))
   }
   return (
-    <Modal title={invoice ? 'Edit invoice' : 'Record invoice'} onClose={onClose} footer={<>
-      {invoice && <button className="btn danger left" onClick={del} disabled={saving}>Delete</button>}
-      <button className="btn" onClick={onClose}>Cancel</button>
-      <button className="btn primary" onClick={save} disabled={saving}>{saving ? 'Saving…' : 'Save'}</button>
+    <Modal title={invoice ? 'Edit invoice' : 'Record invoice'} onClose={form.close} footer={<>
+      {invoice && <button className="btn danger left" onClick={del} disabled={form.pending !== null}>{form.pending === 'delete' ? 'Deleting…' : 'Delete'}</button>}
+      <button className="btn" onClick={form.close} disabled={form.pending !== null}>Cancel</button>
+      <button className="btn primary" type="submit" form={form.id} disabled={form.pending !== null}>{form.pending === 'save' ? 'Saving…' : 'Save'}</button>
     </>}>
+      {form.error && <p className="client-form-error" role="alert">{form.error}</p>}
+      <form id={form.id} onSubmit={event => { event.preventDefault(); void save() }} noValidate><fieldset className="editor-fields" disabled={form.pending !== null}>
       {((entryIds?.length ?? 0) + (itemIds?.length ?? 0)) > 0 && <p className="small muted">{[entryIds?.length ? `${entryIds.length} time entr${entryIds.length === 1 ? 'y' : 'ies'}` : '', itemIds?.length ? `${itemIds.length} charge${itemIds.length === 1 ? '' : 's'}` : ''].filter(Boolean).join(' and ')} will be marked as billed on this invoice.</p>}
       <div className="row">
-        <div className="field"><label>Invoice #</label><input value={d.number} onChange={e => set('number', e.target.value)} /></div>
-        <div className="field"><label>Amount ($)</label><input autoFocus type="number" min="0" step="1" value={d.amount} onChange={e => set('amount', Number(e.target.value))} /></div>
+        <div className="field"><label htmlFor={`${form.id}-field-0`}>Invoice #</label><input id={`${form.id}-field-0`} value={d.number} onChange={e => set('number', e.target.value)} /></div>
+        <div className="field"><label htmlFor={`${form.id}-field-1`}>Amount ($)</label><input id={`${form.id}-field-1`} autoFocus type="number" min="0" step="0.01" value={d.amount ?? ''} onChange={e => set('amount', e.target.value === '' ? null : Number(e.target.value))} /></div>
       </div>
       <div className="row">
-        <div className="field"><label>Issued</label><input type="date" value={d.issued_date} onChange={e => set('issued_date', e.target.value)} /></div>
-        <div className="field"><label>Paid on (blank = outstanding)</label><input type="date" value={d.paid_date ?? ''} onChange={e => set('paid_date', e.target.value || null)} /></div>
+        <div className="field"><label htmlFor={`${form.id}-field-2`}>Issued</label><input id={`${form.id}-field-2`} type="date" value={d.issued_date} onChange={e => set('issued_date', e.target.value)} /></div>
+        <div className="field"><label htmlFor={`${form.id}-field-3`}>Paid on (blank = outstanding)</label><input id={`${form.id}-field-3`} type="date" value={d.paid_date ?? ''} onChange={e => set('paid_date', e.target.value || null)} /></div>
       </div>
-      <div className="field"><label>Notes</label><input value={d.notes} onChange={e => set('notes', e.target.value)} /></div>
+      <div className="field"><label htmlFor={`${form.id}-field-4`}>Notes</label><input id={`${form.id}-field-4`} value={d.notes} onChange={e => set('notes', e.target.value)} /></div>
+      <p className="small muted">This records the invoice and its payment status in the planner. It does not send an invoice to the client.</p>
+      </fieldset></form>
     </Modal>
   )
 }
@@ -504,7 +554,8 @@ function suggestInvoiceNumber(invoices: Invoice[]): string {
 
 /* =============== Deposit =============== */
 export function DepositModal({ deposit, jobId, onClose }: { deposit?: Deposit; jobId?: string; onClose: () => void }) {
-  const { jobs, clients, insert, update, remove, toast } = useData()
+  const { jobs, clients, insert, update, remove, refresh, toast } = useData()
+  const form = useRecordForm('deposit', onClose, () => refresh('deposits'))
   const openJobs = jobs.filter(j => j.status !== 'archived' || j.id === deposit?.job_id || j.id === jobId)
   const [d, setD] = useState({
     job_id: deposit?.job_id ?? jobId ?? openJobs[0]?.id ?? '',
@@ -515,43 +566,53 @@ export function DepositModal({ deposit, jobId, onClose }: { deposit?: Deposit; j
   })
   const set = <K extends keyof typeof d>(k: K, v: (typeof d)[K]) => setD(x => ({ ...x, [k]: v }))
   async function save() {
-    if (!d.job_id || !d.amount || d.amount <= 0) { toast('Enter the job and the amount', 'error'); return }
-    if (deposit) await update('deposits', deposit.id, { ...d, amount: d.amount })
-    else { await insert('deposits', { ...d, amount: d.amount }); toast('Deposit recorded') }
-    onClose()
+    if (form.busy.current) return
+    if (!d.job_id || d.amount == null || !Number.isFinite(d.amount) || d.amount <= 0) { form.fail('Choose a job and enter an amount greater than zero.'); return }
+    if (!validRecordDate(d.received_date)) { form.fail('Enter a valid received date.'); return }
+    const row = { ...d, amount: d.amount }
+    await form.run('save', async () => {
+      if (deposit) return update('deposits', deposit.id, row)
+      if (!await insert('deposits', row)) return false
+      toast('Deposit recorded')
+      return true
+    })
   }
-  async function del() { if (deposit && confirm('Delete this deposit?')) { await remove('deposits', deposit.id); onClose() } }
+  async function del() { if (!form.busy.current && deposit && confirm('Delete this deposit?')) await form.run('delete', () => remove('deposits', deposit.id)) }
   return (
-    <Modal title={deposit ? 'Edit deposit' : 'Record deposit'} onClose={onClose} footer={<>
-      {deposit && <button className="btn danger left" onClick={del}>Delete</button>}
-      <button className="btn" onClick={onClose}>Cancel</button>
-      <button className="btn primary" onClick={save}>Save</button>
+    <Modal title={deposit ? 'Edit deposit' : 'Record deposit'} onClose={form.close} footer={<>
+      {deposit && <button className="btn danger left" onClick={del} disabled={form.pending !== null}>{form.pending === 'delete' ? 'Deleting…' : 'Delete'}</button>}
+      <button className="btn" onClick={form.close} disabled={form.pending !== null}>Cancel</button>
+      <button className="btn primary" type="submit" form={form.id} disabled={form.pending !== null}>{form.pending === 'save' ? 'Saving…' : 'Save'}</button>
     </>}>
+      {form.error && <p className="client-form-error" role="alert">{form.error}</p>}
+      <form id={form.id} onSubmit={event => { event.preventDefault(); void save() }} noValidate><fieldset className="editor-fields" disabled={form.pending !== null}>
       <div className="field">
-        <label>Job</label>
-        <select value={d.job_id} onChange={e => set('job_id', e.target.value)} disabled={Boolean(jobId && !deposit)}>
+        <label htmlFor={`${form.id}-field-0`}>Job</label>
+        <select id={`${form.id}-field-0`} value={d.job_id} onChange={e => set('job_id', e.target.value)} disabled={Boolean(jobId && !deposit)}>
           {openJobs.map(j => <option key={j.id} value={j.id}>{j.job_number ? `${j.job_number} · ` : ''}{j.name} ({clients.find(c => c.id === j.client_id)?.name})</option>)}
         </select>
       </div>
       <div className="row">
-        <div className="field"><label>Amount ($)</label><input autoFocus type="number" min="0" step="50" value={d.amount ?? ''} onChange={e => set('amount', e.target.value === '' ? null : Number(e.target.value))} /></div>
-        <div className="field"><label>Received</label><input type="date" value={d.received_date} onChange={e => set('received_date', e.target.value)} /></div>
+        <div className="field"><label htmlFor={`${form.id}-field-1`}>Amount ($)</label><input id={`${form.id}-field-1`} autoFocus type="number" min="0" step="0.01" value={d.amount ?? ''} onChange={e => set('amount', e.target.value === '' ? null : Number(e.target.value))} /></div>
+        <div className="field"><label htmlFor={`${form.id}-field-2`}>Received</label><input id={`${form.id}-field-2`} type="date" value={d.received_date} onChange={e => set('received_date', e.target.value)} /></div>
         <div className="field">
-          <label>How paid</label>
-          <select value={d.method} onChange={e => set('method', e.target.value)}>
+          <label htmlFor={`${form.id}-field-3`}>How paid</label>
+          <select id={`${form.id}-field-3`} value={d.method} onChange={e => set('method', e.target.value)}>
             {['Check', 'ACH / transfer', 'Credit card', 'Cash', 'Other'].map(m => <option key={m}>{m}</option>)}
           </select>
         </div>
       </div>
-      <div className="field"><label>Notes</label><input value={d.notes} onChange={e => set('notes', e.target.value)} placeholder="e.g. Retainer at signing, check #1043" /></div>
-      <p className="small muted">The deposit pays for hours on this job as they are logged, oldest first. Once it is used up, new hours show as "Not billed" until you send an invoice.</p>
+      <div className="field"><label htmlFor={`${form.id}-field-4`}>Notes</label><input id={`${form.id}-field-4`} value={d.notes} onChange={e => set('notes', e.target.value)} placeholder="e.g. Retainer at signing, check #1043" /></div>
+      <p className="small muted">The deposit covers billable hours and charges on this job, oldest first. Nonbillable time does not use deposits.</p>
+      </fieldset></form>
     </Modal>
   )
 }
 
 /* =============== Charge (billable item other than hours) =============== */
 export function ItemModal({ item, jobId, onClose }: { item?: JobItem; jobId?: string; onClose: () => void }) {
-  const { jobs, clients, me, insert, update, remove, toast } = useData()
+  const { jobs, clients, items, me, insert, update, remove, refresh, toast } = useData()
+  const form = useRecordForm('charge', onClose, () => refresh('job_items'))
   const openJobs = jobs.filter(j => j.status !== 'archived' || j.id === item?.job_id || j.id === jobId)
   const [d, setD] = useState({
     job_id: item?.job_id ?? jobId ?? openJobs[0]?.id ?? '',
@@ -564,47 +625,60 @@ export function ItemModal({ item, jobId, onClose }: { item?: JobItem; jobId?: st
   const set = <K extends keyof typeof d>(k: K, v: (typeof d)[K]) => setD(x => ({ ...x, [k]: v }))
   const amount = (d.quantity ?? 0) * (d.unit_price ?? 0)
   const miles = d.category === 'Mileage'
+  const currentItem = item ? items.find(row => row.id === item.id) ?? item : undefined
+  const billingLocked = Boolean(currentItem?.billed || currentItem?.invoice_id || (currentItem?.deposit_applied ?? 0) > 0)
   async function save() {
-    if (!d.job_id || !d.unit_price || !d.quantity) { toast('Enter the amount', 'error'); return }
-    const credit = item?.billed ? item.deposit_applied ?? 0 : 0
-    if (item && credit > 0 && (d.job_id !== item.job_id || amount < credit)) {
+    if (form.busy.current) return
+    if (!d.job_id || d.unit_price == null || !Number.isFinite(d.unit_price) || d.unit_price <= 0 || d.quantity == null || !Number.isFinite(d.quantity) || d.quantity <= 0 || !Number.isFinite(amount)) { form.fail('Choose a job and enter a quantity and price greater than zero.'); return }
+    if (!validRecordDate(d.date)) { form.fail('Enter a valid charge date.'); return }
+    if (currentItem && billingLocked && d.job_id !== currentItem.job_id) {
+      toast('Unbill this charge before moving it to another job.', 'error'); return
+    }
+    const credit = currentItem?.billed ? currentItem.deposit_applied ?? 0 : 0
+    if (currentItem && credit > 0 && (d.job_id !== currentItem.job_id || amount < credit)) {
       toast('Unbill this charge before moving it to another job or reducing its value below the applied deposit.', 'error'); return
     }
     const row = { ...d, quantity: d.quantity, unit_price: d.unit_price, description: d.description.trim() }
-    if (item) { if (!await update('job_items', item.id, row)) return }
-    else { if (!await insert('job_items', { ...row, created_by: me?.id ?? null })) return; toast('Charge added') }
-    onClose()
+    await form.run('save', async () => {
+      if (item) return update('job_items', item.id, row)
+      if (!await insert('job_items', { ...row, created_by: me?.id ?? null })) return false
+      toast('Charge added')
+      return true
+    })
   }
-  async function del() { if (item && confirm('Delete this charge?')) { await remove('job_items', item.id); onClose() } }
+  async function del() { if (!form.busy.current && item && confirm('Delete this charge?')) await form.run('delete', () => remove('job_items', item.id)) }
   return (
-    <Modal title={item ? 'Edit charge' : 'Add charge'} onClose={onClose} footer={<>
-      {item && <button className="btn danger left" onClick={del}>Delete</button>}
-      <button className="btn" onClick={onClose}>Cancel</button>
-      <button className="btn primary" onClick={save}>Save {amount > 0 ? fmtMoney(amount) : ''}</button>
+    <Modal title={item ? 'Edit charge' : 'Add charge'} onClose={form.close} footer={<>
+      {item && <button className="btn danger left" onClick={del} disabled={form.pending !== null}>{form.pending === 'delete' ? 'Deleting…' : 'Delete'}</button>}
+      <button className="btn" onClick={form.close} disabled={form.pending !== null}>Cancel</button>
+      <button className="btn primary" type="submit" form={form.id} disabled={form.pending !== null}>{form.pending === 'save' ? 'Saving…' : `Save ${amount > 0 && Number.isFinite(amount) ? fmtMoney(amount) : ''}`}</button>
     </>}>
+      {form.error && <p className="client-form-error" role="alert">{form.error}</p>}
+      <form id={form.id} onSubmit={event => { event.preventDefault(); void save() }} noValidate><fieldset className="editor-fields" disabled={form.pending !== null}>
       <div className="field">
-        <label>Job</label>
-        <select value={d.job_id} onChange={e => set('job_id', e.target.value)} disabled={Boolean(jobId && !item)}>
+        <label htmlFor={`${form.id}-field-0`}>Job</label>
+        <select id={`${form.id}-field-0`} value={d.job_id} onChange={e => set('job_id', e.target.value)} disabled={billingLocked || Boolean(jobId && !item)}>
           {openJobs.map(j => <option key={j.id} value={j.id}>{j.job_number ? `${j.job_number} · ` : ''}{j.name} ({clients.find(c => c.id === j.client_id)?.name})</option>)}
         </select>
       </div>
       <div className="row">
         <div className="field">
-          <label>Type</label>
-          <select value={d.category} onChange={e => set('category', e.target.value)}>
+          <label htmlFor={`${form.id}-field-1`}>Type</label>
+          <select id={`${form.id}-field-1`} value={d.category} onChange={e => set('category', e.target.value)}>
             {ITEM_CATEGORIES.map(c => <option key={c}>{c}</option>)}
           </select>
         </div>
-        <div className="field"><label>Date</label><input type="date" value={d.date} onChange={e => set('date', e.target.value)} /></div>
+        <div className="field"><label htmlFor={`${form.id}-field-2`}>Date</label><input id={`${form.id}-field-2`} type="date" value={d.date} onChange={e => set('date', e.target.value)} /></div>
       </div>
-      <div className="field"><label>Description</label><input autoFocus value={d.description} onChange={e => set('description', e.target.value)} placeholder={miles ? 'e.g. Site visit round trip' : 'e.g. County plan-check fee, plotting 24x36 sets'} /></div>
+      <div className="field"><label htmlFor={`${form.id}-field-3`}>Description</label><input id={`${form.id}-field-3`} autoFocus value={d.description} onChange={e => set('description', e.target.value)} placeholder={miles ? 'e.g. Site visit round trip' : 'e.g. County plan-check fee, plotting 24x36 sets'} /></div>
       <div className="row">
-        <div className="field"><label>{miles ? 'Miles' : 'Quantity'}</label><input type="number" min="0" step={miles ? '1' : '0.5'} value={d.quantity ?? ''} onChange={e => set('quantity', e.target.value === '' ? null : Number(e.target.value))} /></div>
-        <div className="field"><label>{miles ? '$ per mile' : 'Price each ($)'}</label><input type="number" min="0" step="0.01" value={d.unit_price ?? ''} onChange={e => set('unit_price', e.target.value === '' ? null : Number(e.target.value))} /></div>
-        <div className="field"><label>Amount</label><input readOnly value={fmtMoney(amount)} /></div>
+        <div className="field"><label htmlFor={`${form.id}-field-4`}>{miles ? 'Miles' : 'Quantity'}</label><input id={`${form.id}-field-4`} type="number" min="0" step={miles ? '1' : '0.5'} value={d.quantity ?? ''} onChange={e => set('quantity', e.target.value === '' ? null : Number(e.target.value))} /></div>
+        <div className="field"><label htmlFor={`${form.id}-field-5`}>{miles ? '$ per mile' : 'Price each ($)'}</label><input id={`${form.id}-field-5`} type="number" min="0" step="0.01" value={d.unit_price ?? ''} onChange={e => set('unit_price', e.target.value === '' ? null : Number(e.target.value))} /></div>
+        <div className="field"><label htmlFor={`${form.id}-field-6`}>Amount</label><input id={`${form.id}-field-6`} readOnly value={fmtMoney(amount)} /></div>
       </div>
-      {item?.billed && <p className="small muted">This charge is already on an invoice. Changing it won't change the invoice amount.</p>}
+      {billingLocked && <p className="small muted">Unbill this charge in <Link to={`/billing?job=${currentItem?.job_id}`} aria-disabled={form.pending !== null} onClick={event => { if (form.busy.current) event.preventDefault(); else form.close() }}>Billing</Link> before moving it to another job. Changes to the charge do not change its invoice amount.</p>}
       <p className="small muted">Charges count against the job balance like hours do: a deposit pays for them first, otherwise they show as "Not billed" until you put them on an invoice.</p>
+      </fieldset></form>
     </Modal>
   )
 }

@@ -1,11 +1,11 @@
 // @vitest-environment jsdom
 import { act, type ReactNode } from 'react'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter, useLocation } from 'react-router-dom'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Store } from '../lib/store'
 import type { Invoice, Task } from '../lib/types'
-import { InvoiceModal, ItemModal, JobModal, TaskModal, TimeModal } from './editors'
+import { DepositModal, InvoiceModal, ItemModal, JobModal, TaskModal, TimeModal } from './editors'
 import { FeesSummary, WorkStatusBar } from './MoneyCharts'
 import { jobBilling } from '../lib/calc'
 
@@ -198,6 +198,28 @@ describe('task and credited-work forms', () => {
     expect(store.toast).toHaveBeenCalledWith(expect.stringContaining('Unbill this charge'), 'error')
     expect(close).not.toHaveBeenCalled()
   })
+
+  it.each(['hours', 'charge'] as const)('requires unbilling before moving invoice-linked %s even without a deposit credit', async kind => {
+    store.jobs.push({ ...store.jobs[0], id: 'another-job', name: 'Another synthetic job' })
+    const close = vi.fn()
+    if (kind === 'hours') {
+      const entry = { ...store.timeEntries[0], billed: true, invoice_id: 'invoice', deposit_applied: 0 }
+      store.timeEntries = [entry]
+      await render(<TimeModal entry={entry} onClose={close} />)
+    } else {
+      const item = { id: 'charge', job_id: 'job', date: '2026-01-02', category: 'Expense', description: '', quantity: 1, unit_price: 150, billed: true, invoice_id: 'invoice', deposit_applied: 0, created_by: 'owner', created_at: '' }
+      store.items = [item]
+      await render(<ItemModal item={item} onClose={close} />)
+    }
+    const job = container.querySelector<HTMLSelectElement>('select')!
+    expect(job.disabled).toBe(true)
+    // Even a stale/scripted field event must not move linked work across jobs.
+    await change('Job', 'another-job')
+    await clickButton(kind === 'hours' ? 'Save' : 'Save $150')
+    expect(store.update).not.toHaveBeenCalled()
+    expect(close).not.toHaveBeenCalled()
+    expect(store.toast).toHaveBeenCalledWith(expect.stringContaining('before moving'), 'error')
+  })
 })
 
 describe('job fees and effective hourly rate', () => {
@@ -308,5 +330,196 @@ describe('job deletion', () => {
     await act(async () => resolveUpdate(false))
     expect(close).not.toHaveBeenCalled()
     expect(jobName().value).toBe('Pending edited job')
+  })
+})
+
+describe('financial form recovery and precision', () => {
+  const deposit = { id: 'deposit', job_id: 'job', amount: 100.25, received_date: '2026-01-01', method: 'Check', notes: 'Saved deposit', created_at: '' }
+  const item = { id: 'charge', job_id: 'job', date: '2026-01-02', category: 'Expense', description: 'Saved charge', quantity: 1, unit_price: 125.25, billed: false, invoice_id: null, deposit_applied: null, created_by: 'legacy-owner', created_at: '' }
+  const button = (text: string) => {
+    const found = [...container.querySelectorAll('button')].find(button => button.textContent?.trim() === text)
+    if (!found) throw new Error(`Missing button ${text}`)
+    return found
+  }
+  const input = (label: string) => {
+    const field = [...container.querySelectorAll('.field')].find(field => field.querySelector('label')?.textContent === label)
+    return field!.querySelector<HTMLInputElement>('input')!
+  }
+
+  it('preserves invoice cents in its initial amount and atomic request', async () => {
+    const close = vi.fn()
+    await render(<InvoiceModal jobId="job" entryIds={['hours']} defaultAmount={50.25} onClose={close} />)
+    expect(input('Amount ($)').value).toBe('50.25')
+    expect(input('Amount ($)').step).toBe('0.01')
+    await clickButton('Save')
+    expect(store.recordInvoice).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ amount: 50.25 }), [{ table: 'time_entries', id: 'hours', amount: 150, depositApplied: 0 }])
+    expect(close).toHaveBeenCalledOnce()
+  })
+
+  it('requires an explicit amount while still allowing an intentionally entered zero invoice', async () => {
+    const close = vi.fn()
+    await render(<InvoiceModal jobId="job" entryIds={['hours']} defaultAmount={150} onClose={close} />)
+    await change('Amount ($)', '')
+    await clickButton('Save')
+    expect(input('Amount ($)').value).toBe('')
+    expect(store.recordInvoice).not.toHaveBeenCalled()
+    expect(close).not.toHaveBeenCalled()
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain('Enter an amount')
+    await change('Amount ($)', '0')
+    await clickButton('Save')
+    expect(store.recordInvoice).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ amount: 0 }), expect.any(Array))
+    expect(close).toHaveBeenCalledOnce()
+  })
+
+  it('preserves a payment and amount changed elsewhere when saving only invoice notes', async () => {
+    store.invoices = [issued]
+    const close = vi.fn()
+    const modal = <InvoiceModal invoice={issued} jobId="job" onClose={close} />
+    await render(modal)
+    await change('Notes', 'Updated follow-up notes')
+    store.invoices = [{ ...issued, amount: 75.25, paid_date: '2026-01-05' }]
+    await render(modal)
+    await clickButton('Save')
+    expect(store.update).toHaveBeenCalledExactlyOnceWith('invoices', issued.id, { notes: 'Updated follow-up notes' })
+    expect(close).toHaveBeenCalledOnce()
+  })
+
+  it('keeps a failed deposit draft and only reports success after a confirmed retry', async () => {
+    store.insert = vi.fn().mockResolvedValueOnce(null).mockResolvedValueOnce(deposit)
+    const close = vi.fn()
+    await render(<DepositModal jobId="job" onClose={close} />)
+    await change('Amount ($)', '100.25'); await change('Notes', 'Keep this retainer draft')
+    await clickButton('Save')
+    expect(close).not.toHaveBeenCalled()
+    expect(store.toast).not.toHaveBeenCalled()
+    expect(store.refresh).toHaveBeenCalledWith('deposits')
+    expect(input('Notes').value).toBe('Keep this retainer draft')
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain('not saved')
+    await clickButton('Save')
+    expect(store.insert).toHaveBeenCalledTimes(2)
+    expect(store.insert).toHaveBeenLastCalledWith('deposits', expect.objectContaining({ amount: 100.25, notes: 'Keep this retainer draft' }))
+    expect(store.toast).toHaveBeenCalledExactlyOnceWith('Deposit recorded')
+    expect(close).toHaveBeenCalledOnce()
+  })
+
+  it('blocks duplicate charge creation and closing while the request is pending', async () => {
+    let resolveSave!: (value: unknown) => void
+    store.insert = vi.fn(() => new Promise(resolve => { resolveSave = resolve })) as Store['insert']
+    const close = vi.fn()
+    await render(<ItemModal jobId="job" onClose={close} />)
+    await change('Description', '  Permit expense  '); await change('Price each ($)', '125.25')
+    const save = button('Save $125'), cancel = button('Cancel')
+    await act(async () => { save.click(); save.click(); cancel.click(); window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })) })
+    expect(store.insert).toHaveBeenCalledExactlyOnceWith('job_items', expect.objectContaining({ description: 'Permit expense', unit_price: 125.25, created_by: 'owner' }))
+    expect(input('Description').matches(':disabled')).toBe(true)
+    expect(close).not.toHaveBeenCalled()
+    await act(async () => resolveSave(item))
+    expect(close).toHaveBeenCalledOnce()
+  })
+
+  it('keeps failed time edits and awaits refresh while all actions remain locked', async () => {
+    store.update = vi.fn(async () => false)
+    let resolveRefresh!: () => void
+    store.refresh = vi.fn(() => new Promise<void>(resolve => { resolveRefresh = resolve }))
+    const close = vi.fn()
+    await render(<TimeModal entry={store.timeEntries[0]} onClose={close} />)
+    await change('Notes', 'Keep the edited time notes')
+    const save = button('Save'), remove = button('Delete'), cancel = button('Cancel')
+    await act(async () => { save.click(); save.click(); remove.click(); cancel.click() })
+    expect(store.update).toHaveBeenCalledOnce()
+    expect(store.remove).not.toHaveBeenCalled()
+    expect(store.refresh).toHaveBeenCalledWith('time_entries')
+    expect(input('Notes').matches(':disabled')).toBe(true)
+    expect(close).not.toHaveBeenCalled()
+    await act(async () => resolveRefresh())
+    expect(input('Notes').value).toBe('Keep the edited time notes')
+    expect(input('Notes').matches(':disabled')).toBe(false)
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain('not saved')
+  })
+
+  it.each(['hours', 'charge'] as const)('blocks the Billing link while linked %s are saving', async kind => {
+    function RouteProbe() { return <output data-route>{useLocation().pathname}</output> }
+    let resolveSave!: (success: boolean) => void
+    store.update = vi.fn(() => new Promise<boolean>(resolve => { resolveSave = resolve })) as Store['update']
+    const close = vi.fn()
+    const entry = { ...store.timeEntries[0], billed: true, invoice_id: 'invoice', deposit_applied: 0 }
+    store.timeEntries = [entry]
+    const linkedItem = { ...item, billed: true, invoice_id: 'invoice' }
+    store.items = [linkedItem]
+    await render(<>{kind === 'hours' ? <TimeModal entry={entry} onClose={close} /> : <ItemModal item={linkedItem} onClose={close} />}<RouteProbe /></>)
+    await clickButton(kind === 'hours' ? 'Save' : 'Save $125')
+    const billing = [...container.querySelectorAll('a')].find(link => link.textContent === 'Billing')!
+    await act(async () => billing.click())
+    expect(container.querySelector('[data-route]')?.textContent).toBe('/')
+    expect(close).not.toHaveBeenCalled()
+    await act(async () => resolveSave(false))
+    expect(container.querySelector('[role="dialog"]')).not.toBeNull()
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain('not saved')
+  })
+
+  it('blocks duplicate invoice requests and preserves the captured work while pending', async () => {
+    let resolveInvoice!: (value: Invoice | null) => void
+    store.recordInvoice = vi.fn(() => new Promise<Invoice | null>(resolve => { resolveInvoice = resolve }))
+    const close = vi.fn()
+    await render(<InvoiceModal jobId="job" entryIds={['hours']} defaultAmount={150.25} onClose={close} />)
+    const save = button('Save'), cancel = button('Cancel')
+    await act(async () => { save.click(); save.click(); cancel.click(); window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })) })
+    expect(store.recordInvoice).toHaveBeenCalledOnce()
+    expect(input('Amount ($)').matches(':disabled')).toBe(true)
+    expect(close).not.toHaveBeenCalled()
+    await act(async () => resolveInvoice(null))
+    expect(input('Amount ($)').value).toBe('150.25')
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain('not saved')
+    expect(close).not.toHaveBeenCalled()
+  })
+
+  it.each(['time entry', 'invoice', 'deposit', 'charge'] as const)('keeps the %s draft through a rejected deletion and awaited recovery', async kind => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    store.remove = vi.fn(async () => false)
+    let resolveRefresh!: () => void
+    store.refresh = vi.fn(() => new Promise<void>(resolve => { resolveRefresh = resolve }))
+    const close = vi.fn()
+    const node = kind === 'time entry' ? <TimeModal entry={store.timeEntries[0]} onClose={close} /> : kind === 'invoice' ? <InvoiceModal invoice={issued} jobId="job" onClose={close} /> : kind === 'deposit' ? <DepositModal deposit={deposit} onClose={close} /> : <ItemModal item={item} onClose={close} />
+    await render(node)
+    const label = kind === 'charge' ? 'Description' : 'Notes'
+    await change(label, 'Keep this edited draft')
+    const remove = button('Delete'), cancel = button('Cancel')
+    await act(async () => { remove.click(); remove.click(); cancel.click() })
+    expect(store.remove).toHaveBeenCalledOnce()
+    expect(store.refresh).toHaveBeenCalledOnce()
+    expect(input(label).matches(':disabled')).toBe(true)
+    expect(close).not.toHaveBeenCalled()
+    await act(async () => resolveRefresh())
+    expect(input(label).value).toBe('Keep this edited draft')
+    expect(input(label).matches(':disabled')).toBe(false)
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain('not deleted')
+    expect(close).not.toHaveBeenCalled()
+  })
+
+  it('catches an uncertain charge save without losing the draft or showing success', async () => {
+    store.update = vi.fn(async () => { throw new Error('Synthetic network interruption') })
+    const close = vi.fn()
+    await render(<ItemModal item={item} onClose={close} />)
+    await change('Description', 'Edited before interruption')
+    await clickButton('Save $125')
+    expect(store.refresh).toHaveBeenCalledWith('job_items')
+    expect(input('Description').value).toBe('Edited before interruption')
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain('Could not confirm')
+    expect(close).not.toHaveBeenCalled()
+    expect(store.toast).not.toHaveBeenCalled()
+  })
+
+  it('rejects negative hours, rates, deposit amounts, and charge quantities before writing', async () => {
+    await render(<TimeModal entry={store.timeEntries[0]} onClose={vi.fn()} />)
+    await change('Hours', '-1'); await clickButton('Save')
+    expect(store.update).not.toHaveBeenCalled()
+    await change('Hours', '1'); await change('Rate ($/hour)', '-5'); await clickButton('Save')
+    expect(store.update).not.toHaveBeenCalled()
+    await render(<DepositModal jobId="job" onClose={vi.fn()} />)
+    await change('Amount ($)', '-1'); await clickButton('Save')
+    expect(store.insert).not.toHaveBeenCalled()
+    await render(<ItemModal jobId="job" onClose={vi.fn()} />)
+    await change('Price each ($)', '1'); await change('Quantity', '-1'); await clickButton('Save')
+    expect(store.insert).not.toHaveBeenCalled()
   })
 })

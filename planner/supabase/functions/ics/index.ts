@@ -29,6 +29,7 @@ Deno.serve(async (req) => {
     db.from('tasks').select('id, job_id, title, due_date, scheduled_at, is_site_visit, status, assignee_id'),
   ])
   const jobName = new Map((jobs ?? []).map(j => [j.id, j.name]))
+  const completedJobs = new Set((jobs ?? []).filter(j => j.status === 'complete').map(j => j.id))
   const okJob = (id: string) => jobName.has(id)
   const lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Wisner Engineering Planner//EN', 'CALSCALE:GREGORIAN',
     `X-WR-CALNAME:${esc(mine ? `Planner — ${profile.full_name}` : 'Wisner Planner')}`, 'X-PUBLISHED-TTL:PT1H', 'REFRESH-INTERVAL;VALUE=DURATION:PT1H']
@@ -46,8 +47,8 @@ Deno.serve(async (req) => {
   }
 
   for (const j of jobs ?? []) if (!mine) add(`job-${j.id}`, `Job due: ${j.name}`, j.name, j.due_date, null, j.status === 'complete')
-  for (const p of phases ?? []) if (okJob(p.job_id) && (!mine || p.assignee_id === profile.id)) add(`phase-${p.id}`, `${SHORT[p.kind] ?? p.name} due — ${jobName.get(p.job_id)}`, p.name, p.due_date, null, p.status === 'complete')
-  for (const t of tasks ?? []) if (okJob(t.job_id) && (!mine || t.assignee_id === profile.id || t.assignee_id == null)) add(`task-${t.id}`, (t.is_site_visit ? 'Site visit: ' : '') + t.title, jobName.get(t.job_id) ?? '', t.due_date, t.scheduled_at, t.status === 'done')
+  for (const p of phases ?? []) if (okJob(p.job_id) && (!mine || p.assignee_id === profile.id)) add(`phase-${p.id}`, `${SHORT[p.kind] ?? p.name} due — ${jobName.get(p.job_id)}`, p.name, p.due_date, null, p.status === 'complete' || completedJobs.has(p.job_id))
+  for (const t of tasks ?? []) if (okJob(t.job_id) && (!mine || t.assignee_id === profile.id || t.assignee_id == null)) add(`task-${t.id}`, (t.is_site_visit ? 'Site visit: ' : '') + t.title, jobName.get(t.job_id) ?? '', t.due_date, t.scheduled_at, t.status === 'done' || completedJobs.has(t.job_id))
   lines.push('END:VCALENDAR')
 
   return new Response(lines.join('\r\n'), {
