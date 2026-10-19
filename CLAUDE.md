@@ -143,7 +143,7 @@ Conventions:
 ### Build / deploy
 
 - `cd planner && npm run build` must pass (`tsc -b && vite build`). `npm test` (Vitest) and `npm run lint` (oxlint, errors must pass; a few React-compiler warnings are acceptable).
-- `vite.config.ts` has `base: '/Who-knows/'` — change it (and `classic/vite.config.ts`, which uses `/Who-knows/classic/`) if the repo is renamed.
+- `vite.config.ts` and `classic/vite.config.ts` use relative paths (`base: './'`), so the built site works under any repository name (the address is `https://brianwisner.github.io/<repo name>/`). Renaming the repo needs no code change; only the Supabase Auth Site URL (password-reset emails) and docs mention the address. The demo is in `demo/`, so its links to the planner and classic go up one folder (`../`).
 - Vite reads `planner/.env.production` (Supabase URL and *publishable* key — public by design; deliberately un-ignored in `.gitignore`). `classic/` has its own copy.
 - Live Supabase project: `wisner-planner` (ref `axjyhkyvmbrhtivgofya`, us-east-1). Statements containing `drop …` make the Supabase MCP `execute_sql` tool wait for a confirmation that never arrives in a cloud session, so write migrations without DROP or run them from the dashboard.
 - Password resets by email need Site URL set in Supabase Auth settings, which the MCP cannot change.

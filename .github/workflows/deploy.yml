@@ -1,9 +1,10 @@
 # Builds the planner and publishes it to GitHub Pages every time code is
 # pushed to the default branch. Nothing to run by hand.
 #
-#   /Who-knows/             the planner (planner/)
-#   /Who-knows/demo/        the same planner with made-up sample data, no login
-#   /Who-knows/classic/     the previous design (classic/), same database
+# Site address: https://brianwisner.github.io/<repository name>/
+#   ./           the planner (planner/)
+#   ./demo/      the same planner with made-up sample data, no login
+#   ./classic/   the previous design (classic/), same database
 #
 # The built site is pushed to the `gh-pages` branch, which GitHub Pages serves.
 name: Deploy planner to GitHub Pages
@@ -39,7 +40,7 @@ jobs:
         run: npm ci && npm run build
       - name: Build the demo (in-memory sample data)
         working-directory: planner
-        run: npx vite build --mode demo --base /Who-knows/demo/ --outDir dist/demo
+        run: npx vite build --mode demo --outDir dist/demo
       - name: Build the classic version
         working-directory: classic
         run: npm ci && npm run build && cp -r dist ../planner/dist/classic
