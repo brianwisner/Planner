@@ -2,16 +2,20 @@
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type { PlanningStore } from '../lib/planningTypes'
 import type { Store } from '../lib/store'
 import type { Phase, ScheduleEntry } from '../lib/types'
 import { ScheduleModal } from './ScheduleModal'
 
+let planning: PlanningStore | null = null
+vi.mock('../lib/planningStore', () => ({ useOptionalPlanning: () => planning }))
 let store: Store, root: Root, container: HTMLDivElement
 vi.mock('../lib/store', () => ({ useData: () => store }))
 const today = '2026-10-19'
 function phase(patch: Partial<Phase> = {}): Phase { return { id: 'design', job_id: 'job', kind: 'design', name: 'Design', status: 'in_progress', sort_order: 2, estimate_hours: 8, start_date: null, due_date: null, assignee_id: null, notes: '', ...patch } }
 function plan(patch: Partial<ScheduleEntry> = {}): ScheduleEntry { return { id: 'saved', job_id: 'job', phase_id: 'history', user_id: 'owner', date: today, hours: 2, note: '', created_at: '', ...patch } }
 beforeEach(() => {
+  planning = null
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
   const owner = { id: 'owner', full_name: 'Owner', email: null, color: '#123456', hourly_rate: 100, weekly_hours: 40, ics_token: '', created_at: '' }
   store = { session: null, me: owner, profiles: [owner], settings: { id: 1, company_name: 'Synthetic', default_rate: 100, weekly_capacity: 40 }, clients: [],
@@ -180,5 +184,18 @@ describe('guarded save and clear failures', () => {
     expect(container.querySelector('[role="alert"]')?.textContent).toContain('Could not confirm the clear')
     expect(close).not.toHaveBeenCalled()
     expect(store.toast).not.toHaveBeenCalled()
+  })
+})
+
+
+describe('ScheduleModal daily availability', () => {
+  it('keeps saved hours intact when daily availability falls and warns before any save', async () => {
+    planning = { availability: [{ date: '2026-10-19', base_hours: 2 }], blocks: [{ date: '2026-10-19', hours: 1 }] } as PlanningStore
+    store.schedule = [plan({ phase_id: 'design', hours: 4 })]
+    await render({ phaseId: 'design' })
+    expect(hours().value).toBe('4')
+    expect(container.textContent).toContain('over available hours')
+    expect(store.update).not.toHaveBeenCalled()
+    expect(store.insert).not.toHaveBeenCalled()
   })
 })

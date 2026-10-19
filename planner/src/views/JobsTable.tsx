@@ -6,6 +6,8 @@ import { Link } from 'react-router-dom'
 import { DndContext, KeyboardSensor, PointerSensor, TouchSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core'
 import { SortableContext, arrayMove, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
+import { useOptionalPlanning } from '../lib/planningStore'
+import { dayCapacity, defaultDailyHours } from '../lib/planningCapacity'
 import { useData } from '../lib/store'
 import { jobRows, type JobOverview } from '../lib/jobs'
 import type { Job, ScheduleEntry } from '../lib/types'
@@ -35,7 +37,8 @@ const round2 = (n: number) => Math.round(n * 100) / 100
 
 export function JobsTable({ jobs, showExport = true, schedulable = false, allowReorder = false, onLogHours, onAddTask }: Props) {
   const store = useData()
-  const { schedule, me, settings, update, refresh, toast } = store
+  const planning = useOptionalPlanning()
+  const { schedule, me, update, refresh, toast } = store
   const [plan, setPlan] = useState(() => readPref('table-plan', false))
   const [weekends, setWeekends] = useState(() => readPref('table-plan-weekends', false))
   const [weekStart, setWeekStart] = useState(() => startOfWeek(new Date(), { weekStartsOn: 1 }))
@@ -49,7 +52,7 @@ export function JobsTable({ jobs, showExport = true, schedulable = false, allowR
   const days = useMemo(() => Array.from({ length: 7 }, (_, index) => addDays(weekStart, index)).filter(day => weekends || !isWeekend(day)).map(day => format(day, 'yyyy-MM-dd')), [weekStart, weekends])
   const weekPlans = useMemo(() => schedule.filter(entry => days.includes(entry.date)), [schedule, days])
   const activeIds = useMemo(() => new Set(store.jobs.filter(job => job.status === 'active').map(job => job.id)), [store.jobs])
-  const dailyCap = (me?.weekly_hours || settings.weekly_capacity || 40) / 5
+  const capacityFor = (date: string) => planning && !planning.loading && !planning.error ? dayCapacity(store, planning, date).availableHours : defaultDailyHours(store, date)
   const rows = useMemo(() => {
     const ids = new Set(jobs.map(job => job.id))
     return jobRows(store).filter(row => ids.has(row.job.id))
@@ -157,7 +160,7 @@ export function JobsTable({ jobs, showExport = true, schedulable = false, allowR
             {showPlan && <tfoot><tr>
               <td colSpan={2}>Active jobs total <span className="tiny muted">(all saved plans)</span></td>
               <td className="plan-hide-mobile" /><td className="plan-hide-mobile" />
-              {days.map(date => { const total = dayTotal(date); return <td key={date} className={`plan-col num ${total > dailyCap ? 'plan-over' : ''}`}>{total ? fmtHours(total) : <span className="muted">–</span>}</td> })}
+              {days.map(date => { const total = dayTotal(date); return <td key={date} className={`plan-col num ${total > capacityFor(date) ? 'plan-over' : ''}`}>{total ? fmtHours(total) : <span className="muted">–</span>}</td> })}
               <td className="plan-col num plan-hide-mobile">{fmtHours(sum(days.map(dayTotal)))}</td>
             </tr></tfoot>}
           </table>

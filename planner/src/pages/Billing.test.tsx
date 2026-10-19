@@ -10,6 +10,7 @@ import { Billing } from './Billing'
 
 let store: Store
 vi.mock('../lib/store', () => ({ useData: () => store }))
+vi.mock('../lib/planningStore', () => ({ usePlanning: () => ({ followUps: [], loading: false, error: null }) }))
 vi.mock('../lib/utils', async importOriginal => ({ ...await importOriginal<typeof import('../lib/utils')>(), downloadCSV: vi.fn() }))
 vi.mock('../components/MoneyCharts', async importOriginal => ({ ...await importOriginal<typeof import('../components/MoneyCharts')>(), BalanceChart: () => <div>Balance chart</div> }))
 const TODAY = '2026-10-19'
@@ -68,6 +69,17 @@ function stat(label: string) { return [...container.querySelectorAll('.billing-s
 function noWrites() { expect(store.insert).not.toHaveBeenCalled(); expect(store.update).not.toHaveBeenCalled(); expect(store.remove).not.toHaveBeenCalled(); expect(store.recordInvoice).not.toHaveBeenCalled() }
 
 describe('Billing overview', () => {
+  it('keeps collection actions within the matched jobs and positive unpaid invoice filters', async () => {
+    await render('/billing?tab=invoices&payment=all')
+    const panel = () => container.querySelector('.billing-follow-ups')!
+    expect(panel().textContent).toContain('INV-CLOSED')
+    expect(panel().textContent).not.toContain('INV-ARCHIVED')
+    expect(panel().textContent).not.toContain('INV-ZERO')
+    await change(field('Search billing jobs'), 'Maple')
+    expect(panel().querySelectorAll('.billing-collection-row')).toHaveLength(0)
+    expect(stat('Awaiting payment')).toBe('$0')
+    noWrites()
+  })
   it.each(['/billing?tab=hours', '/billing?job=alpha&work=all'])('shows and searches retained planning hours under their history label at %s', async url => {
     store.phases[0] = { ...store.phases[0], kind: 'queued', name: 'Retired custom queue label' }
     await render(url)

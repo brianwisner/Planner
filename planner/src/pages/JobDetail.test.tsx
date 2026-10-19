@@ -9,6 +9,7 @@ import { JobDetail } from './JobDetail'
 
 let store: Store
 vi.mock('../lib/store', () => ({ useData: () => store }))
+vi.mock('../lib/planningStore', () => ({ usePlanning: () => ({ jobPlanning: [], decisions: [], loading: false, error: null }) }))
 vi.mock('../components/JobWork', () => ({ JobWork: ({ job, phases, tasks, onAddTask, onEditTask, onLog, onStart }: { job: Job; phases: Phase[]; tasks: Task[]; onAddTask: (id: string | null) => void; onEditTask: (task: Task) => void; onLog: (id: string | null, taskId?: string | null) => void; onStart: (id: string | null, taskId?: string | null) => void }) =>
   <div data-testid="job-work" data-job-id={job.id}>{phases.map(phase => <div key={phase.id}><button onClick={() => onAddTask(phase.id)}>Test add task to {phase.id}</button><button onClick={() => onLog(phase.id)}>Test log phase {phase.id}</button><button onClick={() => onStart(phase.id)}>Test timer phase {phase.id}</button></div>)}<button onClick={() => onLog(null, 'task-general')}>Test log general task</button>{tasks.map(task => <button key={task.id} onClick={() => onEditTask(task)}>Test edit {task.id}</button>)}</div> }))
 
@@ -89,6 +90,18 @@ function noWrites() {
   expect(store.update).not.toHaveBeenCalled()
   expect(store.remove).not.toHaveBeenCalled()
 }
+
+it('opens the planning anchor on Work without editing records or losing unrelated URL context', async () => {
+  await render('/jobs/cedar?tab=hours&keep=yes#job-planning')
+  expect(button('Work').getAttribute('aria-pressed')).toBe('true')
+  expect(container.querySelector('#job-planning')).toBeTruthy()
+  expect(container.querySelector('.job-planning form')).toBeNull()
+  expect(query().get('tab')).toBeNull(); expect(query().get('keep')).toBe('yes')
+  await act(async () => button('Hours & charges').click())
+  expect(button('Hours & charges').getAttribute('aria-pressed')).toBe('true')
+  expect(query().get('tab')).toBe('hours')
+  noWrites()
+})
 
 function dialog(): HTMLElement {
   const element = container.querySelector<HTMLElement>('[role="dialog"]')

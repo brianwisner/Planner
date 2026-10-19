@@ -1101,3 +1101,6 @@ td.plan-over { background: #fde68a !important; color: #92400e; }
   .jobs-view-tabs { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .jobs-view-tabs button { min-height: 44px; padding: 6px 3px; flex-direction: row; }
 }
+.sidebar > nav { min-height: 0; overflow-y: auto; }
+.sidebar > .brand, .sidebar > .user { flex-shrink: 0; }
+.bottom-tabs a { min-width: 0; text-align: center; line-height: 1.15; }

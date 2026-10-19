@@ -7,6 +7,8 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent as RPointerEvent } from 'react'
 import { Link } from 'react-router-dom'
 import { addDays, differenceInCalendarDays, format, parseISO, startOfDay, startOfWeek } from 'date-fns'
+import { useOptionalPlanning } from '../lib/planningStore'
+import { dayCapacity, defaultDailyHours } from '../lib/planningCapacity'
 import { useData } from '../lib/store'
 import { hoursForPhase } from '../lib/calc'
 import type { Job, Phase } from '../lib/types'
@@ -27,7 +29,9 @@ function saveCollapsed(s: Set<string>) {
 }
 
 export function Gantt({ jobs }: { jobs: Job[] }) {
-  const { jobs: allJobs, phases, timeEntries, schedule, profiles, me, settings, clients } = useData()
+  const store = useData()
+  const { jobs: allJobs, phases, timeEntries, schedule, profiles, me, clients } = store
+  const planning = useOptionalPlanning()
   const [zoom, setZoom] = useState<Zoom>(() => (typeof window !== 'undefined' && window.innerWidth < 760 ? 'normal' : 'detailed'))
   const [collapsed, setCollapsed] = useState<Set<string>>(loadCollapsed)
   const ownerId = me?.id ?? ''
@@ -68,7 +72,7 @@ export function Gantt({ jobs }: { jobs: Job[] }) {
   }, [zoom]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Every saved plan on active jobs reserves capacity, including historical owners/phases.
-  const dailyCap = (me?.weekly_hours || settings.weekly_capacity || 40) / 5
+  const capacityFor = (date: string) => planning && !planning.loading && !planning.error ? dayCapacity(store, planning, date).availableHours : defaultDailyHours(store, date)
   const perDay = useMemo(() => {
     const m = new Map<string, number>()
     const activeJobIds = new Set(allJobs.filter(j => j.status === 'active').map(j => j.id))
@@ -221,14 +225,14 @@ export function Gantt({ jobs }: { jobs: Job[] }) {
                 <div className="gdates">{weekIdx.map(i => <div key={i} style={{ left: i * dayW, width: 7 * dayW }}>{format(addDays(start, i), 'MMM d')}</div>)}</div>
                 <div className="ghours">{weekIdx.map(i => {
                   const t = sum(Array.from({ length: 7 }, (_, k) => perDay.get(dateAt(i + k)) ?? 0))
-                  return t ? <div key={i} style={{ left: i * dayW, width: 7 * dayW }} className={t > dailyCap * 5 ? 'over' : ''} title={`${fmtHours(t)} planned on active jobs that week`}>{fmtHours(t)}</div> : null
+                  return t ? <div key={i} style={{ left: i * dayW, width: 7 * dayW }} className={t > sum(Array.from({ length: 7 }, (_, k) => capacityFor(dateAt(i + k)))) ? 'over' : ''} title={`${fmtHours(t)} planned / ${fmtHours(sum(Array.from({ length: 7 }, (_, k) => capacityFor(dateAt(i + k)))))} available that week`}>{fmtHours(t)}</div> : null
                 })}</div>
               </> : <>
                 <div className="gdates">{dayIdx.map(i => <div key={i} style={{ left: i * dayW, width: dayW }} className={i === todayIdx ? 'today' : ''}>{addDays(start, i).getDate()}</div>)}</div>
                 <div className="gdow">{dayIdx.map(i => { const d = addDays(start, i); return <div key={i} style={{ left: i * dayW, width: dayW }} className={d.getDay() === 0 || d.getDay() === 6 ? 'we' : ''}>{LETTER[d.getDay()]}</div> })}</div>
                 <div className="ghours">{dayIdx.map(i => {
                   const t = perDay.get(dateAt(i)) ?? 0
-                  return t ? <div key={i} style={{ left: i * dayW, width: dayW }} className={t > dailyCap ? 'over' : ''} title={`${fmtHours(t)} planned on active jobs`}>{fmtHours(t).replace('h', '')}</div> : null
+                  return t ? <div key={i} style={{ left: i * dayW, width: dayW }} className={t > capacityFor(dateAt(i)) ? 'over' : ''} title={`${fmtHours(t)} planned / ${fmtHours(capacityFor(dateAt(i)))} available on active jobs`}>{fmtHours(t).replace('h', '')}</div> : null
                 })}</div>
               </>}
             </div>

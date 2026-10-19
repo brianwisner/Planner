@@ -1,0 +1,22 @@
+.follow-ups-page { min-width: 0; }
+.follow-ups-controls { display: grid; grid-template-columns: minmax(200px,2fr) minmax(160px,1.4fr) minmax(110px,1fr) minmax(145px,1fr); gap: 12px; margin-bottom: 16px; }
+.follow-ups-controls label { margin: 0; }
+.follow-ups-filter-footer { grid-column: 1/-1; display: flex; align-items: center; flex-wrap: wrap; gap: 8px 16px; font-size: 12px; color: var(--muted); }
+.follow-ups-filter-footer a { margin-left: auto; min-height: 40px; display: inline-flex; align-items: center; }
+.follow-ups-list { padding-top: 0; padding-bottom: 0; }
+.follow-up-row { display: grid; grid-template-columns: minmax(0,1fr) 190px auto; gap: 20px; padding: 18px 0; border-bottom: 1px solid var(--border); }
+.follow-up-row:last-child { border-bottom: 0; }
+.follow-up-title { background: none; border: 0; padding: 6px 0; min-height: 40px; font: inherit; font-weight: 600; text-align: left; color: var(--text); cursor: pointer; overflow-wrap: anywhere; }
+.follow-up-title:hover { color: var(--accent); text-decoration: underline; }
+.follow-up-context { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 7px; font-size: 12px; color: var(--muted); }
+.follow-up-row-main p { margin: 7px 0 0; line-height: 1.5; font-size: 12px; overflow-wrap: anywhere; }
+.follow-up-last-contact { color: var(--muted); }
+.follow-up-dates { display: flex; flex-direction: column; gap: 9px; font-size: 12px; }
+.follow-up-dates > div { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
+.follow-up-dates > div > span:first-child { color: var(--muted); }
+.follow-up-actions { display: flex; align-items: flex-start; flex-wrap: wrap; gap: 6px; }
+.follow-up-actions .btn { min-height: 40px; }
+.follow-ups-error { color: #a42222; line-height: 1.5; }
+.follow-ups-empty { text-align: center; padding: 28px 16px; }
+@media(max-width:900px) { .follow-ups-controls { grid-template-columns: repeat(2,minmax(0,1fr)); } .follow-up-row { grid-template-columns: minmax(0,1fr) 170px; } .follow-up-actions { grid-column: 1/-1; } }
+@media(max-width:760px) { .follow-ups-controls .follow-ups-search { grid-column: 1/-1; } .follow-ups-controls input,.follow-ups-controls select { font-size: 16px; } .follow-up-row { grid-template-columns: 1fr; gap: 12px; } .follow-up-dates { flex-direction: row; flex-wrap: wrap; gap: 12px 20px; } .follow-up-dates > div { min-width: 125px; } .follow-ups-filter-footer a { margin-left: 0; } }

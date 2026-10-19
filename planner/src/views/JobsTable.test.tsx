@@ -3,11 +3,14 @@ import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type { PlanningStore } from '../lib/planningTypes'
 import type { Store } from '../lib/store'
 import type { Job, Phase, ScheduleEntry, Task, TimeEntry } from '../lib/types'
 import { downloadCSV } from '../lib/utils'
 import { JobsTable } from './JobsTable'
 
+let capacityPlanning: PlanningStore | null = null
+vi.mock('../lib/planningStore', () => ({ useOptionalPlanning: () => capacityPlanning }))
 let store: Store
 vi.mock('../lib/store', () => ({ useData: () => store }))
 vi.mock('../lib/utils', async importOriginal => ({ ...await importOriginal<typeof import('../lib/utils')>(), downloadCSV: vi.fn() }))
@@ -35,6 +38,7 @@ function plan(overrides: Partial<ScheduleEntry> = {}): ScheduleEntry {
 }
 
 beforeEach(() => {
+  capacityPlanning = null
   vi.useFakeTimers({ toFake: ['Date'] })
   vi.setSystemTime(new Date('2026-10-19T12:00:00-07:00'))
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
@@ -350,6 +354,18 @@ describe('JobsTable planned hours', () => {
     const dialog = document.querySelector('[role="dialog"]')
     expect(dialog?.textContent).toContain('Schedule hours')
     expect(dialog?.querySelector<HTMLInputElement>(`input[aria-label="Hours on ${TODAY}"]`)?.value).toBe('2')
+    noWrites()
+  })
+})
+
+
+describe('JobsTable daily availability', () => {
+  it('compares saved plans with daily hours after blocks rather than default weekly hours', async () => {
+    capacityPlanning = { availability: [{ date: TODAY, base_hours: 2 }], blocks: [{ date: TODAY, hours: 1 }] } as PlanningStore
+    store.schedule = [plan()]
+    localStorage.setItem('table-plan', '1')
+    await render({ schedulable: true })
+    expect(container.querySelector('tfoot .plan-over')?.textContent).toBe('2h')
     noWrites()
   })
 })

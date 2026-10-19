@@ -1,0 +1,13 @@
+.billing-follow-ups .billing-follow-ups-heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
+.billing-follow-ups h2 { margin: 0; }
+.billing-follow-ups a, .billing-follow-ups button, .billing-follow-ups summary { min-height: 40px; }
+.billing-follow-ups .billing-follow-ups-heading a { display: inline-flex; align-items: center; }
+.billing-follow-ups .billing-ready-actions { margin: 8px 0; }
+.billing-follow-ups .billing-ready-actions summary { cursor: pointer; padding: 10px 0; }
+.billing-follow-ups .billing-ready-actions a { display: flex; align-items: center; justify-content: space-between; gap: 10px; border-top: 1px solid var(--border); }
+.billing-follow-ups .billing-collection-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 0; border-top: 1px solid var(--border); }
+.billing-follow-ups .billing-collection-row > div { min-width: 0; overflow-wrap: anywhere; }
+.billing-follow-ups .billing-collection-row button { flex-shrink: 0; }
+.billing-follow-ups .billing-collection-dates { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 5px; }
+.billing-follow-ups .billing-follow-overdue { color: var(--critical, #b42318); font-weight: 600; }
+@media (max-width: 520px) { .billing-follow-ups .billing-collection-row { align-items: flex-start; flex-direction: column; gap: 8px; } }

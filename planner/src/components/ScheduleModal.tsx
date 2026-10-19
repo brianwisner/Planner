@@ -1,6 +1,8 @@
 // Saved plans remain editable at their original phase/owner; new plans use the workflow.
 import { useId, useMemo, useRef, useState } from 'react'
 import { addDays, format, isWeekend, parseISO } from 'date-fns'
+import { useOptionalPlanning } from '../lib/planningStore'
+import { dayCapacity, defaultDailyHours } from '../lib/planningCapacity'
 import { useData } from '../lib/store'
 import { fmtHours, sum } from '../lib/utils'
 import { workPhase } from '../lib/calc'
@@ -13,7 +15,9 @@ function validDay(value: string) {
 }
 
 export function ScheduleModal({ jobId, phaseId, from, to, onClose }: { jobId: string; phaseId: string | null; from: string; to: string; onClose: () => void }) {
-  const { jobs, phases, schedule, me, settings, insert, update, remove, refresh, toast } = useData()
+  const store = useData()
+  const { jobs, phases, schedule, me, insert, update, remove, refresh, toast } = store
+  const planning = useOptionalPlanning()
   const formId = useId()
   const formRef = useRef<HTMLFormElement>(null)
   const busy = useRef(false)
@@ -47,12 +51,13 @@ export function ScheduleModal({ jobId, phaseId, from, to, onClose }: { jobId: st
   const otherWork = (date: string) => sum(schedule.filter(entry => activeJobIds.has(entry.job_id) && entry.date === date &&
     !(entry.job_id === jobId && entry.phase_id === phase && entry.user_id === who)).map(entry => entry.hours))
   const additionalPlans = schedule.filter(entry => entry.job_id === jobId && entry.phase_id === phase && entry.user_id !== who && days.includes(entry.date))
-  const dailyCap = (me?.weekly_hours || settings.weekly_capacity || 40) / 5
+  const capacityFor = (date: string) => planning && !planning.loading && !planning.error ? dayCapacity(store, planning, date).availableHours : defaultDailyHours(store, date)
+  const dailyCap = Math.max(0, ...days.map(capacityFor))
   const scheduledElsewhere = sum(schedule.filter(entry => entry.job_id === jobId && entry.phase_id === phase && !(entry.user_id === who && days.includes(entry.date))).map(entry => entry.hours))
   const remaining = Math.max(0, (ph?.estimate_hours ?? 0) - scheduledElsewhere)
   const newDays = days.filter(day => !existing(day)).length
   const suggest = historical ? 0 : ph && ph.estimate_hours > 0 && remaining > 0 && newDays > 0 ? Math.min(8, Math.max(0.5, Math.round((remaining / newDays) * 2) / 2)) : Math.min(8, dailyCap)
-  const value = (date: string) => duplicates.includes(date) ? String(sum(ownRows(date).map(row => row.hours))) : historical && !existing(date) ? '0' : edits[date] ?? (existing(date) ? String(existing(date)!.hours) : String(suggest))
+  const value = (date: string) => duplicates.includes(date) ? String(sum(ownRows(date).map(row => row.hours))) : historical && !existing(date) ? '0' : edits[date] ?? (existing(date) ? String(existing(date)!.hours) : String(Math.min(suggest, Math.max(0, capacityFor(date) - otherWork(date)))))
   const total = sum(days.map(day => Number(value(day)) || 0))
   const existingDays = days.filter(day => existing(day))
   async function bestEffortRefresh() { try { await refresh('schedule_entries') } catch { /* Keep the inline failure and draft even if refresh is offline. */ } }
@@ -113,8 +118,8 @@ export function ScheduleModal({ jobId, phaseId, from, to, onClose }: { jobId: st
       <div className="row small" style={{ marginBottom: 8 }}><span className="muted">Set editable days to</span>{[2, 4, 6, 8].map(hours => <button type="button" key={hours} className="btn sm" onClick={() => setEdits(Object.fromEntries(days.filter(day => !historical || existing(day)).map(day => [day, String(hours)])))}>{hours}h</button>)}</div>
       <div className="sched-days">{!days.length && <p className="small muted">No days in this range.</p>}{days.map(day => {
         const other = otherWork(day), mine = Number(value(day)) || 0
-        const over = other + (job?.status === 'active' ? mine : 0) > dailyCap
-        return <div key={day} className="sched-day"><span className="sched-date">{format(parseISO(day), 'EEE, MMM d')}</span><input type="number" min="0" max="24" step="any" disabled={historical && !existing(day)} readOnly={duplicates.includes(day)} value={value(day)} onChange={event => setEdits(previous => ({ ...previous, [day]: event.target.value }))} aria-label={`Hours on ${day}`} /><span className="tiny muted">h</span><span className={`tiny ${over ? 'warn-text bold' : 'muted'}`}>{historical && !existing(day) ? 'No saved plan to edit' : other > 0 ? `+ ${fmtHours(other)} other active plans${over ? ' · over a full day' : ''}` : over ? 'over a full day' : ''}</span></div>
+        const over = other + (job?.status === 'active' ? mine : 0) > capacityFor(day)
+        return <div key={day} className="sched-day"><span className="sched-date">{format(parseISO(day), 'EEE, MMM d')}</span><input type="number" min="0" max="24" step="any" disabled={historical && !existing(day)} readOnly={duplicates.includes(day)} value={value(day)} onChange={event => setEdits(previous => ({ ...previous, [day]: event.target.value }))} aria-label={`Hours on ${day}`} /><span className="tiny muted" title={`${fmtHours(capacityFor(day))} available this day`}>h</span><span className={`tiny ${over ? 'warn-text bold' : 'muted'}`}>{historical && !existing(day) ? 'No saved plan to edit' : other > 0 ? `+ ${fmtHours(other)} other active plans${over ? ' · over available hours' : ''}` : over ? 'over available hours' : ''}</span></div>
       })}</div>
       {additionalPlans.length > 0 && <p className="small muted">Additional saved plans: {fmtHours(sum(additionalPlans.map(entry => entry.hours)))} in this range. This form changes only your saved plans.</p>}
       {ph && <p className="small muted mt">{phaseLabel(ph)}: {historical ? 'retained saved plans' : `estimate ${fmtHours(ph.estimate_hours)}`} · scheduled {fmtHours(scheduledElsewhere + total)} with these days.</p>}
