@@ -4,6 +4,7 @@ import { useMemo } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { ArrowLeft, CheckCircle2, Mail, Pencil, Printer } from 'lucide-react'
 import { useData } from '../lib/store'
+import { EMAIL_TARGET, useEmailLink } from '../lib/email'
 import { useEditors } from '../components/editors'
 import { Empty } from '../components/ui'
 import { entryAmount, entryRate, itemAmount } from '../lib/calc'
@@ -17,6 +18,7 @@ export function InvoiceView() {
   const { id = '' } = useParams()
   const store = useData()
   const edit = useEditors()
+  const emailLink = useEmailLink()
   const invoice = store.invoices.find(i => i.id === id)
   const job = store.jobs.find(j => j.id === invoice?.job_id)
   const client = store.clients.find(c => c.id === job?.client_id)
@@ -53,7 +55,7 @@ export function InvoiceView() {
   const age = Math.max(0, Math.round((Date.parse(todayISO()) - Date.parse(invoice.issued_date)) / 86400000))
   const subject = `Invoice ${invoice.number}${job ? ` — ${job.name}` : ''}`
   const body = `Hi${client?.contact_name ? ` ${client.contact_name.split(' ')[0]}` : ''},\n\nPlease find attached invoice ${invoice.number}${job ? ` for ${job.name}` : ''}, for ${money(invoice.amount)}.\n\nThank you,\n${owner?.full_name || store.settings.company_name}\n${store.settings.company_name}`
-  const mailto = `mailto:${client?.email ?? ''}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`
+  const emailHref = emailLink(client?.email ?? '', subject, body)
 
   return <div className="invoice-page">
     <div className="invoice-toolbar no-print">
@@ -61,12 +63,12 @@ export function InvoiceView() {
       <div className="grow" />
       {paid ? <span className="badge ok lg hide-sm"><CheckCircle2 size={14} /> Paid {fmtDate(invoice.paid_date)}</span>
         : invoice.amount <= 0.005 ? <span className="badge lg hide-sm">No payment due</span> : <span className={`badge lg hide-sm ${age > 30 ? 'danger' : 'warn'}`}>Unpaid · {age} day{age === 1 ? '' : 's'}</span>}
-      <a className="btn" href={mailto} aria-label="Email client"><Mail size={16} /> <span className="hide-sm">Email client</span></a>
+      <a className="btn" href={emailHref} {...EMAIL_TARGET} aria-label="Email client"><Mail size={16} /> <span className="hide-sm">Email client</span></a>
       {job && <button className="btn" onClick={() => edit.invoice(job.id, invoice)} aria-label="Edit invoice"><Pencil size={15} /> <span className="hide-sm">Edit</span></button>}
       {!paid && <button className="btn" onClick={() => edit.paid(invoice)}><CheckCircle2 size={16} /> <span className="hide-sm">Mark paid</span><span className="show-sm">Paid</span></button>}
       <button className="btn primary" onClick={() => window.print()}><Printer size={16} /> <span className="hide-sm">Print / Save as PDF</span><span className="show-sm">PDF</span></button>
     </div>
-    <p className="invoice-tip no-print hide-sm">Tip: choose “Save as PDF” in the print window, then attach the file to your email.</p>
+    <p className="invoice-tip no-print hide-sm">Tip: choose “Save as PDF” in the print window, then attach it to the Gmail message.</p>
 
     <article className="invoice-doc" aria-label={`Invoice ${invoice.number}`}>
       <header className="inv-head">

@@ -3,6 +3,7 @@ import { useMemo } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { Building2, Download, LayoutGrid, List, Mail, Phone, Plus, Search } from 'lucide-react'
 import { useData } from '../lib/store'
+import { EMAIL_TARGET, useEmailLink } from '../lib/email'
 import { useEditors } from '../components/editors'
 import { Avatar, Empty, Segmented, StageChip } from '../components/ui'
 import { jobBilling } from '../lib/calc'
@@ -122,6 +123,7 @@ export function Clients() {
 
 function ClientCard({ row }: { row: ClientRow }) {
   const navigate = useNavigate()
+  const emailLink = useEmailLink()
   const { client, open, stages, toBill, awaiting, jobs } = row
   const shown = stages.slice(0, 3)
   return <article className="card client-card" onClick={() => navigate(`/clients/${client.id}`)}>
@@ -147,7 +149,7 @@ function ClientCard({ row }: { row: ClientRow }) {
     </div>}
     <div className="client-card-actions" onClick={e => e.stopPropagation()}>
       {client.phone ? <a className="btn sm" href={`tel:${client.phone}`} aria-label={`Call ${client.name}`}><Phone size={14} />Call</a> : <span className="btn sm" aria-disabled="true" style={{ opacity: 0.45, pointerEvents: 'none' }}><Phone size={14} />Call</span>}
-      {client.email ? <a className="btn sm" href={`mailto:${client.email}`} aria-label={`Email ${client.name}`}><Mail size={14} />Email</a> : <span className="btn sm" aria-disabled="true" style={{ opacity: 0.45, pointerEvents: 'none' }}><Mail size={14} />Email</span>}
+      {client.email ? <a className="btn sm" href={emailLink(client.email)} {...EMAIL_TARGET} aria-label={`Email ${client.name}`} onClick={e => e.stopPropagation()}><Mail size={14} />Email</a> : <span className="btn sm" aria-disabled="true" style={{ opacity: 0.45, pointerEvents: 'none' }}><Mail size={14} />Email</span>}
       {client.phone && <span className="tiny muted truncate hide-sm" style={{ marginLeft: 'auto' }}>{client.phone}</span>}
     </div>
   </article>
@@ -155,12 +157,13 @@ function ClientCard({ row }: { row: ClientRow }) {
 
 function ClientTable({ rows }: { rows: ClientRow[] }) {
   const navigate = useNavigate()
+  const emailLink = useEmailLink()
   return <div className="card">
     <div className="table-wrap"><table className="table">
       <thead><tr><th>Client</th><th className="hide-sm">Contact</th><th className="hide-sm">Phone</th><th className="num">Open jobs</th><th className="num hide-sm">To bill</th><th className="num hide-sm">Awaiting</th></tr></thead>
       <tbody>{rows.map(r => <tr key={r.client.id} className="clickable" onClick={() => navigate(`/clients/${r.client.id}`)}>
         <td><div className="row" style={{ gap: 10 }}><Avatar name={avatarName(r.client.name)} color={avatarColor(r.client.name)} /><div style={{ minWidth: 0 }}><Link to={`/clients/${r.client.id}`} className="strong" style={{ color: 'var(--text)' }} onClick={e => e.stopPropagation()}>{r.client.name}</Link><div className="tiny muted show-sm">{r.client.contact_name}</div></div></div></td>
-        <td className="hide-sm small">{r.client.contact_name || <span className="muted">—</span>}{r.client.email && <div className="tiny muted"><a href={`mailto:${r.client.email}`} onClick={e => e.stopPropagation()}>{r.client.email}</a></div>}</td>
+        <td className="hide-sm small">{r.client.contact_name || <span className="muted">—</span>}{r.client.email && <div className="tiny muted"><a href={emailLink(r.client.email)} {...EMAIL_TARGET} onClick={e => e.stopPropagation()}>{r.client.email}</a></div>}</td>
         <td className="hide-sm small nowrap">{r.client.phone ? <a href={`tel:${r.client.phone}`} onClick={e => e.stopPropagation()}>{r.client.phone}</a> : <span className="muted">—</span>}</td>
         <td className="num strong">{r.open.length || <span className="muted">0</span>}</td>
         <td className="num hide-sm">{r.toBill > 0.5 ? <span className="ok-text strong">{fmtMoney(r.toBill)}</span> : <span className="muted">—</span>}</td>
