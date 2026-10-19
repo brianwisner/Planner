@@ -1,380 +1,181 @@
-// Billing & job money.
-//  Overview tabs:  Jobs (balance per job) · Deposits (all jobs) · Hours (paid / billed / not billed)
-//  Job view (?job=<id>): balance, where the work stands, balance over time, deposits,
-//  invoices, and every hour with its status. Select "Not billed" hours → record an invoice.
-import { useMemo, useState } from 'react'
-import { Link, useNavigate, useSearchParams } from 'react-router-dom'
-import { useData } from '../lib/store'
-import { allHours, balanceHistory, depositUsage, entryHours, entryRate, HOUR_STATUS_LABEL, jobBilling, jobCharges, type HourStatus } from '../lib/calc'
-import type { Deposit, Invoice } from '../lib/types'
-import { downloadCSV, fmtDate, fmtHourlyRate, fmtHours, fmtMoney, fmtSigned, sum } from '../lib/utils'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { Link, useSearchParams } from 'react-router-dom'
+import { useData, type TableName } from '../lib/store'
+import { allHours, balanceHistory, depositUsage, entryRate, HOUR_STATUS_LABEL, jobBilling, jobCharges, type HourStatus, type JobBilling } from '../lib/calc'
+import { billingJobRows, canInvoice, filterBillingJobs, invoiceSelection, matchesBillingText, matchesWork, parseBillingQuery, WORK_FILTERS, workAmount, workRows, writeBillingQuery, type BillingJobRow, type BillingQuery, type BillingWork } from '../lib/billingView'
+import type { Deposit, Invoice, JobItem, TimeEntry } from '../lib/types'
+import { JOB_STATUS_LABEL } from '../lib/types'
+import { downloadCSV, fmtDate, fmtHourlyRate, fmtHours, fmtMoney, fmtSigned, sum, todayISO } from '../lib/utils'
 import { DepositModal, InvoiceModal, ItemModal, TimeModal } from '../components/editors'
 import { BalanceChart, FeesSummary, WorkStatusBar } from '../components/MoneyCharts'
 import { Empty, Icon } from '../components/ui'
-import type { JobItem, TimeEntry } from '../lib/types'
+import './Billing.css'
 
-type Tab = 'jobs' | 'deposits' | 'hours'
+const round2 = (value: number) => Math.round(value * 100) / 100
+const csvText = (value: string) => /^\s*[=+\-@]/.test(value) ? `'${value}` : value
+const moneyBasis = 'Balance = deposits + invoices − all completed work and charges. Nonbillable time counts once in work value; it cannot consume deposits or be invoiced.'
+function useBillingQuery() {
+  const [params, setParams] = useSearchParams()
+  return { query: parseBillingQuery(params), params,
+    patch: (values: Partial<BillingQuery>, replace = false) => setParams(current => writeBillingQuery(current, values), { replace }) }
+}
+function phaseName(phases: { id: string; name: string }[], id: string | null) { return phases.find(phase => phase.id === id)?.name ?? 'General' }
 
 export function Billing() {
-  const [params, setParams] = useSearchParams()
-  const jobId = params.get('job')
-  const tab = (params.get('tab') as Tab) || 'jobs'
+  const { query } = useBillingQuery()
+  return query.job ? <JobMoney key={query.job} jobId={query.job} /> : <BillingOverview />
+}
+
+function BillingOverview() {
+  const store = useData()
+  const { query, patch } = useBillingQuery()
+  const allRows = useMemo(() => billingJobRows(store), [store])
+  const rows = filterBillingJobs(allRows, query)
+  const ids = new Set(rows.map(row => row.job.id))
   const [newDeposit, setNewDeposit] = useState(false)
-  if (jobId) return <JobMoney jobId={jobId} onBack={() => setParams({})} />
-  return (
-    <div>
-      <div className="page-header">
-        <h1>Billing</h1>
-        <div className="btn-group">
-          {(['jobs', 'deposits', 'hours'] as Tab[]).map(t => (
-            <button key={t} className={`btn sm ${tab === t ? 'active' : ''}`} onClick={() => setParams({ tab: t })}>{t === 'jobs' ? 'Jobs' : t === 'deposits' ? 'Deposits' : 'Hours'}</button>
-          ))}
-        </div>
-        <div className="actions"><button className="btn primary" onClick={() => setNewDeposit(true)}><Icon name="plus" size={16} /> Record deposit</button></div>
-      </div>
-      <Totals />
-      {tab === 'jobs' && <JobsTab />}
-      {tab === 'deposits' && <DepositsTab />}
-      {tab === 'hours' && <HoursTab />}
-      {newDeposit && <DepositModal onClose={() => setNewDeposit(false)} />}
-    </div>
-  )
+  const [editingTime, setEditingTime] = useState<TimeEntry | null>(null)
+  const [editingDeposit, setEditingDeposit] = useState<Deposit | null>(null)
+  const jobOptions = filterBillingJobs(allRows, { ...query, q: '', scope: '', focus: 'all' })
+  const invoices = filterInvoices(store.invoices.filter(invoice => ids.has(invoice.job_id)), query.payment, query.detail)
+  const deposits = store.deposits.filter(deposit => ids.has(deposit.job_id) && matchesBillingText([deposit.method, deposit.notes, deposit.received_date].join(' '), query.detail))
+    .sort((a, b) => b.received_date.localeCompare(a.received_date) || a.id.localeCompare(b.id))
+  const hours = [...allHours(store).values()].filter(row => ids.has(row.entry.job_id) && matchesWork(row, query.work) &&
+    matchesBillingText([row.entry.notes, phaseName(store.phases, row.entry.phase_id), row.entry.date].join(' '), query.detail))
+    .sort((a, b) => b.entry.date.localeCompare(a.entry.date) || a.entry.id.localeCompare(b.entry.id))
+  const usage = new Map<string, number>()
+  for (const jobId of ids) for (const [id, amount] of depositUsage(store, jobId)) usage.set(id, amount)
+
+  function exportRows() {
+    if (query.tab === 'jobs') downloadCSV('billing-jobs.csv', ['Job #', 'Job', 'Client', 'Status', 'Completed hours', 'Nonbillable hours', 'Work value $', 'Deposits $', 'Unused deposits $', 'Invoiced $', 'Awaiting payment $', 'Ready to bill $', 'Balance $', 'Recorded fees $', 'Effective hourly rate $'], rows.map(({ job, clientName, billing: b }) => [csvText(job.job_number), csvText(job.name), csvText(clientName), JOB_STATUS_LABEL[job.status], round2(b.loggedHours), round2(b.nonBillableHours), round2(b.workValue), round2(b.deposits), round2(b.depositRemaining), round2(b.invoiced), round2(b.outstanding), round2(b.unbilledAmount), round2(b.balance), round2(b.feeRevenue), b.effectiveHourlyRate == null ? null : round2(b.effectiveHourlyRate)]))
+    else if (query.tab === 'invoices') downloadCSV('billing-invoices.csv', ['Invoice', 'Job', 'Client', 'Issued', 'Paid', 'Amount $', 'Notes'], invoices.map(invoice => { const row = rows.find(row => row.job.id === invoice.job_id)!; return [csvText(invoice.number), csvText(row.job.name), csvText(row.clientName), invoice.issued_date, invoice.paid_date, round2(invoice.amount), csvText(invoice.notes)] }))
+    else if (query.tab === 'deposits') downloadCSV('billing-deposits.csv', ['Received', 'Job', 'Client', 'Amount $', 'Used $', 'Left $', 'Method', 'Notes'], deposits.map(deposit => { const row = rows.find(row => row.job.id === deposit.job_id)!; return [deposit.received_date, csvText(row.job.name), csvText(row.clientName), round2(deposit.amount), round2(usage.get(deposit.id) ?? 0), round2(Math.max(0, deposit.amount - (usage.get(deposit.id) ?? 0))), csvText(deposit.method), csvText(deposit.notes)] }))
+    else downloadCSV(`billing-hours-${query.work}.csv`, ['Date', 'Job', 'Client', 'Phase', 'Hours', 'Billable', 'Saved rate $', 'Displayed billing amount $', 'Deposit coverage $', 'Status', 'Notes'], hours.map(row => { const job = rows.find(job => job.job.id === row.entry.job_id)!; return [row.entry.date, csvText(job.job.name), csvText(job.clientName), csvText(phaseName(store.phases, row.entry.phase_id)), row.entry.hours, row.entry.billable !== false ? 'Yes' : 'No', entryRate(store, row.entry), round2(workAmount(row, query.work)), round2(row.covered), HOUR_STATUS_LABEL[row.status], csvText(row.entry.notes)] }))
+  }
+
+  return <div className="billing-page">
+    <div className="page-header billing-header"><div><h1>Billing</h1><p className="muted small">Invoice work, follow up on payments, and keep deposits in view.</p></div><button className="btn primary" onClick={() => setNewDeposit(true)}><Icon name="plus" size={15} /> Record deposit</button></div>
+    <MoneyTotals rows={rows.map(row => row.billing)} />
+    <nav className="billing-tabs" aria-label="Billing views">{(['jobs', 'invoices', 'deposits', 'hours'] as const).map(tab => <button key={tab} aria-pressed={query.tab === tab} onClick={() => patch({ tab, detail: '' })}>{tab === 'jobs' ? 'Jobs' : tab === 'invoices' ? 'Invoices' : tab === 'deposits' ? 'Deposits' : 'Hours'}</button>)}</nav>
+    <section className="card billing-filters" aria-label="Billing filters"><div className="billing-filter-grid">
+      <label>Search jobs or clients<input type="search" aria-label="Search billing jobs" value={query.q} placeholder="Name, job number or address…" onChange={event => patch({ q: event.target.value }, true)} /></label>
+      <label>Client<select aria-label="Billing client" value={query.client} onChange={event => patch({ client: event.target.value, scope: '' })}><option value="">All clients</option>{query.client && !store.clients.some(client => client.id === query.client) && <option value={query.client}>Unavailable client — clear this filter</option>}{store.clients.map(client => <option key={client.id} value={client.id}>{client.name}</option>)}</select></label>
+      <label>Job status<select aria-label="Billing job status" value={query.status} onChange={event => patch({ status: event.target.value as BillingQuery['status'], scope: '' })}><option value="nonarchived">All except archived</option><option value="all">All job history</option><option value="open">Active &amp; on hold</option>{Object.entries(JOB_STATUS_LABEL).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+      <label>Job<select aria-label="Billing job filter" value={query.scope} onChange={event => patch({ scope: event.target.value })}><option value="">All matched jobs</option>{query.scope && !jobOptions.some(row => row.job.id === query.scope) && <option value={query.scope}>Selected job outside these filters</option>}{jobOptions.map(row => <option key={row.job.id} value={row.job.id}>{row.job.job_number ? `${row.job.job_number} · ` : ''}{row.job.name}</option>)}</select></label>
+      <label>Follow-up<select aria-label="Billing follow-up" value={query.focus} onChange={event => patch({ focus: event.target.value as BillingQuery['focus'] })}><option value="all">All matched jobs</option><option value="unbilled">Ready to bill</option><option value="outstanding">Awaiting payment</option></select></label>
+    </div><div className="billing-filter-footer"><span role="status">{rows.length} matched {rows.length === 1 ? 'job' : 'jobs'} · summaries follow these filters</span><button className="btn ghost" onClick={() => patch({ q: '', client: '', scope: '', status: 'nonarchived', focus: 'all', detail: '' })}>Reset filters</button><button className="btn" onClick={exportRows}><Icon name="download" size={14} /> Export visible CSV</button></div></section>
+    {query.tab === 'jobs' ? <section className="card"><div className="billing-section-heading"><h2>Job money</h2><span className="small muted">Lowest balance first</span></div><p className="tiny muted">{moneyBasis}</p>{rows.length ? <div className="billing-job-list">{rows.map(({ job, clientName, billing: b }) => <article key={job.id} className="billing-job-row"><div><Link className="bold" to={`/billing?job=${job.id}`}>{job.name} →</Link><div className="tiny muted">{job.job_number} · {clientName} · {JOB_STATUS_LABEL[job.status]}</div><div className="tiny muted">{fmtHours(b.loggedHours)} completed · {fmtHours(b.nonBillableHours)} nonbillable · {fmtHourlyRate(b.effectiveHourlyRate)}</div></div><div><span className="tiny muted">Ready to bill</span><Link to={`/billing?job=${job.id}`}>{fmtMoney(b.unbilledAmount)}</Link></div><div><span className="tiny muted">Awaiting payment</span><Link to={`/billing?job=${job.id}&section=invoices`}>{fmtMoney(b.outstanding)}</Link></div><div><span className="tiny muted">Job balance</span><b className={b.balance < 0 ? 'money-neg' : 'money-pos'}>{fmtSigned(b.balance)}</b></div></article>)}</div> : <Empty>No jobs match these filters. Reset filters to see other jobs.</Empty>}</section> : <>
+      <div className="billing-list-controls"><label>Search this list<input type="search" aria-label="Search billing list" value={query.detail} placeholder={query.tab === 'invoices' ? 'Invoice number or note…' : query.tab === 'deposits' ? 'Method, date or note…' : 'Phase, date or note…'} onChange={event => patch({ detail: event.target.value }, true)} /></label>{query.tab === 'invoices' && <PaymentFilter value={query.payment} onChange={payment => patch({ payment })} />}{query.tab === 'hours' && <WorkFilter value={query.work} onChange={work => patch({ work })} />}</div>
+      {query.tab === 'invoices' && <InvoiceList invoices={invoices} jobs={rows} />}
+      {query.tab === 'deposits' && <DepositList deposits={deposits} jobs={rows} usage={usage} onEdit={setEditingDeposit} />}
+      {query.tab === 'hours' && <section className="card"><h2>Completed hours</h2><p className="tiny muted">Running timers join Billing when stopped. Nonbillable amounts are $0 here; their effort and saved work value remain in each job's balance.</p><div className="billing-work-list">{hours.map(row => { const job = rows.find(job => job.job.id === row.entry.job_id)!; return <article className="billing-hour-row" key={row.entry.id}><div><Link className="bold" to={`/billing?job=${job.job.id}`}>{job.job.name}</Link><div className="small">{fmtDate(row.entry.date)} · {phaseName(store.phases, row.entry.phase_id)} · {fmtHours(row.entry.hours)}</div><div className="tiny muted">{row.entry.notes}</div><StatusBadge h={row} /></div><b>{fmtMoney(workAmount(row, query.work))}</b><button className="btn" aria-label={`Edit hours: ${row.entry.notes || row.entry.date}`} onClick={() => setEditingTime(row.entry)}>Edit hours</button></article> })}</div>{!hours.length && <Empty>No completed hours match this list.</Empty>}<p className="billing-list-total">{hours.length} visible entries · {fmtHours(sum(hours.map(row => row.entry.hours ?? 0)))} · {fmtMoney(sum(hours.map(row => workAmount(row, query.work))))} {query.work === 'paid' ? 'paid' : query.work === 'unbilled' ? 'ready to bill' : query.work === 'nonbillable' ? 'invoiceable' : 'billing amount'}</p></section>}
+    </>}
+    {newDeposit && <DepositModal jobId={query.scope || undefined} onClose={() => setNewDeposit(false)} />}{editingDeposit && <DepositModal deposit={editingDeposit} onClose={() => setEditingDeposit(null)} />}{editingTime && <TimeModal entry={editingTime} onClose={() => setEditingTime(null)} />}
+  </div>
 }
 
-function Totals() {
-  const store = useData()
-  const rows = useMemo(() => store.jobs.filter(j => j.status !== 'archived').map(j => jobBilling(store, j)), [store])
-  return (
-    <div className="stats mb">
-      <div className="stat"><div className="label">Not billed yet</div><div className={`value ${sum(rows.map(r => r.unbilledAmount)) > 0 ? 'danger-text' : ''}`}>{fmtMoney(sum(rows.map(r => r.unbilledAmount)))}</div><div className="sub">{fmtHours(sum(rows.map(r => r.unbilledHours)))}{sum(rows.map(r => r.unbilledItems)) > 0.5 ? ` + ${fmtMoney(sum(rows.map(r => r.unbilledItems)))} charges` : ''} nobody has paid for</div></div>
-      <div className="stat"><div className="label">Waiting for payment</div><div className={`value ${sum(rows.map(r => r.outstanding)) > 0 ? 'warn-text' : ''}`}>{fmtMoney(sum(rows.map(r => r.outstanding)))}</div><div className="sub">invoices sent, not paid</div></div>
-      <div className="stat"><div className="label">Deposits not used yet</div><div className="value">{fmtMoney(sum(rows.map(r => r.depositRemaining)))}</div><div className="sub">of {fmtMoney(sum(rows.map(r => r.deposits)))} received</div></div>
-      <div className="stat"><div className="label">Collected</div><div className="value ok-text">{fmtMoney(sum(rows.map(r => r.collected)))}</div><div className="sub">deposits + paid invoices</div></div>
-    </div>
-  )
+function MoneyTotals({ rows }: { rows: JobBilling[] }) {
+  const stats = [
+    { label: 'Ready to bill', amount: sum(rows.map(row => row.unbilledAmount)), caption: 'Billable work after deposits' },
+    { label: 'Awaiting payment', amount: sum(rows.map(row => row.outstanding)), caption: 'Invoices with no paid date' },
+    { label: 'Unused deposits', amount: sum(rows.map(row => row.depositRemaining)), caption: 'Received, not yet used by work' },
+    { label: 'Collected', amount: sum(rows.map(row => row.collected)), caption: 'Deposits + paid invoices' },
+  ]
+  return <div className="stats billing-stats">{stats.map(stat => <div className="stat" key={stat.label}><div className="label">{stat.label}</div><div className="value">{fmtMoney(stat.amount)}</div><div className="sub">{stat.caption}</div></div>)}</div>
 }
-
-function JobsTab() {
-  const store = useData()
-  const { jobs, clients } = store
-  const nav = useNavigate()
-  const [showClosed, setShowClosed] = useState(false)
-  const rows = useMemo(() => jobs
-    .filter(j => showClosed ? j.status !== 'archived' : j.status === 'active' || j.status === 'on_hold')
-    .map(j => jobBilling(store, j))
-    .sort((a, b) => a.balance - b.balance), [jobs, store, showClosed])
-  return (
-    <div className="card">
-      <div className="filters">
-        <span className="small muted">Job balance = deposits + billed − value of hours worked and charges. It drops as you log hours and goes back up when you take a deposit or send an invoice. Jobs most in the red are at the top.</span>
-        <span className="grow" />
-        <button className={`chip ${showClosed ? 'on' : ''}`} onClick={() => setShowClosed(!showClosed)}>Include closed jobs</button>
-        <button className="btn sm" onClick={() => downloadCSV('job-balances.csv', ['Job #', 'Job', 'Client', 'Fee', 'Total hours', 'Billable hours', 'Nonbillable hours', 'Hours $', 'Nonbillable work value $', 'Charges $', 'Work & charges $', 'Deposits $', 'Deposit left $', 'Billed $', 'Paid $', 'Waiting $', 'Not billed $', 'Balance $', 'Fees recorded $', 'Effective hourly rate $'],
-          rows.map(r => [r.job.job_number, r.job.name, clients.find(c => c.id === r.job.client_id)?.name, r.fee, round2(r.loggedHours), round2(r.billableHours), round2(r.nonBillableHours), Math.round(r.hoursValue), round2(r.nonBillableValue), Math.round(r.itemsValue), Math.round(r.workValue), r.deposits, Math.round(r.depositRemaining), r.invoiced, r.paid, r.outstanding, Math.round(r.unbilledAmount), Math.round(r.balance), round2(r.feeRevenue), r.effectiveHourlyRate == null ? '' : round2(r.effectiveHourlyRate)]))}><Icon name="download" size={14} /> CSV</button>
-      </div>
-      {rows.length === 0 && <Empty>No jobs.</Empty>}
-      {rows.length > 0 && <div className="table-wrap"><table>
-        <thead><tr><th>Job</th><th className="num hide-mobile">Work &amp; charges</th><th className="num hide-mobile">Deposits</th><th className="num hide-mobile">Billed</th><th className="num">Not billed</th><th className="num">Balance</th><th className="hide-mobile" style={{ width: '22%' }}>Where the work stands</th></tr></thead>
-        <tbody>
-          {rows.map(r => (
-            <tr key={r.job.id} className="clickable" onClick={() => nav(`/billing?job=${r.job.id}`)}>
-              <td><div className="bold">{r.job.name}</div><div className="tiny muted">{r.job.job_number} · {clients.find(c => c.id === r.job.client_id)?.name}</div><div className="tiny muted">Fees {fmtMoney(r.feeRevenue)} · {fmtHourlyRate(r.effectiveHourlyRate)}{r.nonBillableHours > 0 ? ` · ${fmtHours(r.nonBillableHours)} nonbillable` : ''}</div></td>
-              <td className="num hide-mobile">{fmtMoney(r.workValue)}<div className="tiny muted">{fmtHours(r.loggedHours)}{r.itemsValue > 0.5 ? ` + ${fmtMoney(r.itemsValue)}` : ''}</div></td>
-              <td className="num hide-mobile">{r.deposits > 0 ? <>{fmtMoney(r.deposits)}<div className="tiny muted">{fmtMoney(r.depositRemaining)} left</div></> : <span className="muted">–</span>}</td>
-              <td className="num hide-mobile">{r.invoiced > 0 ? <>{fmtMoney(r.invoiced)}{r.outstanding > 0 && <div className="tiny warn-text">{fmtMoney(r.outstanding)} unpaid</div>}</> : <span className="muted">–</span>}</td>
-              <td className="num">{r.unbilledAmount > 0.5 ? <b className="danger-text">{fmtMoney(r.unbilledAmount)}</b> : <span className="muted">–</span>}</td>
-              <td className={`num bold ${r.balance < 0 ? 'money-neg' : 'money-pos'}`}>{fmtSigned(r.balance)}</td>
-              <td className="hide-mobile"><WorkStatusBar b={r} compact /></td>
-            </tr>
-          ))}
-        </tbody>
-      </table></div>}
-      <div className="wsb-legend small">
-        <span className="wsb-key"><i style={{ background: '#0ca30c' }} />Paid</span>
-        <span className="wsb-key"><i style={{ background: '#fab219' }} />Billed, waiting for payment</span>
-        <span className="wsb-key"><i style={{ background: '#d03b3b' }} />Not billed yet</span>
-        <span className="wsb-key"><i className="dashed" style={{ borderColor: '#0ca30c' }} />Deposit not used yet</span>
-      </div>
-    </div>
-  )
+function WorkFilter({ value, onChange }: { value: BillingQuery['work']; onChange: (value: BillingQuery['work']) => void }) {
+  return <label>Work status<select aria-label="Work status" value={value} onChange={event => onChange(event.target.value as BillingQuery['work'])}>{WORK_FILTERS.map(filter => <option key={filter.key} value={filter.key}>{filter.label}</option>)}</select></label>
 }
-
-function DepositsTab() {
-  const store = useData()
-  const { deposits, jobs, clients } = store
-  const [editing, setEditing] = useState<Deposit | null>(null)
-  const usage = useMemo(() => {
-    const m = new Map<string, number>()
-    for (const id of new Set(deposits.map(d => d.job_id))) for (const [k, v] of depositUsage(store, id)) m.set(k, v)
-    return m
-  }, [store, deposits])
-  const rows = [...deposits].reverse()
-  const job = (id: string) => jobs.find(j => j.id === id)
-  return (
-    <div className="card">
-      <div className="filters">
-        <span className="small muted">Each deposit pays for that job's hours as they're logged, oldest first. "Left" is what hasn't been worked against yet.</span>
-        <span className="grow" />
-        <button className="btn sm" onClick={() => downloadCSV('deposits.csv', ['Received', 'Job #', 'Job', 'Client', 'Amount $', 'Used $', 'Left $', 'How paid', 'Notes'],
-          rows.map(d => { const j = job(d.job_id); const u = usage.get(d.id) ?? 0; return [d.received_date, j?.job_number, j?.name, clients.find(c => c.id === j?.client_id)?.name, d.amount, Math.round(u), Math.round(d.amount - u), d.method, d.notes] }))}><Icon name="download" size={14} /> CSV</button>
-      </div>
-      {rows.length === 0 && <Empty>No deposits yet. Click "Record deposit" when a client pays a retainer.</Empty>}
-      {rows.length > 0 && <div className="table-wrap"><table>
-        <thead><tr><th>Received</th><th>Job</th><th className="hide-mobile">How paid</th><th className="num">Amount</th><th className="num">Used</th><th className="num">Left</th><th className="hide-mobile" style={{ width: '18%' }}></th></tr></thead>
-        <tbody>
-          {rows.map(d => {
-            const u = usage.get(d.id) ?? 0
-            const j = job(d.job_id)
-            return (
-              <tr key={d.id} className="clickable" onClick={() => setEditing(d)}>
-                <td className="nowrap">{fmtDate(d.received_date)}</td>
-                <td><Link to={`/billing?job=${d.job_id}`} onClick={e => e.stopPropagation()} className="bold">{j?.name}</Link><div className="tiny muted">{clients.find(c => c.id === j?.client_id)?.name}{d.notes && ` · ${d.notes}`}</div></td>
-                <td className="hide-mobile small">{d.method}</td>
-                <td className="num">{fmtMoney(d.amount)}</td>
-                <td className="num">{fmtMoney(u)}</td>
-                <td className={`num bold ${d.amount - u > 0.5 ? 'money-pos' : 'muted'}`}>{fmtMoney(d.amount - u)}</td>
-                <td className="hide-mobile"><div className="bar"><span style={{ width: `${d.amount ? Math.min(100, u / d.amount * 100) : 0}%`, background: '#0ca30c' }} /></div><span className="tiny muted">{d.amount ? Math.round(u / d.amount * 100) : 0}% used</span></td>
-              </tr>
-            )
-          })}
-        </tbody>
-        <tfoot><tr><td colSpan={3}>Total</td><td className="num">{fmtMoney(sum(rows.map(d => d.amount)))}</td><td className="num">{fmtMoney(sum(rows.map(d => usage.get(d.id) ?? 0)))}</td><td className="num">{fmtMoney(sum(rows.map(d => d.amount - (usage.get(d.id) ?? 0))))}</td><td className="hide-mobile" /></tr></tfoot>
-      </table></div>}
-      {editing && <DepositModal deposit={editing} onClose={() => setEditing(null)} />}
-    </div>
-  )
+function PaymentFilter({ value, onChange }: { value: BillingQuery['payment']; onChange: (value: BillingQuery['payment']) => void }) {
+  return <label>Invoice status<select aria-label="Invoice status" value={value} onChange={event => onChange(event.target.value as BillingQuery['payment'])}><option value="unpaid">Awaiting payment</option><option value="all">All invoices</option><option value="paid">Paid invoices</option></select></label>
 }
-
-const FILTERS: { key: 'all' | 'unbilled' | 'billed' | 'paid' | 'nonbillable'; label: string; match: (s: HourStatus, covered: number) => boolean }[] = [
-  { key: 'all', label: 'All hours', match: () => true },
-  { key: 'unbilled', label: 'Not billed', match: s => s === 'unbilled' || s === 'partial' },
-  { key: 'billed', label: 'Billed, not paid', match: s => s === 'billed' },
-  { key: 'paid', label: 'Paid', match: (s, covered) => s !== 'nonbillable' && (s === 'paid' || covered > 0) },
-  { key: 'nonbillable', label: 'Nonbillable', match: s => s === 'nonbillable' },
-]
-
-function HoursTab() {
-  const store = useData()
-  const { jobs, phases, profiles, clients } = store
-  const nav = useNavigate()
-  const [filter, setFilter] = useState<(typeof FILTERS)[number]['key']>('unbilled')
-  const [jobId, setJobId] = useState('')
-  const map = useMemo(() => allHours(store), [store])
-  const base = [...map.values()].filter(h => !jobId || h.entry.job_id === jobId)
-    .sort((a, b) => b.entry.date.localeCompare(a.entry.date))
-  const f = FILTERS.find(x => x.key === filter)!
-  const rows = base.filter(h => f.match(h.status, h.covered))
-  const amountFor = (h: (typeof rows)[number], k: typeof filter) => h.status === 'nonbillable' ? 0 : k === 'all' ? h.amount : k === 'paid' ? (h.status === 'paid' ? h.amount : h.covered) : Math.max(0, h.amount - h.covered)
-  const totalFor = (k: typeof filter) => { const m = FILTERS.find(x => x.key === k)!; return sum(base.filter(h => m.match(h.status, h.covered)).map(h => amountFor(h, k))) }
-  return (
-    <div className="card">
-      <div className="filters">
-        {FILTERS.map(x => <button key={x.key} className={`chip ${filter === x.key ? 'on' : ''}`} onClick={() => setFilter(x.key)}>{x.label} · {x.key === 'nonbillable' ? fmtHours(sum(base.filter(h => h.status === 'nonbillable').map(h => entryHours(h.entry)))) : fmtMoney(totalFor(x.key))}</button>)}
-        <select aria-label="Filter billed hours by job" value={jobId} onChange={e => setJobId(e.target.value)}><option value="">All jobs</option>{jobs.filter(j => j.status !== 'archived').map(j => <option key={j.id} value={j.id}>{j.name}</option>)}</select>
-        <span className="grow" />
-        <button className="btn sm" onClick={() => downloadCSV(`hours-${filter}.csv`, ['Date', 'Person', 'Client', 'Job #', 'Job', 'Phase', 'Hours', 'Billable', 'Saved rate', 'Billing amount $', 'Status', 'Paid by deposit $', 'Invoice', 'Notes'],
-          rows.map(h => { const j = jobs.find(j => j.id === h.entry.job_id); return [h.entry.date, profiles.find(p => p.id === h.entry.user_id)?.full_name, clients.find(c => c.id === j?.client_id)?.name, j?.job_number, j?.name, phases.find(p => p.id === h.entry.phase_id)?.name ?? 'General', entryHours(h.entry), h.entry.billable !== false ? 'Yes' : 'No', entryRate(store, h.entry), round2(amountFor(h, filter)), HOUR_STATUS_LABEL[h.status], round2(h.covered), store.invoices.find(i => i.id === h.entry.invoice_id)?.number ?? '', h.entry.notes] }))}><Icon name="download" size={14} /> CSV</button>
-      </div>
-      {rows.length === 0 && <Empty>No hours in this list.</Empty>}
-      {rows.length > 0 && <div className="table-wrap"><table>
-        <thead><tr><th>Date</th><th>Job</th><th className="num hide-mobile">Hours × rate</th><th className="num">Amount</th><th>Status</th></tr></thead>
-        <tbody>
-          {rows.slice(0, 400).map(h => {
-            const j = jobs.find(j => j.id === h.entry.job_id)
-            return (
-              <tr key={h.entry.id} className="clickable" onClick={() => nav(`/billing?job=${h.entry.job_id}`)}>
-                <td className="nowrap">{fmtDate(h.entry.date)}</td>
-                <td>{j?.name}<div className="tiny muted">{phases.find(p => p.id === h.entry.phase_id)?.name ?? 'General'}{h.entry.notes && ` · ${h.entry.notes}`}</div><div className="tiny muted show-mobile">{fmtHours(h.entry.hours)}</div></td>
-                <td className="num hide-mobile nowrap">{fmtHours(h.entry.hours)}{h.status === 'nonbillable' ? '' : ` × $${entryRate(store, h.entry)}`}</td>
-                <td className="num">{fmtMoney(amountFor(h, filter))}</td>
-                <td><StatusBadge h={h} /></td>
-              </tr>
-            )
-          })}
-        </tbody>
-        <tfoot><tr><td colSpan={2}>{rows.length} entries{filter === 'unbilled' ? ' · amount not billed' : filter === 'paid' ? ' · amount paid' : ''}</td><td className="num hide-mobile">{fmtHours(sum(rows.map(h => entryHours(h.entry))))}</td><td className="num">{fmtMoney(totalFor(filter))}</td><td /></tr></tfoot>
-      </table></div>}
-    </div>
-  )
+function filterInvoices(invoices: Invoice[], payment: BillingQuery['payment'], search: string) {
+  return invoices.filter(invoice => (payment === 'all' || (payment === 'paid' ? Boolean(invoice.paid_date) : !invoice.paid_date && invoice.amount > 0.005)) && matchesBillingText([invoice.number, invoice.notes, invoice.issued_date].join(' '), search))
+    .sort((a, b) => b.issued_date.localeCompare(a.issued_date) || b.created_at.localeCompare(a.created_at) || a.id.localeCompare(b.id))
+}
+function useMoneyActions() {
+  const { update, refresh, toast } = useData()
+  const locked = useRef(new Set<string>())
+  const [pending, setPending] = useState(new Set<string>())
+  const [error, setError] = useState('')
+  async function run(key: string, table: TableName, id: string, patch: Record<string, unknown>, message: string) {
+    if (locked.current.has(key)) return
+    locked.current.add(key); setPending(new Set(locked.current)); setError('')
+    try {
+      if (!await update(table, id, patch)) { await refresh(table); setError('The change was not saved. The records were refreshed; check them before trying again.'); return }
+      toast(message)
+    } catch { await refresh(table); setError('Could not confirm the change. The records were refreshed; check them before trying again.') }
+    finally { locked.current.delete(key); setPending(new Set(locked.current)) }
+  }
+  return { pending, error, run, isBusy: (key: string) => locked.current.has(key) }
+}
+function InvoiceList({ invoices, jobs, onNew }: { invoices: Invoice[]; jobs: BillingJobRow[]; onNew?: () => void }) {
+  const [editing, setEditing] = useState<Invoice | null>(null)
+  const { pending, error, run } = useMoneyActions()
+  return <section className="card billing-invoices"><div className="billing-section-heading"><h2>Invoices</h2>{onNew && <button className="btn primary" onClick={onNew}>Record invoice</button>}</div>{error && <p role="alert" className="billing-error">{error}</p>}{invoices.length ? <div className="billing-invoice-list">{invoices.map(invoice => { const row = jobs.find(row => row.job.id === invoice.job_id); return <article className="billing-invoice-row" key={invoice.id}><div><button className="billing-text-button bold" disabled={pending.has(invoice.id)} onClick={() => setEditing(invoice)} aria-label={`Edit invoice ${invoice.number}`}>{invoice.number || 'Invoice'}</button><div className="small"><Link to={`/billing?job=${invoice.job_id}`}>{row?.job.name ?? 'Job'}</Link> · {row?.clientName}</div><div className="tiny muted">Issued {fmtDate(invoice.issued_date)}{invoice.notes && ` · ${invoice.notes}`}</div></div><div><b>{fmtMoney(invoice.amount)}</b><div className="tiny muted">{invoice.paid_date ? `Paid ${fmtDate(invoice.paid_date)}` : invoice.amount > 0.005 ? 'Awaiting payment' : 'No payment due'}</div></div><div className="billing-row-actions"><button className="btn" disabled={pending.has(invoice.id)} onClick={() => setEditing(invoice)} aria-label={`Edit invoice ${invoice.number} details`}>Edit</button>{!invoice.paid_date && invoice.amount > 0.005 && <button className="btn" disabled={pending.has(invoice.id)} onClick={() => void run(invoice.id, 'invoices', invoice.id, { paid_date: todayISO() }, `Invoice ${invoice.number} marked paid`)} aria-label={`Mark invoice ${invoice.number} paid`}>{pending.has(invoice.id) ? 'Saving…' : 'Mark paid'}</button>}</div></article> })}</div> : <Empty>No invoices match this list.</Empty>}<p className="billing-list-total">{invoices.length} visible invoices · {fmtMoney(sum(invoices.map(invoice => invoice.amount)))}</p>{editing && <InvoiceModal invoice={editing} jobId={editing.job_id} onClose={() => setEditing(null)} />}</section>
+}
+function DepositList({ deposits, jobs, usage, onEdit }: { deposits: Deposit[]; jobs: BillingJobRow[]; usage: Map<string, number>; onEdit: (deposit: Deposit) => void }) {
+  return <section className="card"><h2>Deposits</h2><p className="tiny muted">Deposits fund billable hours and charges oldest first. Saved credits on invoiced work remain reserved. Nonbillable time does not use deposits.</p>{deposits.length ? <div className="billing-deposit-list">{deposits.map(deposit => { const row = jobs.find(row => row.job.id === deposit.job_id); const used = usage.get(deposit.id) ?? 0; return <article className="billing-deposit-row" key={deposit.id}><div><Link className="bold" to={`/billing?job=${deposit.job_id}`}>{row?.job.name ?? 'Job'}</Link><div className="small">{fmtDate(deposit.received_date)} · {deposit.method}</div><div className="tiny muted">{row?.clientName}{deposit.notes && ` · ${deposit.notes}`}</div></div><div><b>{fmtMoney(deposit.amount)}</b><div className="tiny muted">{fmtMoney(used)} used · {fmtMoney(Math.max(0, deposit.amount - used))} left</div></div><button className="btn" onClick={() => onEdit(deposit)} aria-label={`Edit deposit received ${deposit.received_date} for ${row?.job.name}`}>Edit</button></article> })}</div> : <Empty>No deposits match this list.</Empty>}<p className="billing-list-total">{deposits.length} visible deposits · {fmtMoney(sum(deposits.map(deposit => deposit.amount)))} received · {fmtMoney(sum(deposits.map(deposit => Math.max(0, deposit.amount - (usage.get(deposit.id) ?? 0)))))} left</p></section>
 }
 
 export function StatusBadge({ h }: { h: { status: HourStatus; amount: number; covered: number; entry?: TimeEntry; item?: JobItem } }) {
   const { invoices } = useData()
-  const invoiceId = h.entry?.invoice_id ?? h.item?.invoice_id
-  const inv = invoices.find(i => i.id === invoiceId)
-  const label = h.status === 'partial' ? `${fmtMoney(h.amount - h.covered)} not billed` : h.status === 'billed' && h.covered > 0 ? `${fmtMoney(Math.max(0, h.amount - h.covered))} billed, not paid` : HOUR_STATUS_LABEL[h.status]
-  return (
-    <span className={`badge h-${h.status}`} title={h.covered > 0 ? `Deposit covers ${fmtMoney(h.covered)} of ${fmtMoney(h.amount)}` : undefined}>
-      {label}{inv && (h.status === 'billed' || h.status === 'paid') ? ` · ${inv.number}` : ''}
-    </span>
-  )
+  const invoice = invoices.find(invoice => invoice.id === (h.entry?.invoice_id ?? h.item?.invoice_id))
+  const label = h.status === 'nonbillable' ? 'Nonbillable' : h.status === 'partial' ? `${fmtMoney(Math.max(0, h.amount - h.covered))} ready to bill` : h.status === 'billed' && h.covered > 0 ? `${fmtMoney(Math.max(0, h.amount - h.covered))} billed, not paid` : HOUR_STATUS_LABEL[h.status]
+  return <span className={`badge h-${h.status}`} title={h.covered > 0 ? `Deposit covers ${fmtMoney(h.covered)} of ${fmtMoney(h.amount)}` : undefined}>{label}{invoice && (h.status === 'billed' || h.status === 'paid') ? ` · ${invoice.number}` : ''}</span>
 }
 
-function JobMoney({ jobId, onBack }: { jobId: string; onBack: () => void }) {
+function JobMoney({ jobId }: { jobId: string }) {
   const store = useData()
-  const { jobs, clients, invoices, deposits, phases, update } = store
-  const job = jobs.find(j => j.id === jobId)
-  const [sel, setSel] = useState<Set<string>>(new Set())
-  const [invoiceModal, setInvoiceModal] = useState<{ invoice?: Invoice; entryIds?: string[]; itemIds?: string[]; amount?: number } | null>(null)
-  const [depositModal, setDepositModal] = useState<{ deposit?: Deposit } | null>(null)
-  const [editEntry, setEditEntry] = useState<TimeEntry | null>(null)
-  const [itemModal, setItemModal] = useState<{ item?: JobItem } | null>(null)
-  const [filter, setFilter] = useState<(typeof FILTERS)[number]['key']>('all')
-  const b = useMemo(() => job ? jobBilling(store, job) : null, [store, job])
+  const { query, patch, params } = useBillingQuery()
+  const job = store.jobs.find(job => job.id === jobId)
+  const billing = useMemo(() => job ? jobBilling(store, job) : null, [store, job])
   const charges = useMemo(() => jobCharges(store, jobId), [store, jobId])
-  const hours = charges.hours
-  const itemRows = charges.items
-  const history = useMemo(() => balanceHistory(store, jobId), [store, jobId])
-  const usage = useMemo(() => depositUsage(store, jobId), [store, jobId])
-  if (!job || !b) return <Empty>Job not found.</Empty>
-  const jobDeposits = deposits.filter(d => d.job_id === job.id)
-  const jobInv = invoices.filter(i => i.job_id === job.id)
-  const f = FILTERS.find(x => x.key === filter)!
-  const list = [...hours].reverse().filter(h => f.match(h.status, h.covered))
-  const selectable = (s: HourStatus) => s === 'unbilled' || s === 'partial'
-  const selectedHours = hours.filter(h => sel.has(h.entry.id) && selectable(h.status))
-  const selectedItems = itemRows.filter(i => sel.has(i.item.id) && selectable(i.status))
-  const owedSel = sum(selectedHours.map(h => h.amount - h.covered)) + sum(selectedItems.map(i => i.amount - i.covered))
-  const selEntryIds = selectedHours.map(h => h.entry.id)
-  const selItemIds = selectedItems.map(i => i.item.id)
-  const selectedCount = selEntryIds.length + selItemIds.length
-  const toggle = (id: string) => setSel(s => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n })
-  const unbilledIds = hours.filter(h => selectable(h.status)).map(h => h.entry.id)
-  const unbilledItemIds = itemRows.filter(i => selectable(i.status)).map(i => i.item.id)
-
-  return (
-    <div>
-      <div className="page-header">
-        <div>
-          <div className="small muted"><a href="#" onClick={e => { e.preventDefault(); onBack() }}>Billing</a> › <Link to={`/jobs/${job.id}`}>{job.name}</Link></div>
-          <h1>{job.name}</h1>
-          <div className="small muted">{clients.find(c => c.id === job.client_id)?.name}{job.fee ? ` · fee ${fmtMoney(job.fee)} · work done is ${Math.round(b.workValue / job.fee * 100)}% of fee` : ''}</div>
-        </div>
-        <div className="actions">
-          <button className="btn" onClick={() => setItemModal({})}><Icon name="plus" size={16} /> Add charge</button>
-          <button className="btn" onClick={() => setDepositModal({})}><Icon name="plus" size={16} /> Record deposit</button>
-          <button className="btn primary" onClick={() => setInvoiceModal({ entryIds: unbilledIds, itemIds: unbilledItemIds, amount: b.unbilledAmount })} disabled={unbilledIds.length + unbilledItemIds.length === 0} title="Invoice all hours and charges that aren't billed yet">Bill everything not billed</button>
-        </div>
-      </div>
-
-      <div className="stats mb">
-        <div className="stat">
-          <div className="label">Job balance</div>
-          <div className={`value ${b.balance < 0 ? 'money-neg' : 'money-pos'}`}>{fmtSigned(b.balance)}</div>
-          <div className="sub">{b.balance < 0 ? 'Work done beyond deposits + billing' : 'Ahead: deposits + billing exceed work done'}</div>
-        </div>
-        <div className="stat"><div className="label">Work &amp; charges</div><div className="value">{fmtMoney(b.workValue)}</div><div className="sub">{fmtHours(b.loggedHours)} at billing rates{b.itemsValue > 0.5 ? ` + ${fmtMoney(b.itemsValue)} charges` : ''}</div></div>
-        <div className="stat"><div className="label">Deposits</div><div className="value">{fmtMoney(b.deposits)}</div><div className="sub">{fmtMoney(b.depositRemaining)} not used yet</div></div>
-        <div className="stat"><div className="label">Billed</div><div className="value">{fmtMoney(b.invoiced)}</div><div className="sub">{fmtMoney(b.paid)} paid{b.outstanding > 0 ? <> · <span className="warn-text">{fmtMoney(b.outstanding)} waiting</span></> : ''}</div></div>
-      </div>
-
-      <FeesSummary b={b} />
-
-      <div className="card">
-        <h2>Where the work stands</h2>
-        <p className="small muted">Billable time and charges on this job, by whether they've been paid for. Nonbillable time stays in job hours and work value.</p>
-        <WorkStatusBar b={b} />
-      </div>
-
-      <div className="card">
-        <h2>Job balance over time</h2>
-        <p className="small muted">Steps down as hours are logged, jumps up when a deposit comes in or an invoice goes out. Hover or tap for details.</p>
-        <BalanceChart points={history} />
-      </div>
-
-      <div className="grid cols-2">
-        <div className="card">
-          <h2>Deposits <span className="actions"><button className="btn sm" onClick={() => setDepositModal({})}>+ Deposit</button></span></h2>
-          {jobDeposits.length === 0 && <p className="small muted">No deposits on this job.</p>}
-          {jobDeposits.length > 0 && <div className="table-wrap"><table>
-            <thead><tr><th>Received</th><th className="num">Amount</th><th className="num">Left</th></tr></thead>
-            <tbody>{jobDeposits.map(d => (
-              <tr key={d.id} className="clickable" onClick={() => setDepositModal({ deposit: d })}>
-                <td className="nowrap">{fmtDate(d.received_date)}<div className="tiny muted">{[d.method, d.notes].filter(Boolean).join(' · ')}</div></td>
-                <td className="num">{fmtMoney(d.amount)}</td>
-                <td className="num">{fmtMoney(d.amount - (usage.get(d.id) ?? 0))}</td>
-              </tr>
-            ))}</tbody>
-          </table></div>}
-        </div>
-        <div className="card">
-          <h2>Invoices <span className="actions"><button className="btn sm" onClick={() => setInvoiceModal({})}>+ Invoice</button></span></h2>
-          {jobInv.length === 0 && <p className="small muted">None yet.</p>}
-          {jobInv.length > 0 && <div className="table-wrap"><table>
-            <thead><tr><th>#</th><th>Status</th><th className="num">Amount</th><th></th></tr></thead>
-            <tbody>{jobInv.map(i => (
-              <tr key={i.id} className="clickable" onClick={() => setInvoiceModal({ invoice: i })}>
-                <td className="bold">{i.number}<div className="tiny muted">{fmtDate(i.issued_date)} · {fmtHours(sum(hours.filter(h => h.entry.invoice_id === i.id).map(h => entryHours(h.entry))))}</div></td>
-                <td>{i.paid_date ? <span className="badge complete">paid {fmtDate(i.paid_date)}</span> : <span className="badge soon">waiting</span>}</td>
-                <td className="num">{fmtMoney(i.amount)}</td>
-                <td onClick={e => e.stopPropagation()}>{!i.paid_date && <button className="btn sm" onClick={() => update('invoices', i.id, { paid_date: new Date().toISOString().slice(0, 10) })}>Mark paid</button>}</td>
-              </tr>
-            ))}</tbody>
-          </table></div>}
-        </div>
-      </div>
-
-      <div className="card">
-        <h2>Hours <span className="actions">
-          <button className="btn sm primary" disabled={selectedCount === 0} onClick={() => setInvoiceModal({ entryIds: selEntryIds, itemIds: selItemIds, amount: owedSel })}>Invoice selected ({fmtMoney(owedSel)})</button>
-        </span></h2>
-        <div className="filters">
-          {FILTERS.map(x => <button key={x.key} className={`chip ${filter === x.key ? 'on' : ''}`} onClick={() => setFilter(x.key)}>{x.label}</button>)}
-          {unbilledIds.length + unbilledItemIds.length > 0 && <button className="btn sm ghost" onClick={() => setSel(sel.size ? new Set() : new Set([...unbilledIds, ...unbilledItemIds]))}>{sel.size ? 'Clear selection' : 'Select all not billed'}</button>}
-        </div>
-        {list.length === 0 && <p className="small muted">No hours in this list.</p>}
-        {list.length > 0 && <div className="table-wrap"><table>
-          <thead><tr><th></th><th>Date</th><th className="hide-mobile">Phase</th><th className="num hide-mobile">Hours × rate</th><th className="num">Amount</th><th>Status</th><th></th></tr></thead>
-          <tbody>{list.map(h => (
-            <tr key={h.entry.id} className={selectable(h.status) ? 'clickable' : ''} onClick={() => selectable(h.status) && toggle(h.entry.id)}>
-              <td>{selectable(h.status) && <input type="checkbox" style={{ width: 18, minHeight: 0 }} checked={sel.has(h.entry.id)} onChange={() => toggle(h.entry.id)} onClick={e => e.stopPropagation()} />}</td>
-              <td className="nowrap">{fmtDate(h.entry.date)}<div className="tiny muted show-mobile">{fmtHours(h.entry.hours)}</div></td>
-              <td className="small hide-mobile">{phases.find(p => p.id === h.entry.phase_id)?.name ?? 'General'}{h.entry.notes && <div className="tiny muted">{h.entry.notes}</div>}</td>
-              <td className="num hide-mobile nowrap">{fmtHours(h.entry.hours)}{h.status === 'nonbillable' ? '' : ` × $${entryRate(store, h.entry)}`}</td>
-              <td className="num">{fmtMoney(h.status === 'nonbillable' ? 0 : h.amount)}</td>
-              <td><StatusBadge h={h} /></td>
-              <td onClick={e => e.stopPropagation()} className="nowrap">
-                <button className="btn sm ghost" onClick={() => setEditEntry(h.entry)} title="Edit hours or rate"><Icon name="edit" size={14} /></button>
-                {(h.status === 'billed' || h.status === 'paid') && <button className="btn sm ghost" title="Take these hours off their invoice" onClick={() => update('time_entries', h.entry.id, { billed: false, invoice_id: null, deposit_applied: null })}>Unbill</button>}
-              </td>
-            </tr>
-          ))}</tbody>
-        </table></div>}
-        <p className="small muted mt">Tick billable hours (and charges below) that aren't billed and click "Invoice selected" to record an invoice. Deposits cover billable work automatically, oldest first. Nonbillable hours cannot be invoiced.</p>
-      </div>
-
-      <div className="card">
-        <h2>Charges <span className="actions">
-          <button className="btn sm" onClick={() => setItemModal({})}>+ Add charge</button>
-          <button className="btn sm primary" disabled={selectedCount === 0} onClick={() => setInvoiceModal({ entryIds: selEntryIds, itemIds: selItemIds, amount: owedSel })}>Invoice selected ({fmtMoney(owedSel)})</button>
-        </span></h2>
-        {itemRows.length === 0 && <p className="small muted">No charges yet. Add expenses, mileage, printing, permit fees or flat fees to bill them on this job.</p>}
-        {itemRows.length > 0 && <div className="table-wrap"><table>
-          <thead><tr><th></th><th>Date</th><th>Charge</th><th className="num hide-mobile">Qty × price</th><th className="num">Amount</th><th>Status</th><th></th></tr></thead>
-          <tbody>{[...itemRows].reverse().filter(i => f.match(i.status, i.covered)).map(i => (
-            <tr key={i.item.id} className={selectable(i.status) ? 'clickable' : ''} onClick={() => selectable(i.status) && toggle(i.item.id)}>
-              <td>{selectable(i.status) && <input type="checkbox" style={{ width: 18, minHeight: 0 }} checked={sel.has(i.item.id)} onChange={() => toggle(i.item.id)} onClick={e => e.stopPropagation()} />}</td>
-              <td className="nowrap">{fmtDate(i.item.date)}</td>
-              <td className="small">{i.item.description || i.item.category}<div className="tiny muted">{i.item.category}</div></td>
-              <td className="num hide-mobile nowrap">{i.item.quantity} × {fmtMoney(i.item.unit_price)}</td>
-              <td className="num">{fmtMoney(i.amount)}</td>
-              <td><StatusBadge h={i} /></td>
-              <td onClick={e => e.stopPropagation()} className="nowrap">
-                <button className="btn sm ghost" onClick={() => setItemModal({ item: i.item })} title="Edit charge"><Icon name="edit" size={14} /></button>
-                {(i.status === 'billed' || i.status === 'paid') && <button className="btn sm ghost" title="Take this charge off its invoice" onClick={() => update('job_items', i.item.id, { billed: false, invoice_id: null, deposit_applied: null })}>Unbill</button>}
-              </td>
-            </tr>
-          ))}</tbody>
-          <tfoot><tr><td colSpan={3}>Total charges</td><td className="hide-mobile" /><td className="num">{fmtMoney(sum(itemRows.map(i => i.amount)))}</td><td colSpan={2} /></tr></tfoot>
-        </table></div>}
-      </div>
-
-      {itemModal && <ItemModal item={itemModal.item} jobId={job.id} onClose={() => setItemModal(null)} />}
-      {invoiceModal && <InvoiceModal invoice={invoiceModal.invoice} jobId={job.id} entryIds={invoiceModal.entryIds} itemIds={invoiceModal.itemIds} defaultAmount={invoiceModal.amount} onClose={() => { setInvoiceModal(null); setSel(new Set()) }} />}
-      {depositModal && <DepositModal deposit={depositModal.deposit} jobId={job.id} onClose={() => setDepositModal(null)} />}
-      {editEntry && <TimeModal entry={editEntry} onClose={() => setEditEntry(null)} />}
-    </div>
-  )
+  const work = useMemo(() => workRows(charges), [charges])
+  const [selected, setSelected] = useState(new Set<string>())
+  const [invoiceModal, setInvoiceModal] = useState<{ entryIds?: string[]; itemIds?: string[]; amount?: number } | null>(null)
+  const [depositModal, setDepositModal] = useState<{ deposit?: Deposit } | null>(null)
+  const [itemModal, setItemModal] = useState<{ item?: JobItem } | null>(null)
+  const [timeModal, setTimeModal] = useState<{ entry?: TimeEntry } | null>(null)
+  const { pending, error, run, isBusy } = useMoneyActions()
+  const visible = work.filter(row => matchesWork(row, query.work) && matchesBillingText(row.kind === 'hours' ? [row.entry.notes, row.entry.date, phaseName(store.phases, row.entry.phase_id)].join(' ') : [row.item.description, row.item.category, row.item.date].join(' '), query.detail))
+  const visibleIds = new Set(visible.map(row => row.id))
+  const selection = invoiceSelection(work.filter(row => !pending.has(row.id)), selected, visibleIds)
+  const eligibleKey = selection.eligible.map(row => row.id).join('|')
+  useEffect(() => {
+    // Realtime writes can bill, move, delete, or reclassify selected work. Forget
+    // those IDs so a later reversal cannot silently reselect them for invoicing.
+    const eligibleIds = new Set(eligibleKey ? eligibleKey.split('|') : [])
+    setSelected(previous => { const next = new Set([...previous].filter(id => eligibleIds.has(id))); return next.size === previous.size ? previous : next })
+  }, [eligibleKey])
+  if (!job || !billing) return <div className="billing-page card"><Empty>{store.loading ? 'Loading job…' : 'Job not found.'} <Link to="/billing">Back to Billing</Link></Empty></div>
+  const clientName = store.clients.find(client => client.id === job.client_id)?.name ?? ''
+  const jobs = [{ job, clientName, billing }]
+  const invoices = filterInvoices(store.invoices.filter(invoice => invoice.job_id === jobId), query.payment, query.detail)
+  const deposits = store.deposits.filter(deposit => deposit.job_id === jobId && matchesBillingText([deposit.notes, deposit.method, deposit.received_date].join(' '), query.detail)).sort((a, b) => b.received_date.localeCompare(a.received_date) || a.id.localeCompare(b.id))
+  const back = writeBillingQuery(params, { job: '', section: 'work', detail: '' })
+  const toggle = (id: string) => setSelected(previous => { const next = new Set(previous); if (next.has(id)) next.delete(id); else next.add(id); return next })
+  const readyVisible = visible.filter(row => canInvoice(row) && !pending.has(row.id))
+  function invoiceSelected() {
+    if (selection.chosen.length) setInvoiceModal({ entryIds: selection.entryIds, itemIds: selection.itemIds, amount: selection.amount })
+  }
+  function unbill(row: BillingWork) {
+    if (isBusy(row.id) || !confirm('Remove this work from its invoice? The invoice amount stays unchanged.')) return
+    void run(row.id, row.kind === 'hours' ? 'time_entries' : 'job_items', row.kind === 'hours' ? row.entry.id : row.item.id,
+      { billed: false, invoice_id: null, deposit_applied: null }, 'Work removed from its invoice')
+  }
+  return <div className="billing-page billing-job-money">
+    <div className="page-header billing-header"><div><div className="small muted"><Link to={`/billing${back.size ? `?${back}` : ''}`}>Billing</Link> › {clientName}</div><h1>{job.name}</h1><div className="small muted">{job.job_number} · {JOB_STATUS_LABEL[job.status]} · <Link to={`/jobs/${jobId}`}>Open job →</Link></div></div><div className="billing-row-actions"><button className="btn" onClick={() => setDepositModal({})}>Record deposit</button><button className="btn primary" onClick={() => setInvoiceModal({})}>Record invoice</button></div></div>
+    <MoneyTotals rows={[billing]} />
+    <nav className="billing-tabs" aria-label="Job billing sections">{(['work', 'invoices', 'deposits', 'overview'] as const).map(section => <button key={section} aria-pressed={query.section === section} onClick={() => patch({ section, detail: '' })}>{section === 'work' ? 'Work to invoice' : section === 'invoices' ? 'Invoices' : section === 'deposits' ? 'Deposits' : 'Overview'}</button>)}</nav>
+    {query.section === 'work' && <section className="card billing-job-work"><div className="billing-section-heading"><h2>Hours &amp; charges</h2><div className="billing-row-actions"><button className="btn" onClick={() => setTimeModal({})}>Log hours</button><button className="btn" onClick={() => setItemModal({})}>Add charge</button></div></div><p className="tiny muted">Select completed billable work that still needs an invoice. Deposits are deducted from the amount to invoice. Nonbillable time stays in job effort and balance.</p>
+      <div className="billing-list-controls"><WorkFilter value={query.work} onChange={work => patch({ work })} /><label>Search work<input type="search" aria-label="Search job billing work" value={query.detail} placeholder="Notes, phase or charge…" onChange={event => patch({ detail: event.target.value }, true)} /></label></div>
+      <div className="billing-selection"><div><b>{selection.chosen.length} selected · {fmtMoney(selection.amount)} to invoice</b>{selection.hidden > 0 && <p className="small" role="status">{selection.hidden} selected {selection.hidden === 1 ? 'row is' : 'rows are'} hidden by these filters. Invoice selected includes them.</p>}</div><div className="billing-row-actions"><button className="btn" disabled={!readyVisible.length} onClick={() => setSelected(previous => new Set([...previous, ...readyVisible.map(row => row.id)]))}>Select visible ready work</button><button className="btn" disabled={!selection.eligible.length} onClick={() => setSelected(new Set(selection.eligible.map(row => row.id)))}>Select all ready work on job</button>{selection.chosen.length > 0 && <button className="btn ghost" onClick={() => setSelected(new Set())}>Clear selection</button>}{selection.hidden > 0 && <button className="btn ghost" onClick={() => setSelected(previous => new Set([...previous].filter(id => visibleIds.has(id))))}>Clear hidden selection</button>}<button className="btn primary" disabled={!selection.chosen.length} onClick={invoiceSelected}>Invoice selected</button></div></div>
+      {error && <p role="alert" className="billing-error">{error}</p>}{visible.length ? <div className="billing-work-list">{visible.map(row => { const source = row.kind === 'hours' ? row.entry : row.item; const title = row.kind === 'hours' ? row.entry.notes || 'Completed time' : row.item.description || row.item.category; return <article className={`billing-work-row ${selected.has(row.id) && canInvoice(row) ? 'is-selected' : ''}`} key={row.id}>
+        <div className="billing-select-cell">{canInvoice(row) ? <label className="billing-work-checkbox"><input type="checkbox" aria-label={`Select ${row.kind === 'hours' ? 'hours' : 'charge'}: ${title}`} checked={selected.has(row.id)} disabled={pending.has(row.id)} onChange={() => toggle(row.id)} /><span className="sr-only">Select {title}</span></label> : <span aria-hidden="true">—</span>}</div><div><b>{title}</b><div className="small muted">{fmtDate(source.date)} · {row.kind === 'hours' ? `${phaseName(store.phases, row.entry.phase_id)} · ${fmtHours(row.entry.hours)} × ${fmtMoney(entryRate(store, row.entry))}/h` : `${row.item.category} · ${row.item.quantity} × ${fmtMoney(row.item.unit_price)}`}</div><StatusBadge h={row} />{row.covered > 0 && <div className="tiny muted">{fmtMoney(row.covered)} covered by deposit</div>}{row.status === 'nonbillable' && <div className="tiny muted">{fmtMoney(row.amount)} work value retained in balance</div>}</div><div className="billing-work-amount"><b>{fmtMoney(workAmount(row, query.work))}</b><span className="tiny muted">{query.work === 'paid' ? 'paid' : query.work === 'unbilled' ? 'to invoice' : 'billing amount'}</span></div><div className="billing-row-actions"><button className="btn" disabled={pending.has(row.id)} aria-label={`Edit ${row.kind === 'hours' ? 'hours' : 'charge'}: ${title}`} onClick={() => row.kind === 'hours' ? setTimeModal({ entry: row.entry }) : setItemModal({ item: row.item })}>Edit</button>{(row.status === 'billed' || row.status === 'paid') && <button className="btn ghost" aria-label={`Unbill ${row.kind === 'hours' ? 'hours' : 'charge'}: ${title}`} disabled={pending.has(row.id)} onClick={() => unbill(row)}>{pending.has(row.id) ? 'Saving…' : 'Unbill'}</button>}</div></article> })}</div> : <Empty>No work matches these filters. Choose All work to see billed or nonbillable history.</Empty>}<p className="billing-list-total">{visible.length} visible rows · {fmtMoney(sum(visible.map(row => workAmount(row, query.work))))} {query.work === 'unbilled' ? 'ready to invoice' : query.work === 'paid' ? 'paid' : 'billing amount'} · {fmtHours(sum(visible.filter(row => row.kind === 'hours').map(row => row.entry.hours ?? 0)))} completed hours shown</p>
+    </section>}
+    {query.section === 'invoices' && <><div className="billing-list-controls"><PaymentFilter value={query.payment} onChange={payment => patch({ payment })} /><label>Search invoices<input type="search" aria-label="Search job invoices" value={query.detail} onChange={event => patch({ detail: event.target.value }, true)} /></label></div><InvoiceList invoices={invoices} jobs={jobs} onNew={() => setInvoiceModal({})} /></>}
+    {query.section === 'deposits' && <><div className="billing-list-controls"><label>Search deposits<input type="search" aria-label="Search job deposits" value={query.detail} onChange={event => patch({ detail: event.target.value }, true)} /></label></div><DepositList deposits={deposits} jobs={jobs} usage={depositUsage(store, jobId)} onEdit={deposit => setDepositModal({ deposit })} /></>}
+    {query.section === 'overview' && <div className="billing-overview-grid"><FeesSummary b={billing} /><section className="card"><h2>Job balance</h2><div className={`billing-balance ${billing.balance < 0 ? 'money-neg' : 'money-pos'}`}>{fmtSigned(billing.balance)}</div><p className="small muted">{moneyBasis}</p><dl className="billing-facts"><div><dt>Completed work &amp; charges</dt><dd>{fmtMoney(billing.workValue)}</dd></div><div><dt>Deposits received</dt><dd>{fmtMoney(billing.deposits)}</dd></div><div><dt>Invoices recorded</dt><dd>{fmtMoney(billing.invoiced)}</dd></div></dl><WorkStatusBar b={billing} /></section><section className="card billing-balance-chart"><h2>Balance over time</h2><BalanceChart points={balanceHistory(store, jobId)} /></section></div>}
+    {invoiceModal && <InvoiceModal jobId={jobId} entryIds={invoiceModal.entryIds} itemIds={invoiceModal.itemIds} defaultAmount={invoiceModal.amount} onClose={() => setInvoiceModal(null)} />}{depositModal && <DepositModal jobId={jobId} deposit={depositModal.deposit} onClose={() => setDepositModal(null)} />}{itemModal && <ItemModal jobId={jobId} item={itemModal.item} onClose={() => setItemModal(null)} />}{timeModal && <TimeModal entry={timeModal.entry} defaults={{ job_id: jobId }} onClose={() => setTimeModal(null)} />}
+  </div>
 }
-
-function round2(n: number) { return Math.round(n * 100) / 100 }

@@ -1,0 +1,36 @@
+.calendar-page { min-width: 0; }
+.calendar-page-header { align-items: flex-start; }
+.calendar-page-header > div:first-child { flex: 1; min-width: 0; }
+.calendar-page-subtitle { margin: 5px 0 0; font-size: 13px; line-height: 1.5; color: var(--muted); }
+.calendar-summary { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 8px; }
+.calendar-summary-button { min-width: 0; text-align: left; cursor: pointer; }
+.calendar-summary-button:hover { border-color: #a4c7fb; background: #f8fbff; }
+.calendar-summary-button.is-selected { border-color: #8bb7fc; background: #edf5ff; }
+.calendar-summary-button .sub { line-height: 1.5; margin-top: 5px; }
+.calendar-summary-scope, .calendar-status-scope, .calendar-export-scope { line-height: 1.6; margin: 8px 0 14px; }
+.calendar-page-filters { margin-bottom: 10px; }
+.calendar-filter-grid { display: grid; grid-template-columns: minmax(180px, 1.6fr) minmax(170px, 1.4fr) minmax(135px, 1fr) minmax(145px, 1fr); gap: 12px; }
+.calendar-filter-grid label { min-width: 0; margin: 0; font-size: 12px; }
+.calendar-filter-grid input, .calendar-filter-grid select { margin-top: 5px; font-size: 13px; min-width: 0; }
+.calendar-filter-footer { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 6px 12px; font-size: 12px; color: var(--muted); margin-top: 12px; }
+.calendar-focus-notice { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; border: 1px solid #bcd3f6; border-radius: var(--radius); background: #f3f7ff; padding: 12px 14px; margin-bottom: 16px; }
+.calendar-focus-notice > div { min-width: 0; flex: 1 1 200px; line-height: 1.5; font-size: 13px; }
+.calendar-focus-notice span { display: block; color: var(--muted); font-size: 12px; margin-top: 3px; }
+@media (max-width: 1200px) {
+  .calendar-filter-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 760px) {
+  .calendar-page-header > div:first-child { flex-basis: 100%; }
+  .calendar-page-header .actions { width: 100%; }
+  .calendar-page-header .actions .btn { min-width: 0; flex: 1; font-size: 12px; padding: 8px; }
+  .calendar-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .calendar-summary-button { padding: 11px; }
+  .calendar-summary-button .value { font-size: 22px; }
+  .calendar-summary-button .label { font-size: 10px; }
+  .calendar-summary-button .sub { font-size: 11px; }
+  .calendar-page .calendar-page-filters { padding: 13px; }
+  .calendar-search-label { grid-column: 1 / -1; }
+  .calendar-filter-grid label:nth-child(2) { grid-column: 1 / -1; }
+  .calendar-filter-grid input, .calendar-filter-grid select { font-size: 16px; min-height: 44px; }
+  .calendar-focus-notice { padding: 11px 12px; }
+}
