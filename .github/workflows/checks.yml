@@ -3,8 +3,7 @@ name: Check planner
 on:
   pull_request:
   push:
-    # The second name is the default branch's old name; drop it once the branch is renamed to main.
-    branches: [main, claude/shear-wall-analyzer-kQe3k]
+    branches: [main]
 
 permissions:
   contents: read

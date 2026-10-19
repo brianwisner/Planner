@@ -10,8 +10,7 @@ name: Deploy planner to GitHub Pages
 
 on:
   push:
-    # The second name is the default branch's old name; drop it once the branch is renamed to main.
-    branches: [main, claude/shear-wall-analyzer-kQe3k]
+    branches: [main]
     paths-ignore: ['**.md']
   workflow_dispatch:
 

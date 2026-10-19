@@ -16,7 +16,7 @@ It contains:
 | `planner/` | **The project planning web app** (the main thing, version 2 — rebuilt Oct 2026). React + TypeScript + Vite, data in Supabase, hosted on GitHub Pages at `/Who-knows/`. `planner/supabase/` holds the database schema, migrations and the calendar-feed Edge Function. |
 | `classic/` | The **previous design** of the planner (frozen). Same database. Published at `/Who-knows/classic/` as a fallback; safe to delete later (also remove its steps from both workflows). Don't develop it further. |
 
-`.github/workflows/deploy.yml` builds `planner/` (plus a demo build at `/Who-knows/demo/` and `classic/` at `/Who-knows/classic/`) and publishes to GitHub Pages on every push to the default branch. The default branch should be `main`; until the owner renames it in GitHub settings it is still `claude/shear-wall-analyzer-kQe3k`, a name left over from when this repository started, so the workflows list both. `.github/workflows/checks.yml` runs tests, build, lint, the demo build and the classic build on pull requests.
+`.github/workflows/deploy.yml` builds `planner/` (plus a demo build at `/Who-knows/demo/` and `classic/` at `/Who-knows/classic/`) and publishes to GitHub Pages on every push to the default branch, `main` (renamed in Oct 2026 from `claude/shear-wall-analyzer-kQe3k`, a name left over from when this repository started). `.github/workflows/checks.yml` runs tests, build, lint, the demo build and the classic build on pull requests.
 
 The shear wall analyzer that used to sit at this repository's root now has its own repository (`brianwisner/shear-wall`, published at https://brianwisner.github.io/shear-wall/). It is unrelated to the planner: don't link to it or add it back here.
 
