@@ -2,8 +2,8 @@
 
 The project planner for a solo structural engineering business: jobs, schedule, time and billing in one place. It runs in any browser (desktop, laptop, iPhone, iPad), keeps every device in sync, and is free to run.
 
-**Open it:** https://brianwisner.github.io/Who-knows/ — sign in with your email and password.
-**Try it with made-up data (nothing is saved):** https://brianwisner.github.io/Who-knows/demo/
+**Open it:** https://brianwisner.github.io/Planner/ — sign in with your email and password.
+**Try it with made-up data (nothing is saved):** https://brianwisner.github.io/Planner/demo/
 
 ![Today](docs/screenshots/desk-today.png)
 
@@ -51,7 +51,7 @@ Settings → **Google Calendar sync** → **Copy**, then **Open Google Calendar*
 - **The app** is a website made with React. GitHub Pages hosts it for free. Every change merged into the default branch is rebuilt and published automatically (`.github/workflows/deploy.yml`).
 - **The data** (clients, jobs, hours, invoices…) lives in **Supabase**, a hosted database with logins and live syncing. The project is called `wisner-planner`. Its setup is in `supabase/` (see `supabase/README.md`).
 - `planner/.env.production` holds the database address and its *publishable* key, which is designed to be visible in a website: everything sits behind your login and row-level security.
-- **The previous design** is still available at https://brianwisner.github.io/Who-knows/classic/ (folder `classic/`). It uses the same data, so you can switch back and forth. It can be removed once you're happy with this one.
+- **The previous design** is still available at https://brianwisner.github.io/Planner/classic/ (folder `classic/`). It uses the same data, so you can switch back and forth. It can be removed once you're happy with this one.
 
 ## For developers
 

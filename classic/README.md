@@ -1,6 +1,6 @@
 > **This is the previous design of the planner, kept for reference.** The current app lives in
-> [`planner/`](../planner/) and is published at https://brianwisner.github.io/Who-knows/. This copy is
-> published at https://brianwisner.github.io/Who-knows/classic/ and uses the same database, so anything
+> [`planner/`](../planner/) and is published at https://brianwisner.github.io/Planner/. This copy is
+> published at https://brianwisner.github.io/Planner/classic/ and uses the same database, so anything
 > changed here shows up in the new planner too. It is no longer being developed and can be deleted once
 > the new planner has everything you need (remove this folder and the "classic" steps in
 > `.github/workflows/deploy.yml` and `checks.yml`).
@@ -38,7 +38,7 @@ A project planning app for a solo structural engineering business. It runs in an
 - **The app itself** is a website made with React. It is hosted for free on **GitHub Pages**, straight from this repository. Every time code is pushed to the main branch, GitHub rebuilds it and publishes it to the `gh-pages` branch automatically (see `.github/workflows/deploy.yml`).
 - **The data** (clients, jobs, hours, invoices…) lives in **Supabase**, a hosted database with built-in logins and live syncing. The free plan is plenty for a small team. The project is called `wisner-planner`.
 - **Your login** is email + password. New tasks, time entries, and planned hours use your account automatically.
-- The web address is: **https://brianwisner.github.io/Who-knows/**
+- The web address is: **https://brianwisner.github.io/Planner/**
 - The connection between the website and the database is the file `planner/.env.production`. It holds the project address and the *publishable* key, which Supabase designs to be visible inside a website. All data sits behind the login and row-level security, so this key alone cannot read anything.
 
 ---
@@ -52,7 +52,7 @@ This has already been done for you:
 - [x] Owner login created (the first account automatically gets the sample jobs assigned to it)
 - [x] App connected to the database and published by the deploy workflow
 
-- [x] **GitHub Pages is live** at https://brianwisner.github.io/Who-knows/, served from the `gh-pages` branch.
+- [x] **GitHub Pages is live** at https://brianwisner.github.io/Planner/, served from the `gh-pages` branch.
 
 ### Put it on your phone and iPad
 
@@ -100,7 +100,7 @@ Open this repository in Codex and describe what you want in plain English ("add 
 cd planner
 cp .env.example .env     # fill in your Supabase URL + key
 npm install
-npm run dev              # http://localhost:5173/Who-knows/
+npm run dev              # http://localhost:5173/
 npm run build            # production build into dist/
 ```
 
