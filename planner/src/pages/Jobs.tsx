@@ -1,7 +1,7 @@
 // Jobs: a pipeline board (drag a job to move it to the next stage) and a
 // priority list (drag to reorder your queue). Filters live in the address bar.
 import { useMemo, useState } from 'react'
-import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom'
 import {
   DndContext, DragOverlay, KeyboardSensor, PointerSensor, TouchSensor, closestCenter, useDraggable, useDroppable, useSensor, useSensors,
   type DragEndEvent, type DragStartEvent,
@@ -41,7 +41,9 @@ export function Jobs() {
   const store = useData()
   const edit = useEditors()
   const [params, setParams] = useSearchParams()
-  const view = (params.get('view') === 'list' || params.get('view') === 'board' ? params.get('view') : pref<View>('jobs.view', 'board')) as View
+  const rawView = params.get('view')
+  // Addresses from the previous version: table/sheet were lists; gantt/calendar now live in Schedule.
+  const view = (rawView === 'list' || rawView === 'table' || rawView === 'sheet' ? 'list' : rawView === 'board' ? 'board' : pref<View>('jobs.view', 'board')) as View
   const show = (params.get('show') as Show) in SHOW_LABEL ? params.get('show') as Show : 'open'
   const q = params.get('q') ?? ''
   const clientId = params.get('client') ?? ''
@@ -74,6 +76,8 @@ export function Jobs() {
   }), [store.jobs])
   const filtered = Boolean(q || clientId || stageFilter || show !== 'open')
 
+  if (rawView === 'gantt') return <Navigate to="/schedule?view=timeline" replace />
+  if (rawView === 'calendar') return <Navigate to="/schedule?view=month" replace />
   return <div className="jobs-page">
     <div className="page-head">
       <div className="titles">
@@ -249,7 +253,8 @@ function JobList({ rows, sort, filtered }: { rows: JobSummary[]; sort: Sort; fil
     const visible = arrayMove(sorted.map(r => r.job), from, to)
     const queue = store.jobs.filter(j => j.status === 'active' || j.status === 'on_hold')
     const merged = mergeOrder(queue, visible.filter(j => queue.some(q => q.id === j.id)))
-    if (await reorderJobs(store, merged)) store.toast('Priority order saved')
+    const closedNumbers = store.jobs.filter(j => j.status !== 'active' && j.status !== 'on_hold').map(j => j.priority)
+    if (await reorderJobs(store, merged, closedNumbers)) store.toast('Priority order saved')
   }
 
   if (!sorted.length) return <div className="card"><Empty title="No jobs match">{filtered ? 'Try clearing the filters.' : 'Add a job to get started.'}</Empty></div>
@@ -306,6 +311,6 @@ function ListRow({ row, index, canReorder }: { row: JobSummary; index: number; c
 
 function exportCsv(rows: JobSummary[]) {
   downloadCSV('jobs.csv',
-    ['Priority', 'Job #', 'Job', 'Client', 'Status', 'Stage', 'Next task', 'Next date', 'Hours logged', 'Hours estimated', 'Fee', 'Ready to bill', 'Awaiting payment', 'Balance'],
-    rows.map(r => [r.job.priority, r.job.job_number, r.job.name, r.client?.name ?? '', JOB_STATUS_LABEL[r.job.status], STAGE_LABEL[r.stage.stage], r.nextTask?.title ?? '', r.nextDeadline ? fmtDate(r.nextDeadline.date, 'long') : '', Math.round(r.hours * 100) / 100, r.estimate, r.job.fee, Math.round(r.money.unbilledAmount), Math.round(r.money.outstanding), Math.round(r.money.balance)]))
+    ['Priority', 'Job #', 'Job', 'Client', 'Status', 'Stage', 'Next task', 'Next date', 'Hours logged', 'Non-billable hours', 'Hours estimated', 'Fee', 'Ready to bill', 'Awaiting payment', 'Balance', 'Recorded fees', 'Earned per hour'],
+    rows.map(r => [r.job.priority, r.job.job_number, r.job.name, r.client?.name ?? '', JOB_STATUS_LABEL[r.job.status], STAGE_LABEL[r.stage.stage], r.nextTask?.title ?? '', r.nextDeadline ? fmtDate(r.nextDeadline.date, 'long') : '', Math.round(r.hours * 100) / 100, Math.round(r.money.nonBillableHours * 100) / 100, r.estimate, r.job.fee, Math.round(r.money.unbilledAmount * 100) / 100, Math.round(r.money.outstanding * 100) / 100, Math.round(r.money.balance * 100) / 100, Math.round(r.money.feeRevenue * 100) / 100, r.money.effectiveHourlyRate == null ? null : Math.round(r.money.effectiveHourlyRate * 100) / 100]))
 }

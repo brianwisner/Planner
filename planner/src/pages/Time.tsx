@@ -5,10 +5,11 @@ import { addDays, format, parseISO } from 'date-fns'
 import { ChevronLeft, ChevronRight, Clock, Download, Lock, Play, Plus, Search, Square } from 'lucide-react'
 import { useData } from '../lib/store'
 import { useEditors } from '../components/editors'
-import { Empty, Menu, Segmented, type MenuEntry } from '../components/ui'
+import { Empty, Menu, Segmented, useConfirm, type MenuEntry } from '../components/ui'
 import { allHours, entryHours, HOUR_STATUS_LABEL, workPhase } from '../lib/calc'
 import { phaseLabel } from '../lib/phases'
-import { runningTimer, startTimer, stopTimer, elapsedLabel } from '../lib/timer'
+import { runningTimers, needsReview, startTimer, elapsedLabel } from '../lib/timer'
+import { useStopTimer } from '../components/useTimerActions'
 import { mondayOf } from '../lib/views'
 import { downloadCSV, fmtDate, fmtHours, fmtMoney, sum, todayISO } from '../lib/utils'
 import { pref, setPref } from '../lib/theme'
@@ -63,28 +64,35 @@ export function Time() {
 function TimerCard() {
   const store = useData()
   const edit = useEditors()
-  const timer = runningTimer(store)
+  const stop = useStopTimer()
+  const timers = runningTimers(store)
   const [, tick] = useState(0)
-  useEffect(() => { if (!timer) return; const id = setInterval(() => tick(n => n + 1), 15000); return () => clearInterval(id) }, [timer])
+  useEffect(() => { if (!timers.length) return; const id = setInterval(() => tick(n => n + 1), 15000); return () => clearInterval(id) }, [timers.length])
   const active = store.jobs.filter(j => j.status === 'active')
   const [jobId, setJobId] = useState(() => pref<string>('time.timerJob', ''))
   const [billable, setBillable] = useState(true)
+  const [starting, setStarting] = useState(false)
   const job = active.find(j => j.id === jobId) ?? active[0]
-  if (timer) {
-    const tj = store.jobs.find(j => j.id === timer.job_id)
-    const ph = store.phases.find(p => p.id === timer.phase_id)
-    return <section className="card timer-card running">
-      <span className="timer-pulse" />
-      <div className="grow" style={{ minWidth: 0 }}>
-        <div className="small muted">Timer running · started {format(new Date(timer.started_at!), 'h:mm a')}</div>
-        <div className="timer-job truncate">{tj?.name ?? 'Job'}</div>
-        <div className="tiny muted">{ph ? phaseLabel(ph) : 'General'}{timer.billable === false ? ' · non-billable' : ''}</div>
-      </div>
-      <div className="timer-clock num">{elapsedLabel(timer.started_at!)}</div>
-      <button className="btn" onClick={() => edit.time(timer)}>Edit</button>
-      <button className="btn ok lg" onClick={() => void stopTimer(store, timer)}><Square size={14} fill="currentColor" /> Stop & save</button>
-    </section>
-  }
+  if (timers.length) return <>
+    {timers.length > 1 && <div className="form-note warn" style={{ marginBottom: 12 }}>More than one timer is running. Stop or edit the extra ones so the same hours aren't saved twice.</div>}
+    {timers.map(timer => {
+      const tj = store.jobs.find(j => j.id === timer.job_id)
+      const ph = store.phases.find(p => p.id === timer.phase_id)
+      const long = needsReview(timer)
+      return <section key={timer.id} className="card timer-card running">
+        <span className="timer-pulse" />
+        <div className="grow" style={{ minWidth: 0 }}>
+          <div className="small muted">Timer running · started {format(new Date(timer.started_at!), long ? 'EEE MMM d, h:mm a' : 'h:mm a')}</div>
+          <div className="timer-job truncate">{tj?.name ?? 'Job'}</div>
+          <div className="tiny muted">{ph ? phaseLabel(ph) : 'General'}{timer.billable === false ? ' · non-billable' : ''}</div>
+          {long && <div className="tiny danger-text">Running a long time — check the hours before saving.</div>}
+        </div>
+        <div className="timer-clock num">{elapsedLabel(timer.started_at!)}</div>
+        <button className="btn" onClick={() => edit.time(timer)}>Edit</button>
+        <button className="btn ok lg" onClick={() => void stop(timer)}><Square size={14} fill="currentColor" /> {long ? 'Check hours' : 'Stop & save'}</button>
+      </section>
+    })}
+  </>
   if (!active.length) return null
   return <section className="card timer-card">
     <span className="timer-ico"><Clock size={20} /></span>
@@ -94,7 +102,7 @@ function TimerCard() {
       </select>
       <label className="switch small"><input type="checkbox" checked={billable} onChange={e => setBillable(e.target.checked)} />Billable</label>
     </div>
-    <button className="btn primary lg" onClick={() => job && void startTimer(store, { job_id: job.id, billable })}><Play size={16} /> Start timer</button>
+    <button className="btn primary lg" disabled={starting} onClick={async () => { if (!job) return; setStarting(true); await startTimer(store, { job_id: job.id, billable }); setStarting(false) }}><Play size={16} /> {starting ? 'Starting…' : 'Start timer'}</button>
   </section>
 }
 
@@ -111,7 +119,7 @@ function Timesheet({ days, allDays, week, today, onWeek, weekends, setWeekends }
     .sort((a, b) => a!.priority - b!.priority) as typeof store.jobs
   const candidates = store.jobs.filter(j => j.status === 'active' && !rowJobs.some(r => r.id === j.id))
   const addItems: MenuEntry[] = candidates.length ? candidates.map(j => ({ label: j.name, onSelect: () => setExtraRows(r => [...r, j.id]) })) : [{ label: 'All active jobs are listed', disabled: true }]
-  const dayTotal = (d: string) => sum(entries.filter(e => e.date === d).map(entryHours))
+  const dayTotal = (d: string) => sum(entries.filter(e => e.date === d).map(e => e.hours ?? 0))
   const total = sum(days.map(dayTotal))
 
   return <section className="card sheet-card">
@@ -136,7 +144,7 @@ function Timesheet({ days, allDays, week, today, onWeek, weekends, setWeekends }
           {rowJobs.map(job => <tr key={job.id}>
             <th className="sheet-job" scope="row"><Link to={`/jobs/${job.id}?tab=time`} className="truncate" style={{ display: 'block' }}>{job.name}</Link><span className="tiny muted truncate" style={{ display: 'block' }}>{store.clients.find(c => c.id === job.client_id)?.name}</span></th>
             {days.map(d => <SheetCell key={d} jobId={job.id} date={d} today={today} entries={entries.filter(e => e.job_id === job.id && e.date === d)} planned={sum(planned.filter(s => s.job_id === job.id && s.date === d).map(s => s.hours))} />)}
-            <td className="sheet-total hide-sm num strong">{fmtHours(sum(entries.filter(e => e.job_id === job.id && days.includes(e.date)).map(entryHours)))}</td>
+            <td className="sheet-total hide-sm num strong">{fmtHours(sum(entries.filter(e => e.job_id === job.id && days.includes(e.date)).map(e => e.hours ?? 0)))}</td>
           </tr>)}
           <tr className="sheet-add-row">
             <th className="sheet-job" colSpan={1}>
@@ -165,14 +173,22 @@ function SheetCell({ jobId, date, today, entries, planned }: { jobId: string; da
   const locked = single ? Boolean(single.billed || single.invoice_id || (single.deposit_applied ?? 0) > 0) : false
   const [draft, setDraft] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+  const cancelled = useRef(false)
+  const confirm = useConfirm()
   const editable = !running && (done.length === 0 || (single && !locked))
   async function commit() {
+    if (cancelled.current) { cancelled.current = false; setDraft(null); return }
     if (draft == null) return
     const n = draft.trim() === '' ? 0 : Number(draft)
     setDraft(null)
     if (!Number.isFinite(n) || n < 0 || n > 24) { store.toast('Enter hours between 0 and 24', 'error'); return }
     const hours = Math.round(n * 4) / 4
+    if (n > 0 && hours === 0) { store.toast('Enter at least 0.25 h (a quarter hour)', 'error'); return }
     if (hours === value) return
+    if (single && hours === 0) {
+      const ok = await confirm({ title: 'Delete this time entry?', body: `${fmtHours(single.hours)} on ${format(parseISO(date), 'EEEE, MMM d')}${single.notes ? ` — “${single.notes}”` : ''}.`, confirmLabel: 'Delete', danger: true })
+      if (!ok) return
+    }
     setSaving(true)
     if (single) {
       if (hours === 0) await store.remove('time_entries', single.id)
@@ -188,7 +204,7 @@ function SheetCell({ jobId, date, today, entries, planned }: { jobId: string; da
       {editable
         ? <input className="sc-input" inputMode="decimal" aria-label={label} disabled={saving} value={draft ?? (value ? String(value) : '')} placeholder={planned ? String(planned) : '·'} title={planned ? `${fmtHours(planned)} planned` : undefined}
             onChange={e => setDraft(e.target.value)} onBlur={() => void commit()}
-            onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); if (e.key === 'Escape') { setDraft(null); (e.target as HTMLInputElement).blur() } }} />
+            onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); if (e.key === 'Escape') { cancelled.current = true; (e.target as HTMLInputElement).blur() } }} />
         : <button className={`sc-input sc-btn ${running ? 'running' : ''}`} aria-label={`${label}: ${running ? 'timer running' : fmtHours(value)}`} onClick={() => single ? edit.time(single) : edit.time(entries.find(e => e.hours == null) ?? done[0])}>
             {running ? '●' : fmtHours(value)}{locked && <Lock size={10} className="sc-lock" />}{done.length > 1 && <span className="sc-count">{done.length}</span>}
           </button>}

@@ -11,6 +11,10 @@ import { daysUntil, fmtDate, initials } from '../lib/utils'
 
 const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
 
+// Open dialogs, newest last. Esc and Tab only act on the top one, so closing a
+// "New client" form opened from "New job" keeps the job form open.
+const openDialogs: string[] = []
+
 export function Modal({ title, subtitle, onClose, children, footer, size, initialFocus = true, labelledBy }: {
   title: ReactNode; subtitle?: ReactNode; onClose: () => void; children: ReactNode; footer?: ReactNode
   size?: 'narrow' | 'wide'; initialFocus?: boolean; labelledBy?: string
@@ -28,7 +32,9 @@ export function Modal({ title, subtitle, onClose, children, footer, size, initia
       const target = el.querySelector<HTMLElement>('[autofocus], [data-autofocus]') ?? el.querySelector<HTMLElement>('.dialog-body ' + FOCUSABLE) ?? el
       target.focus()
     }
+    openDialogs.push(id)
     const onKey = (e: KeyboardEvent) => {
+      if (openDialogs[openDialogs.length - 1] !== id) return
       if (e.key === 'Escape') { e.stopPropagation(); onCloseRef.current() }
       if (e.key === 'Tab' && el) {
         const items = [...el.querySelectorAll<HTMLElement>(FOCUSABLE)].filter(n => n.offsetParent !== null)
@@ -42,10 +48,12 @@ export function Modal({ title, subtitle, onClose, children, footer, size, initia
     document.body.style.overflow = 'hidden'
     return () => {
       document.removeEventListener('keydown', onKey)
-      document.body.style.overflow = ''
+      const at = openDialogs.lastIndexOf(id)
+      if (at >= 0) openDialogs.splice(at, 1)
+      if (!openDialogs.length) document.body.style.overflow = ''
       previous?.focus?.()
     }
-  }, [initialFocus])
+  }, [initialFocus, id])
   return createPortal(
     <div className="overlay" onMouseDown={e => { if (e.target === e.currentTarget) onClose() }}>
       <div className={`dialog ${size ?? ''}`} role="dialog" aria-modal="true" aria-labelledby={labelledBy ?? id} ref={ref} tabIndex={-1}>
@@ -229,15 +237,15 @@ export function Field({ label, hint, children, className, htmlFor }: { label: Re
 }
 
 /** Number input that keeps what was typed (including blanks) until it is valid. */
-export function NumberInput({ value, onChange, step = 'any', min, placeholder, id, className, autoFocus, prefix, suffix, ariaLabel }: {
-  value: number | null; onChange: (v: number | null) => void; step?: number | 'any'; min?: number; placeholder?: string; id?: string; className?: string; autoFocus?: boolean; prefix?: string; suffix?: string; ariaLabel?: string
+export function NumberInput({ value, onChange, step = 'any', min, placeholder, id, className, autoFocus, prefix, suffix, ariaLabel, disabled }: {
+  value: number | null; onChange: (v: number | null) => void; step?: number | 'any'; min?: number; placeholder?: string; id?: string; className?: string; autoFocus?: boolean; prefix?: string; suffix?: string; ariaLabel?: string; disabled?: boolean
 }) {
   const parse = (t: string) => { const n = t.trim() === '' ? null : Number(t); return n != null && Number.isFinite(n) ? n : null }
   const [text, setText] = useState(value == null ? '' : String(value))
   const [seen, setSeen] = useState(value)
   // A new value from outside (e.g. a quick-fill button) replaces the text.
   if (value !== seen) { setSeen(value); if (parse(text) !== value) setText(value == null ? '' : String(value)) }
-  const input = <input id={id} className={`input ${className ?? ''}`} inputMode="decimal" type="number" step={step} min={min} placeholder={placeholder} autoFocus={autoFocus} aria-label={ariaLabel}
+  const input = <input id={id} className={`input ${className ?? ''}`} inputMode="decimal" type="number" step={step} min={min} placeholder={placeholder} autoFocus={autoFocus} aria-label={ariaLabel} disabled={disabled}
     value={text} onChange={e => { const t = e.target.value; setText(t); const n = parse(t); setSeen(n); onChange(n) }} />
   if (!prefix && !suffix) return input
   return <div className="input-wrap">{prefix && <span className="prefix">{prefix}</span>}{input}{suffix && <span className="suffix">{suffix}</span>}</div>

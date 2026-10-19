@@ -7,7 +7,8 @@ import {
   Plus, Ruler, Search, Settings, Square, Sun, Wallet, X,
 } from 'lucide-react'
 import { useData } from '../lib/store'
-import { runningTimer, startTimer, stopTimer, elapsedLabel } from '../lib/timer'
+import { runningTimers, startTimer, elapsedLabel } from '../lib/timer'
+import { useStopTimer } from './useTimerActions'
 import { lateCount as countLate } from '../lib/views'
 import { todayISO } from '../lib/utils'
 import { useEditors } from './editors'
@@ -187,7 +188,10 @@ function SheetLink({ to, icon, label, desc, tone, onDone }: { to: string; icon: 
 export function TimerControl({ compact }: { compact?: boolean }) {
   const store = useData()
   const edit = useEditors()
-  const running = runningTimer(store)
+  const timers = runningTimers(store)
+  const running = timers[0]
+  const stop = useStopTimer()
+  const navigate = useNavigate()
   const [, tick] = useState(0)
   const [busy, setBusy] = useState(false)
   useEffect(() => { if (!running) return; const id = setInterval(() => tick(n => n + 1), 15000); return () => clearInterval(id) }, [running])
@@ -196,8 +200,10 @@ export function TimerControl({ compact }: { compact?: boolean }) {
     return <div className="timer-chip" role="status">
       <span className="pulse" />
       <button className="clock" style={{ border: 0, background: 'none', color: 'inherit', font: 'inherit', padding: 0 }} onClick={() => edit.time(running)} title="Edit this timer">{elapsedLabel(running.started_at!)}</button>
-      <span className="job truncate">{job?.name}</span>
-      <button className="stop" disabled={busy} onClick={async () => { setBusy(true); await stopTimer(store, running); setBusy(false) }} aria-label="Stop timer and save hours"><Square size={12} fill="currentColor" />{compact ? '' : 'Stop'}</button>
+      <span className="job truncate">{timers.length > 1 ? `${timers.length} timers running` : job?.name}</span>
+      {timers.length > 1
+        ? <button className="stop" onClick={() => navigate('/time')}>{compact ? '!' : 'Review'}</button>
+        : <button className="stop" disabled={busy} onClick={async () => { setBusy(true); await stop(running); setBusy(false) }} aria-label="Stop timer and save hours"><Square size={12} fill="currentColor" />{compact ? '' : 'Stop'}</button>}
     </div>
   }
   if (compact) return null

@@ -11,6 +11,7 @@ import { depositUsage, entryAmount, entryHours, hoursForPhase, isBillable, jobBi
 import { isWorkflowPhase } from '../lib/phases'
 import { PHASE_KIND_LABEL, type Invoice, type Job, type PhaseKind } from '../lib/types'
 import { downloadCSV, fmtDate, fmtHourlyRate, fmtHours, fmtMoney, sum, todayISO } from '../lib/utils'
+import { unpaidInvoices } from '../lib/views'
 import './money.css'
 
 type Tab = 'overview' | 'unbilled' | 'invoices' | 'deposits' | 'reports'
@@ -36,7 +37,7 @@ export function Money() {
     job, client: store.clients.find(c => c.id === job.client_id)?.name ?? '', b: jobBilling(store, job),
   })), [store])
   const today = todayISO()
-  const unpaid = store.invoices.filter(i => !i.paid_date).sort((a, b) => a.issued_date.localeCompare(b.issued_date))
+  const unpaid = unpaidInvoices(store)
   const ready = rows.filter(r => r.b.unbilledAmount > 0.5).sort((a, b) => b.b.unbilledAmount - a.b.unbilledAmount)
 
   return <div className="money-page">
@@ -190,8 +191,9 @@ function Invoices({ filter, setFilter, today }: { filter: InvoiceFilter; setFilt
   const store = useData()
   const edit = useEditors()
   const navigate = useNavigate()
+  const owed = new Set(unpaidInvoices(store).map(i => i.id))
   const list = store.invoices
-    .filter(i => filter === 'all' || (filter === 'paid') === Boolean(i.paid_date))
+    .filter(i => filter === 'all' || (filter === 'paid' ? Boolean(i.paid_date) : owed.has(i.id)))
     .sort((a, b) => filter === 'unpaid' ? a.issued_date.localeCompare(b.issued_date) : b.issued_date.localeCompare(a.issued_date))
   const job = (i: Invoice) => store.jobs.find(j => j.id === i.job_id)
   const client = (i: Invoice) => store.clients.find(c => c.id === job(i)?.client_id)?.name ?? ''
@@ -212,7 +214,7 @@ function Invoices({ filter, setFilter, today }: { filter: InvoiceFilter; setFilt
           <td className="strong nowrap">{i.number}</td>
           <td><span className="truncate" style={{ display: 'block', maxWidth: 280 }}>{j?.name ?? '—'}</span><div className="tiny muted">{client(i)}</div></td>
           <td className="hide-sm nowrap">{fmtDate(i.issued_date)}</td>
-          <td>{i.paid_date ? <span className="badge ok">Paid {fmtDate(i.paid_date)}</span> : <span className={`badge ${age > 30 ? 'danger' : 'warn'}`}>Unpaid · {age}d</span>}</td>
+          <td>{i.paid_date ? <span className="badge ok">Paid {fmtDate(i.paid_date)}</span> : i.amount <= 0.005 ? <span className="badge">No payment due</span> : <span className={`badge ${age > 30 ? 'danger' : 'warn'}`}>Unpaid · {age}d</span>}</td>
           <td className="num strong">{fmtMoney(i.amount)}</td>
           <td className="hide-sm right nowrap" onClick={e => e.stopPropagation()}>
             {!i.paid_date && <button className="btn xs" onClick={() => edit.paid(i)}>Paid</button>}{' '}
@@ -301,6 +303,9 @@ function Reports({ range, from, to, patch }: { range: RangeKey; from: string; to
     const deposits = sum(store.deposits.filter(d => inRange(d.received_date)).map(d => d.amount))
     const invoiced = sum(store.invoices.filter(i => inRange(i.issued_date)).map(i => i.amount))
     const paid = sum(store.invoices.filter(i => inRange(i.paid_date)).map(i => i.amount))
+    // Charges (mileage, printing, permit fees…) pass through to the client, so
+    // they are taken out before working out what the hours earned.
+    const charges = sum(store.items.filter(i => inRange(i.date)).map(i => (Number(i.quantity) || 0) * (Number(i.unit_price) || 0)))
     // Estimate vs actual, all time, for jobs that are not archived or cancelled.
     const jobIds = new Set(store.jobs.filter(j => j.status !== 'archived' && j.status !== 'cancelled').map(j => j.id))
     const kinds = new Map<PhaseKind, { estimate: number; actual: number; phases: number }>()
@@ -315,7 +320,8 @@ function Reports({ range, from, to, patch }: { range: RangeKey; from: string; to
     const order2: PhaseKind[] = ['bidding', 'design', 'plan_check', 'construction', 'client_changes']
     return {
       jobs: order(byJob), clients: order(byClient), hours, billable, deposits, invoiced, paid,
-      rate: hours > 0 ? (deposits + invoiced) / hours : null,
+      charges,
+      rate: hours > 0 ? Math.max(0, deposits + invoiced - charges) / hours : null,
       phaseKinds: order2.filter(k => kinds.has(k)).map(k => ({ kind: k, ...kinds.get(k)! })),
     }
   }, [store, start, end])
@@ -339,7 +345,7 @@ function Reports({ range, from, to, patch }: { range: RangeKey; from: string; to
       <div className="stat"><span className="label">Hours worked</span><span className="value">{fmtHours(data.hours)}</span><span className="sub">{fmtHours(data.billable)} billable · {fmtHours(data.hours - data.billable)} non-billable</span></div>
       <div className="stat"><span className="label">Fees recorded</span><span className="value">{fmtMoney(data.deposits + data.invoiced)}</span><span className="sub">{fmtMoney(data.deposits)} deposits + {fmtMoney(data.invoiced)} invoiced</span></div>
       <div className="stat ok"><span className="label">Money collected</span><span className="value">{fmtMoney(data.deposits + data.paid)}</span><span className="sub">Deposits + invoices paid in this range</span></div>
-      <div className="stat"><span className="label">Earned per hour</span><span className="value">{fmtHourlyRate(data.rate)}</span><span className="sub">Fees recorded ÷ hours worked, before overhead and tax</span></div>
+      <div className="stat"><span className="label">Earned per hour</span><span className="value">{fmtHourlyRate(data.rate)}</span><span className="sub">Fees recorded, less charges like mileage, ÷ hours worked (before overhead and tax)</span></div>
     </div>
 
     <div className="money-two">

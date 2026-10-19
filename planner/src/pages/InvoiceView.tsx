@@ -60,7 +60,7 @@ export function InvoiceView() {
       <Link className="btn ghost back-link" to={job ? `/jobs/${job.id}?tab=billing` : '/money?tab=invoices'} title={job ? `Back to ${job.name}` : 'All invoices'}><ArrowLeft size={16} /><span className="truncate">{job ? job.name : 'Invoices'}</span></Link>
       <div className="grow" />
       {paid ? <span className="badge ok lg hide-sm"><CheckCircle2 size={14} /> Paid {fmtDate(invoice.paid_date)}</span>
-        : <span className={`badge lg hide-sm ${age > 30 ? 'danger' : 'warn'}`}>Unpaid · {age} day{age === 1 ? '' : 's'}</span>}
+        : invoice.amount <= 0.005 ? <span className="badge lg hide-sm">No payment due</span> : <span className={`badge lg hide-sm ${age > 30 ? 'danger' : 'warn'}`}>Unpaid · {age} day{age === 1 ? '' : 's'}</span>}
       <a className="btn" href={mailto} aria-label="Email client"><Mail size={16} /> <span className="hide-sm">Email client</span></a>
       {job && <button className="btn" onClick={() => edit.invoice(job.id, invoice)} aria-label="Edit invoice"><Pencil size={15} /> <span className="hide-sm">Edit</span></button>}
       {!paid && <button className="btn" onClick={() => edit.paid(invoice)}><CheckCircle2 size={16} /> <span className="hide-sm">Mark paid</span><span className="show-sm">Paid</span></button>}

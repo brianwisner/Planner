@@ -9,7 +9,7 @@ import { DueText, Empty, Segmented } from '../components/ui'
 import { WeekStrip } from '../components/WeekStrip'
 import { PipelineBar } from '../components/PipelineBar'
 import { jobBilling } from '../lib/calc'
-import { greeting, mondayOf, openAgenda, taskOrder, weekDays } from '../lib/views'
+import { greeting, mondayOf, openAgenda, taskDay, taskOrder, unpaidInvoices, weekDays } from '../lib/views'
 import { fmtDate, fmtHours, fmtMoney, sum, todayISO } from '../lib/utils'
 import { saveTask } from '../lib/taskActions'
 import { jobStage } from '../lib/stages'
@@ -22,7 +22,7 @@ type ListView = 'focus' | 'waiting' | 'all'
 export function Today() {
   const store = useData()
   const edit = useEditors()
-  const { jobs, tasks, clients, phases, me, invoices } = store
+  const { jobs, tasks, clients, phases, me } = store
   const [now, setNow] = useState(() => new Date())
   useEffect(() => { const id = setInterval(() => setNow(new Date()), 60_000); return () => clearInterval(id) }, [])
   const today = todayISO()
@@ -32,7 +32,7 @@ export function Today() {
 
   const openJobIds = useMemo(() => new Set(jobs.filter(j => j.status === 'active' || j.status === 'on_hold').map(j => j.id)), [jobs])
   const openTasks = useMemo(() => tasks.filter(t => t.status !== 'done' && openJobIds.has(t.job_id)).sort(taskOrder), [tasks, openJobIds])
-  const taskDate = (t: Task) => t.scheduled_at?.slice(0, 10) ?? t.due_date
+  const taskDate = (t: Task) => taskDay(t)
   const weekEnd = fmtISO(addDaysISO(today, 7))
   const late = openTasks.filter(t => t.status !== 'waiting' && taskDate(t) && taskDate(t)! < today)
   const dueToday = openTasks.filter(t => t.status !== 'waiting' && taskDate(t) === today)
@@ -55,9 +55,9 @@ export function Today() {
   const money = useMemo(() => {
     const rows = jobs.filter(j => j.status !== 'archived').map(j => jobBilling(store, j))
     const ready = rows.filter(r => r.unbilledAmount > 0.5).sort((a, b) => b.unbilledAmount - a.unbilledAmount)
-    const unpaid = invoices.filter(i => !i.paid_date).sort((a, b) => a.issued_date.localeCompare(b.issued_date))
+    const unpaid = unpaidInvoices(store)
     return { ready, readyTotal: sum(ready.map(r => r.unbilledAmount)), unpaid, unpaidTotal: sum(unpaid.map(i => i.amount)) }
-  }, [store, jobs, invoices])
+  }, [store, jobs])
 
   const lateCount = late.length + lateDeadlines.length
   const summary = [

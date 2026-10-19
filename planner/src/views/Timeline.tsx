@@ -12,7 +12,7 @@ import { hoursForPhase } from '../lib/calc'
 import { mondayOf } from '../lib/views'
 import { fmtDate, fmtHours, todayISO } from '../lib/utils'
 import { pref, setPref } from '../lib/theme'
-import { Segmented } from '../components/ui'
+import { Segmented, useConfirm } from '../components/ui'
 import type { Phase } from '../lib/types'
 import './timeline.css'
 
@@ -119,6 +119,7 @@ function Backdrop({ ticks, dayW }: { ticks: Date[]; dayW: number }) {
 
 function PhaseRow({ phase, x, dayW, width, ticks, startDate }: { phase: Phase; x: (d: string) => number; dayW: number; width: number; ticks: Date[]; startDate: Date }) {
   const store = useData()
+  const confirm = useConfirm()
   const [drag, setDrag] = useState<{ mode: 'move' | 'start' | 'end'; originX: number; delta: number } | null>(null)
   const moved = useRef(false)
   const s = phase.start_date ?? phase.due_date
@@ -164,7 +165,8 @@ function PhaseRow({ phase, x, dayW, width, ticks, startDate }: { phase: Phase; x
     const day = Math.floor((ev.clientX - rect.left) / dayW)
     const start = iso(addDays(startDate, day))
     const due = iso(addDays(startDate, day + 9))
-    if (await store.update('phases', phase.id, { start_date: start, due_date: due })) store.toast(`${phase.name} set for ${fmtDate(start)} – ${fmtDate(due)}. Drag to adjust.`)
+    if (!await confirm({ title: `Give ${phase.name} dates?`, body: `${fmtDate(start, 'long')} to ${fmtDate(due, 'long')}. You can drag the bar or its ends afterwards.`, confirmLabel: 'Set dates' })) return
+    if (await store.update('phases', phase.id, { start_date: start, due_date: due })) store.toast(`${phase.name}: ${fmtDate(start)} – ${fmtDate(due)}`, 'ok', { label: 'Undo', run: () => store.update('phases', phase.id, { start_date: null, due_date: null }) })
   }
 
   return <div className={`tl-row tl-phase-row ${phase.status}`} data-stage={stageKey}>

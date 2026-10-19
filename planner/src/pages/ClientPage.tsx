@@ -126,7 +126,7 @@ export function ClientPage() {
                   <Link to={`/money/invoice/${i.id}`} className="title" onClick={e => e.stopPropagation()}>{i.number}</Link>
                   <div className="meta truncate">{fmtDate(i.issued_date)} · {job?.name}</div>
                 </div>
-                {i.paid_date ? <span className="badge ok">Paid</span> : <span className={`badge ${age > 30 ? 'danger' : 'warn'}`}>Unpaid · {age}d</span>}
+                {i.paid_date ? <span className="badge ok">Paid</span> : i.amount <= 0.005 ? <span className="badge">No payment due</span> : <span className={`badge ${age > 30 ? 'danger' : 'warn'}`}>Unpaid · {age}d</span>}
                 <strong className="num small">{fmtMoney(i.amount)}</strong>
               </li>
             })}</ul>}

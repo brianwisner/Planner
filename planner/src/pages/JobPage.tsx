@@ -13,7 +13,8 @@ import { STAGES, STAGE_LABEL, type Stage } from '../lib/stages'
 import { moveJobToStage, setJobStatus } from '../lib/jobActions'
 import { allHours, entryHours, hoursForPhase, HOUR_STATUS_LABEL } from '../lib/calc'
 import { jobPhaseGroups, phaseLabel } from '../lib/phases'
-import { runningTimer, startTimer, stopTimer, elapsedLabel } from '../lib/timer'
+import { runningTimer, startTimer, elapsedLabel } from '../lib/timer'
+import { useStopTimer } from '../components/useTimerActions'
 import { summarizeJob, taskOrder } from '../lib/views'
 import { JOB_STATUS_LABEL, PHASE_STATUS_LABEL, type JobStatus, type Phase, type PhaseStatus } from '../lib/types'
 import { fmtDate, fmtDateTime, fmtHourlyRate, fmtHours, fmtMoney, fmtSigned, sum, todayISO } from '../lib/utils'
@@ -40,12 +41,13 @@ export function JobPage() {
   }, [params, store.tasks, id, edit])
 
   const summary = useMemo(() => job ? summarizeJob(store, job) : null, [store, job])
+  const stopTimer = useStopTimer()
   if (!job || !summary) return <div className="card" style={{ marginTop: 20 }}><Empty title="Job not found" action={<Link className="btn" to="/jobs">Back to jobs</Link>}>It may have been deleted.</Empty></div>
 
   const { client, stage, money } = summary
   const notes = store.comments.filter(c => c.job_id === job.id)
   const timer = runningTimer(store)
-  const timerHere = timer?.job_id === job.id ? timer : undefined
+  const timerHere = timer?.job_id === job?.id ? timer : undefined
   const open = job.status === 'active' || job.status === 'on_hold'
 
   const more: MenuEntry[] = [
@@ -76,7 +78,7 @@ export function JobPage() {
       </div>
       <div className="actions">
         {timerHere
-          ? <button className="btn ok" onClick={() => void stopTimer(store, timerHere)}><Square size={13} fill="currentColor" /> Stop · {elapsedLabel(timerHere.started_at!)}</button>
+          ? <button className="btn ok" onClick={() => void stopTimer(timerHere)}><Square size={13} fill="currentColor" /> Stop · {elapsedLabel(timerHere.started_at!)}</button>
           : job.status === 'active' && <button className="btn" onClick={() => void startTimer(store, { job_id: job.id })}><Play size={15} /> Start timer</button>}
         <button className="btn primary" onClick={() => edit.task(undefined, { job_id: job.id })}><Plus size={16} /> Task</button>
         <Menu label="More actions" items={more} trigger={p => <button className="btn icon" aria-label="More actions" {...p}><Ellipsis size={18} /></button>} />

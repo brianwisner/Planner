@@ -45,9 +45,21 @@ export function mergeOrder(queue: Job[], visibleInNewOrder: Job[]): Job[] {
   return queue.map(job => visible.has(job.id) ? next.shift()! : job)
 }
 
-/** Save a queue order as priorities 1..n. Only changed rows are written. */
-export async function reorderJobs(store: Pick<Store, 'update'>, ordered: Job[]): Promise<boolean> {
-  const changed = ordered.map((job, i) => ({ job, priority: i + 1 })).filter(x => x.job.priority !== x.priority)
+/**
+ * Priority numbers for a queue order: 1, 2, 3… skipping numbers that closed
+ * jobs still hold, so a job reopened later never shares a number.
+ */
+export function priorityNumbers(count: number, reserved: number[] = []): number[] {
+  const taken = new Set(reserved)
+  const out: number[] = []
+  for (let n = 1; out.length < count; n++) if (!taken.has(n)) out.push(n)
+  return out
+}
+
+/** Save a queue order. Only rows whose number changes are written. */
+export async function reorderJobs(store: Pick<Store, 'update'>, ordered: Job[], reserved: number[] = []): Promise<boolean> {
+  const numbers = priorityNumbers(ordered.length, reserved)
+  const changed = ordered.map((job, i) => ({ job, priority: numbers[i] })).filter(x => x.job.priority !== x.priority)
   const results = await Promise.all(changed.map(x => store.update('jobs', x.job.id, { priority: x.priority })))
   return results.every(Boolean)
 }

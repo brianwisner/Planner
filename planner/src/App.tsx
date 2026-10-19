@@ -95,8 +95,10 @@ function Loaded({ children }: { children: React.ReactNode }) {
 
 function LegacyBilling() {
   const [params] = useSearchParams()
-  const job = params.get('job')
-  return <Navigate to={job ? `/jobs/${job}?tab=billing` : '/money'} replace />
+  const job = params.get('job'), tab = params.get('tab')
+  if (job) return <Navigate to={`/jobs/${job}?tab=billing`} replace />
+  if (tab === 'hours') return <Navigate to="/time" replace />
+  return <Navigate to={tab === 'deposits' || tab === 'invoices' ? `/money?tab=${tab}` : '/money'} replace />
 }
 
 function NotFound() {

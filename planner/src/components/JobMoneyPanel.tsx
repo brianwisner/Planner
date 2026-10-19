@@ -96,10 +96,10 @@ export function JobMoneyPanel({ jobId }: { jobId: string }) {
               <Link to={`/money/invoice/${i.id}`} className="title">{i.number}</Link>
               <div className="meta">Issued {fmtDate(i.issued_date)}{i.notes ? ` · ${i.notes}` : ''}</div>
             </div>
-            {i.paid_date ? <span className="badge ok">Paid {fmtDate(i.paid_date)}</span> : <span className={`badge ${age > 30 ? 'danger' : 'warn'}`}>Unpaid · {age}d</span>}
+            {i.paid_date ? <span className="badge ok">Paid {fmtDate(i.paid_date)}</span> : i.amount <= 0.005 ? <span className="badge">No payment due</span> : <span className={`badge ${age > 30 ? 'danger' : 'warn'}`}>Unpaid · {age}d</span>}
             <strong className="num">{fmtMoney(i.amount)}</strong>
             <div className="row" style={{ gap: 4 }}>
-              {!i.paid_date && <button className="btn xs" onClick={() => edit.paid(i)}>Paid</button>}
+              {!i.paid_date && i.amount > 0.005 && <button className="btn xs" onClick={() => edit.paid(i)}>Paid</button>}
               <Link className="btn ghost icon xs" to={`/money/invoice/${i.id}`} aria-label={`Print ${i.number}`}><Printer size={14} /></Link>
               <button className="btn ghost xs" onClick={() => edit.invoice(jobId, i)}>Edit</button>
             </div>

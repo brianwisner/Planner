@@ -19,7 +19,7 @@ export function clientFor(store: Pick<Store, 'jobs' | 'clients'>, jobId: string 
 
 /** Open tasks first by date (undated last), started work first, then manual order. */
 export function taskOrder(a: Task, b: Task): number {
-  const da = a.scheduled_at?.slice(0, 10) ?? a.due_date, db = b.scheduled_at?.slice(0, 10) ?? b.due_date
+  const da = taskDay(a), db = taskDay(b)
   if (da !== db) return da == null ? 1 : db == null ? -1 : da.localeCompare(db)
   const rank = (t: Task) => t.status === 'doing' ? 0 : t.status === 'todo' ? 1 : t.status === 'waiting' ? 2 : 3
   return rank(a) - rank(b) || a.sort_order - b.sort_order || a.created_at.localeCompare(b.created_at)
@@ -105,10 +105,22 @@ export function greeting(now = new Date()): string {
   return h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening'
 }
 
+/** Unpaid invoices that still need chasing: non-archived jobs, more than half a cent. */
+export function unpaidInvoices(store: Pick<Store, 'invoices' | 'jobs'>): Store['invoices'] {
+  const live = new Set(store.jobs.filter(j => j.status !== 'archived').map(j => j.id))
+  return store.invoices.filter(i => !i.paid_date && i.amount > 0.005 && live.has(i.job_id)).sort((a, b) => a.issued_date.localeCompare(b.issued_date))
+}
+
+/** The calendar day of a task: a site visit's local date, else its due date. */
+export function taskDay(t: Pick<Task, 'scheduled_at' | 'due_date'>): string | null {
+  if (t.scheduled_at && Number.isFinite(Date.parse(t.scheduled_at))) return format(new Date(t.scheduled_at), 'yyyy-MM-dd')
+  return t.due_date
+}
+
 /** Late items on open jobs: tasks past due (not waiting on someone) and phase/job deadlines. */
 export function lateCount(store: Pick<Store, 'jobs' | 'phases' | 'tasks' | 'clients'>, today = todayISO()): number {
   const open = new Set(store.jobs.filter(j => j.status === 'active' || j.status === 'on_hold').map(j => j.id))
-  const tasks = store.tasks.filter(t => t.status !== 'done' && t.status !== 'waiting' && open.has(t.job_id) && (t.scheduled_at?.slice(0, 10) ?? t.due_date ?? '9999') < today).length
+  const tasks = store.tasks.filter(t => t.status !== 'done' && t.status !== 'waiting' && open.has(t.job_id) && (taskDay(t) ?? '9999') < today).length
   const other = openAgenda(store).filter(i => (i.kind === 'phase' || i.kind === 'job') && i.date < today).length
   return tasks + other
 }

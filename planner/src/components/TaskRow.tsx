@@ -19,7 +19,16 @@ export function TaskRow({ task, showJob = true, compact }: { task: Task; showJob
   async function toggle() {
     const before = task.status
     const result = await toggleTaskDone(store, task)
-    if (result.success && before !== 'done') store.toast(`Done: ${task.title}`, 'ok', { label: 'Undo', run: () => setTaskStatus(store, { ...task, status: 'done' }, before) })
+    if (result.success && before !== 'done') store.toast(`Done: ${task.title}`, 'ok', { label: 'Undo', run: () => undo(before) })
+  }
+  async function undo(before: Task['status']) {
+    // A repeating task created its next copy when ticked; remove that copy too
+    // (unless it has already been worked on) so Undo leaves just one open task.
+    if (task.recurrence !== 'none') {
+      const next = await store.fetchWhere('tasks', 'recurrence_parent_id', task.id)
+      for (const t of next) if (t.status === 'todo' && !t.completed_at) await store.remove('tasks', t.id)
+    }
+    await setTaskStatus(store, { ...task, status: 'done' }, before)
   }
   const time = task.scheduled_at ? new Date(task.scheduled_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : null
   return <div className={`task-row ${done ? 'is-done' : ''} ${compact ? 'compact' : ''}`} onClick={() => edit.task(task)}>

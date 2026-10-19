@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { mergeOrder, reorderJobs } from './jobActions'
+import { mergeOrder, priorityNumbers, reorderJobs } from './jobActions'
 import type { Job } from './types'
 
 const job = (id: string, priority: number) => ({ id, priority }) as Job
@@ -13,6 +13,12 @@ describe('mergeOrder', () => {
   it('keeps the queue when nothing moved', () => {
     const queue = [job('a', 1), job('b', 2)]
     expect(mergeOrder(queue, queue).map(j => j.id)).toEqual(['a', 'b'])
+  })
+})
+
+describe('priorityNumbers', () => {
+  it('skips numbers held by closed jobs', () => {
+    expect(priorityNumbers(4, [2, 5])).toEqual([1, 3, 4, 6])
   })
 })
 

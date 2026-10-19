@@ -1,6 +1,6 @@
 // Week planner: type the hours you plan to spend on each job each day.
 // Totals show against your available hours, with deadlines on the day they fall.
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { addDays, format, parseISO } from 'date-fns'
 import { CalendarClock, ChevronLeft, ChevronRight, Copy, MapPin } from 'lucide-react'
@@ -43,14 +43,22 @@ export function WeekPlanner({ week, onWeek }: { week: string; onWeek: (monday: s
 
   const prevMonday = iso(addDays(parseISO(monday), -7))
   const lastWeekOwn = schedule.filter(s => s.user_id === me?.id && s.date >= prevMonday && s.date < monday && activeIds.has(s.job_id))
+  const [copying, setCopying] = useState(false)
   async function copyLastWeek() {
-    let made = 0
-    for (const s of lastWeekOwn) {
-      const date = iso(addDays(parseISO(s.date), 7))
-      if (ownPlans(store, s.job_id, date).length) continue
-      if (await setPlannedHours(store, s.job_id, date, s.hours, s.phase_id) === true) made++
-    }
-    store.toast(made ? `Copied ${made} day${made === 1 ? '' : 's'} of plans from last week` : 'Nothing new to copy — this week already has those plans')
+    if (copying) return
+    setCopying(true)
+    try {
+      // Re-read this week's saved plans first, so a repeat click can't add duplicates.
+      const fresh = await store.fetchWhere('schedule_entries', 'user_id', me?.id ?? '')
+      const taken = new Set(fresh.map(s => `${s.job_id}|${s.date}`))
+      let made = 0
+      for (const s of lastWeekOwn) {
+        const date = iso(addDays(parseISO(s.date), 7))
+        if (taken.has(`${s.job_id}|${date}`)) continue
+        if (await store.insert('schedule_entries', { job_id: s.job_id, phase_id: s.phase_id, user_id: s.user_id, date, hours: s.hours })) { made++; taken.add(`${s.job_id}|${date}`) }
+      }
+      store.toast(made ? `Copied ${made} day${made === 1 ? '' : 's'} of plans from last week` : 'Nothing new to copy — this week already has those plans')
+    } finally { setCopying(false) }
   }
 
   return <div className="planner">
@@ -64,7 +72,7 @@ export function WeekPlanner({ week, onWeek }: { week: string; onWeek: (monday: s
       <div className="grow" />
       <span className={`week-total ${weekPlanned > weekCapacity + 0.01 ? 'over' : ''}`}><strong className="num">{fmtHours(weekPlanned)}</strong> planned of {fmtHours(weekCapacity)}</span>
       <label className="switch small"><input type="checkbox" checked={weekends} onChange={e => setWeekends(e.target.checked)} />Weekends</label>
-      {lastWeekOwn.length > 0 && <button className="btn sm" onClick={() => void copyLastWeek()} title="Copy last week's planned hours into empty days this week"><Copy size={14} /> Copy last week</button>}
+      {lastWeekOwn.length > 0 && <button className="btn sm" disabled={copying} onClick={() => void copyLastWeek()} title="Copy last week's planned hours into empty days this week"><Copy size={14} /> {copying ? 'Copying…' : 'Copy last week'}</button>}
     </div>
 
     <div className="card plan-card">
@@ -129,10 +137,13 @@ function DayCell({ jobId, date, today, logged, onMulti }: { jobId: string; date:
   const value = sum(own.map(r => r.hours))
   const [draft, setDraft] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+  const cancelled = useRef(false)
   async function commit() {
+    if (cancelled.current) { cancelled.current = false; setDraft(null); return }
     if (draft == null) return
     const n = draft.trim() === '' ? 0 : Number(draft)
     if (!Number.isFinite(n) || n < 0 || n > 24) { store.toast('Enter hours between 0 and 24', 'error'); setDraft(null); return }
+    if (n > 0 && Math.round(n * 4) / 4 === 0) { store.toast('Enter at least 0.25 h (a quarter hour)', 'error'); setDraft(null); return }
     if (n === value) { setDraft(null); return }
     setSaving(true)
     const result = await setPlannedHours(store, jobId, date, Math.round(n * 4) / 4)
@@ -147,7 +158,7 @@ function DayCell({ jobId, date, today, logged, onMulti }: { jobId: string; date:
       : <input className="plan-input" inputMode="decimal" aria-label={label} disabled={saving}
           value={draft ?? (value ? String(value) : '')} placeholder="·"
           onChange={e => setDraft(e.target.value)} onBlur={() => void commit()}
-          onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); if (e.key === 'Escape') { setDraft(null); (e.target as HTMLInputElement).blur() } }} />}
+          onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); if (e.key === 'Escape') { cancelled.current = true; (e.target as HTMLInputElement).blur() } }} />}
     {(logged > 0 || others.length > 0) && <span className="plan-note">{logged > 0 && <span title="Hours logged this day">✓{fmtHours(logged)}</span>}{others.length > 0 && <span title="Planned by someone else"> +{fmtHours(sum(others.map(o => o.hours)))}</span>}</span>}
   </td>
 }

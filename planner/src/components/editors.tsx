@@ -11,7 +11,7 @@ import { ITEM_CATEGORIES, JOB_STATUS_LABEL, RECURRENCE_LABEL } from '../lib/type
 import { jobCharges, rateFor, workPhase } from '../lib/calc'
 import { fmtDate, fmtHours, fmtMoney, todayISO } from '../lib/utils'
 import { saveTask } from '../lib/taskActions'
-import { invoiceWorkLinks } from '../lib/billingActions'
+import type { InvoiceWorkLink } from '../lib/billingActions'
 import { isWorkflowPhase, phaseLabel } from '../lib/phases'
 import { STAGE_LABEL, jobStage, stageChanges, type Stage } from '../lib/stages'
 import { Field, Modal, NumberInput, Segmented, useConfirm } from './ui'
@@ -235,7 +235,8 @@ export function JobEditor({ job, defaults, onClose, onCreated, openClient }: { j
     const row = { ...d, name: d.name.trim(), job_number: d.job_number.trim(), address: d.address.trim() }
     await form.run('save', async () => {
       if (job) return update('jobs', job.id, row)
-      const maxPriority = Math.max(0, ...jobs.filter(j => j.status === 'active' || j.status === 'on_hold').map(j => j.priority))
+      // New jobs go to the end of the queue with a number no other job uses.
+      const maxPriority = Math.max(0, ...jobs.map(j => j.priority))
       const created = await insert('jobs', { ...row, priority: maxPriority + 1 })
       if (!created) return false
       if (startStage !== 'bidding') {
@@ -371,6 +372,8 @@ export function TimeEditor({ entry, defaults, onClose }: { entry?: TimeEntry; de
   const set = <K extends keyof typeof d>(k: K, v: (typeof d)[K]) => setD(x => ({ ...x, [k]: v }))
   const current = entry ? timeEntries.find(e => e.id === entry.id) ?? entry : undefined
   const locked = Boolean(current?.billed || current?.invoice_id || (current?.deposit_applied ?? 0) > 0)
+  // Billed hours keep the figures printed on their invoice.
+  const onInvoice = Boolean(current?.invoice_id && current.hours != null)
   const jobPhases = phases.filter(p => p.job_id === d.job_id && (isWorkflowPhase(p) || p.id === entry?.phase_id))
   const jobTasks = tasks.filter(t => t.job_id === d.job_id && (t.status !== 'done' || t.id === d.task_id))
   const running = current?.started_at && current.hours == null
@@ -383,8 +386,9 @@ export function TimeEditor({ entry, defaults, onClose }: { entry?: TimeEntry; de
     if (d.hours > 24) { form.fail('That is more than 24 hours in one entry. Split it across days.'); return }
     if (!validDate(d.date)) { form.fail('Enter a valid work date.'); return }
     if (d.rate != null && (!Number.isFinite(d.rate) || d.rate < 0)) { form.fail('Enter a rate of zero or more.'); return }
-    if (!d.billable && locked) { form.fail('These hours are on an invoice. Unbill them on the Money page before making them non-billable.'); return }
+    if (!d.billable && locked) { form.fail('These hours are on an invoice. Unbill them on the job’s Billing tab before making them non-billable.'); return }
     if (current && locked && d.job_id !== current.job_id) { form.fail('These hours are on an invoice. Unbill them before moving them to another job.'); return }
+    if (current && onInvoice && (d.hours !== current.hours || d.date !== current.date || d.rate !== current.rate)) { form.fail('These hours are on an invoice, so their hours, date and rate stay as billed. Unbill them first to change those.'); return }
     const credit = current?.billed ? current.deposit_applied ?? 0 : 0
     if (current && credit > 0 && d.hours * (d.rate ?? personRate(d.user_id)) < credit) { form.fail('A deposit credit is applied to these hours. Unbill them before reducing their value below that credit.'); return }
     await form.run('save', async () => {
@@ -425,12 +429,12 @@ export function TimeEditor({ entry, defaults, onClose }: { entry?: TimeEntry; de
         </div>
         <div className="field-grid">
           <Field label="Hours" htmlFor={`${form.id}-hours`}>
-            <NumberInput id={`${form.id}-hours`} autoFocus value={d.hours} onChange={v => set('hours', v)} step={0.25} min={0} suffix="h" />
-            <QuickChips label="Hour shortcuts" value={d.hours} onPick={v => set('hours', v)} options={[0.5, 1, 2, 4, 8].map(h => ({ label: `${h}h`, value: h }))} />
+            <NumberInput id={`${form.id}-hours`} autoFocus={!onInvoice} disabled={onInvoice} value={d.hours} onChange={v => set('hours', v)} step={0.25} min={0} suffix="h" />
+            {!onInvoice && <QuickChips label="Hour shortcuts" value={d.hours} onPick={v => set('hours', v)} options={[0.5, 1, 2, 4, 8].map(h => ({ label: `${h}h`, value: h }))} />}
           </Field>
           <Field label="Date" htmlFor={`${form.id}-date`}>
-            <input id={`${form.id}-date`} className="input" type="date" value={d.date} onChange={e => set('date', e.target.value)} />
-            <QuickChips label="Date shortcuts" value={d.date} onPick={v => set('date', v)} options={[{ label: 'Today', value: todayISO() }, { label: 'Yesterday', value: yesterday }]} />
+            <input id={`${form.id}-date`} className="input" type="date" value={d.date} disabled={onInvoice} onChange={e => set('date', e.target.value)} />
+            {!onInvoice && <QuickChips label="Date shortcuts" value={d.date} onPick={v => set('date', v)} options={[{ label: 'Today', value: todayISO() }, { label: 'Yesterday', value: yesterday }]} />}
           </Field>
         </div>
         <Field label="What did you work on?" htmlFor={`${form.id}-notes`}>
@@ -438,14 +442,14 @@ export function TimeEditor({ entry, defaults, onClose }: { entry?: TimeEntry; de
         </Field>
         <div className="option-row">
           <label className="switch"><input type="checkbox" checked={d.billable} disabled={locked} onChange={e => set('billable', e.target.checked)} />Billable to the client</label>
-          <button type="button" className="btn ghost sm" onClick={() => setShowRate(s => !s)}>Rate: {d.rate == null ? 'default' : `${fmtMoney(d.rate)}/h`}</button>
+          <button type="button" className="btn ghost sm" disabled={onInvoice} onClick={() => setShowRate(s => !s)}>Rate: {d.rate == null ? 'default' : `${fmtMoney(d.rate)}/h`}</button>
         </div>
         {showRate && <Field label="Rate for this entry" hint="Each entry keeps its own rate, so changing your rate later never changes past hours." htmlFor={`${form.id}-rate`}>
           <NumberInput id={`${form.id}-rate`} value={d.rate} onChange={v => set('rate', v)} step={5} min={0} prefix="$" suffix="/ hour" />
         </Field>}
         {!d.billable && <p className="tiny muted">Non-billable time still counts toward the job's hours and your effective hourly rate, but it is never invoiced or paid from a deposit.</p>}
         {d.hours != null && d.rate != null && d.billable && <p className="tiny muted">Value: {fmtMoney(d.hours * d.rate)}</p>}
-        {locked && <div className="form-note"><Lock size={15} />These hours are on an invoice (or used a deposit credit). The job and billable setting are locked until you unbill them on the Money page.</div>}
+        {locked && <div className="form-note"><Lock size={15} />These hours are on an invoice{current?.invoice_id ? ` (${store.invoices.find(i => i.id === current.invoice_id)?.number ?? 'saved invoice'})` : ''}. Their job, hours, date, rate and billable setting stay as billed; you can still edit the notes. To change the rest, unbill them on the job’s Billing tab (Billed work → Unbill).</div>}
       </fieldset>
     </form>
   </Modal>
@@ -528,6 +532,7 @@ export function ChargeEditor({ item, jobId, onClose }: { item?: JobItem; jobId?:
     if (d.unit_price == null || d.unit_price <= 0 || d.quantity == null || d.quantity <= 0 || !Number.isFinite(amount)) { form.fail(`Enter ${miles ? 'the miles and the rate per mile' : 'a quantity and price'} greater than zero.`); return }
     if (!validDate(d.date)) { form.fail('Enter a valid date.'); return }
     if (current && locked && d.job_id !== current.job_id) { form.fail('This charge is on an invoice. Unbill it before moving it to another job.'); return }
+    if (current && current.invoice_id && (d.quantity !== current.quantity || d.unit_price !== current.unit_price || d.date !== current.date)) { form.fail('This charge is on an invoice, so its amount and date stay as billed. Unbill it first to change them.'); return }
     const credit = current?.billed ? current.deposit_applied ?? 0 : 0
     if (current && credit > 0 && amount < credit) { form.fail('A deposit credit is applied to this charge. Unbill it before reducing it below that credit.'); return }
     const row = { ...d, quantity: d.quantity, unit_price: d.unit_price, description: d.description.trim() }
@@ -554,15 +559,15 @@ export function ChargeEditor({ item, jobId, onClose }: { item?: JobItem; jobId?:
               {ITEM_CATEGORIES.map(c => <option key={c}>{c}</option>)}
             </select>
           </Field>
-          <Field label="Date" htmlFor={`${form.id}-date`}><input id={`${form.id}-date`} className="input" type="date" value={d.date} onChange={e => set('date', e.target.value)} /></Field>
+          <Field label="Date" htmlFor={`${form.id}-date`}><input id={`${form.id}-date`} className="input" type="date" value={d.date} disabled={Boolean(current?.invoice_id)} onChange={e => set('date', e.target.value)} /></Field>
         </div>
         <Field label="Description" htmlFor={`${form.id}-desc`}><input id={`${form.id}-desc`} className="input" autoFocus value={d.description} onChange={e => set('description', e.target.value)} placeholder={miles ? 'e.g. Site visit round trip' : 'e.g. County plan-check fee'} /></Field>
         <div className="field-grid">
-          <Field label={miles ? 'Miles' : 'Quantity'} htmlFor={`${form.id}-qty`}><NumberInput id={`${form.id}-qty`} value={d.quantity} onChange={v => set('quantity', v)} step={miles ? 1 : 0.5} min={0} /></Field>
-          <Field label={miles ? 'Rate per mile' : 'Price each'} htmlFor={`${form.id}-price`}><NumberInput id={`${form.id}-price`} value={d.unit_price} onChange={v => set('unit_price', v)} step={0.01} min={0} prefix="$" /></Field>
+          <Field label={miles ? 'Miles' : 'Quantity'} htmlFor={`${form.id}-qty`}><NumberInput id={`${form.id}-qty`} disabled={Boolean(current?.invoice_id)} value={d.quantity} onChange={v => set('quantity', v)} step={miles ? 1 : 0.5} min={0} /></Field>
+          <Field label={miles ? 'Rate per mile' : 'Price each'} htmlFor={`${form.id}-price`}><NumberInput id={`${form.id}-price`} disabled={Boolean(current?.invoice_id)} value={d.unit_price} onChange={v => set('unit_price', v)} step={0.01} min={0} prefix="$" /></Field>
         </div>
         <div className="amount-line"><span className="muted">Amount</span><strong className="num">{fmtMoney(Number.isFinite(amount) ? amount : 0)}</strong></div>
-        {locked && <div className="form-note"><Lock size={15} />This charge is on an invoice. Its job is locked until you unbill it on the Money page.</div>}
+        {locked && <div className="form-note"><Lock size={15} />This charge is on an invoice. Its job, amount and date stay as billed; to change them, unbill it on the job’s Billing tab (Billed work → Unbill).</div>}
       </fieldset>
     </form>
   </Modal>
@@ -632,11 +637,10 @@ export function InvoiceEditor({ invoice, jobId, preselect, onClose }: { invoice?
         for (const k of ['number', 'amount', 'issued_date', 'paid_date', 'notes'] as const) if (row[k] !== invoice[k]) (changes as Record<string, unknown>)[k] = row[k]
         return Object.keys(changes).length ? update('invoices', invoice.id, changes) : true
       }
-      let links
-      try {
-        const chosen = work.filter(w => selected.has(w.key))
-        links = invoiceWorkLinks(store, jobId, chosen.filter(w => w.table === 'time_entries').map(w => w.id), chosen.filter(w => w.table === 'job_items').map(w => w.id))
-      } catch (e) { form.fail((e as Error).message); return false }
+      // Send the amounts and deposit credits shown when the form opened. If the
+      // work or deposits changed since then, the database refuses the invoice
+      // instead of billing figures nobody saw.
+      const links: InvoiceWorkLink[] = work.filter(w => selected.has(w.key)).map(w => ({ table: w.table, id: w.id, amount: w.amount, depositApplied: w.covered }))
       const created = await recordInvoice({ ...row, job_id: jobId }, links)
       if (created) toast(`Invoice ${created.number} recorded`, 'ok', { label: 'View', run: () => navigate(`/money/invoice/${created.id}`) })
       return Boolean(created)
