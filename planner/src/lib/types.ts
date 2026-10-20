@@ -9,6 +9,7 @@ export type Recurrence = 'none' | 'daily' | 'weekly' | 'biweekly' | 'monthly'
 export interface Settings {
   id: number
   company_name: string
+  business_email: string
   default_rate: number
   weekly_capacity: number
 }

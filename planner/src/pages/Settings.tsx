@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { Bell, Briefcase, CalendarDays, Copy, Download, ExternalLink, History, Keyboard, LogOut, Moon, Monitor, Palette, Smartphone, Sun, Trash2, User } from 'lucide-react'
 import { useData } from '../lib/store'
 import { DEMO, SUPABASE_URL, supabase } from '../lib/supabase'
+import { isEmailAddress } from '../lib/email'
 import { applyTheme, savedTheme, type Theme } from '../lib/theme'
 import { enableNotifications } from '../lib/reminders'
 import { buildICS, calendarItems } from '../lib/calendar'
@@ -22,7 +23,7 @@ export function Settings() {
     full_name: me?.full_name ?? '', hourly_rate: me?.hourly_rate ?? null as number | null, weekly_hours: me?.weekly_hours ?? 40 as number | null, color: me?.color ?? COLORS[0],
   }))
   const [business, setBusiness] = useState(() => ({
-    company_name: settings.company_name, default_rate: settings.default_rate as number | null, weekly_capacity: settings.weekly_capacity as number | null,
+    company_name: settings.company_name, business_email: settings.business_email ?? '', default_rate: settings.default_rate as number | null, weekly_capacity: settings.weekly_capacity as number | null,
   }))
   const [busy, setBusy] = useState<'profile' | 'business' | 'password' | 'sample' | null>(null)
   const [pw, setPw] = useState('')
@@ -45,10 +46,11 @@ export function Settings() {
   }
   async function saveBusiness() {
     if (busy) return
+    if (business.business_email.trim() && !isEmailAddress(business.business_email)) { toast('Enter a valid business email address.', 'error'); return }
     if (business.default_rate == null || business.default_rate < 0) { toast('Enter a default hourly rate (zero or more).', 'error'); return }
     if (business.weekly_capacity == null || business.weekly_capacity <= 0) { toast('Enter a weekly capacity greater than zero.', 'error'); return }
     setBusy('business')
-    const ok = await update('settings', 1, { company_name: business.company_name.trim() || 'Wisner Engineering', default_rate: business.default_rate, weekly_capacity: business.weekly_capacity })
+    const ok = await update('settings', 1, { company_name: business.company_name.trim() || 'Wisner Engineering', business_email: business.business_email.trim(), default_rate: business.default_rate, weekly_capacity: business.weekly_capacity })
     setBusy(null)
     if (ok) toast('Business settings saved')
   }
@@ -129,6 +131,9 @@ export function Settings() {
           <div className="card-head"><h2><Briefcase size={17} className="muted" /> Business</h2></div>
           <form className="card-body form-fields" onSubmit={e => { e.preventDefault(); void saveBusiness() }}>
             <Field label="Company name" htmlFor="set-company"><input id="set-company" className="input" value={business.company_name} onChange={e => setBusiness(b => ({ ...b, company_name: e.target.value }))} /></Field>
+            <Field label="Business email" htmlFor="set-business-email" hint="Shown on invoices and used by Email buttons in Gmail. Your sign-in email stays the same.">
+              <input id="set-business-email" className="input" type="email" autoComplete="email" value={business.business_email} onChange={e => setBusiness(b => ({ ...b, business_email: e.target.value }))} placeholder="you@yourcompany.com" />
+            </Field>
             <div className="field-grid">
               <Field label="Default hourly rate" htmlFor="set-default-rate"><NumberInput id="set-default-rate" value={business.default_rate} onChange={v => setBusiness(b => ({ ...b, default_rate: v }))} step={5} min={0} prefix="$" suffix="/ hour" /></Field>
               <Field label="Default weekly capacity" htmlFor="set-capacity"><NumberInput id="set-capacity" value={business.weekly_capacity} onChange={v => setBusiness(b => ({ ...b, weekly_capacity: v }))} step={1} min={1} suffix="hours" /></Field>

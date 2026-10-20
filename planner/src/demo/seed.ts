@@ -40,7 +40,7 @@ interface JobSpec {
 export function seedData(): Record<string, Row[]> {
   counter = 0
   const created = (days: number) => at(days, 9)
-  const settings = [{ id: 1, company_name: 'Wisner Engineering', default_rate: 185, weekly_capacity: 40 }]
+  const settings = [{ id: 1, company_name: 'Wisner Engineering', business_email: 'office@example.com', default_rate: 185, weekly_capacity: 40 }]
   const profiles = [{ id: DEMO_USER.id, email: DEMO_USER.email, full_name: 'Brian Wisner', color: '#2f5bea', hourly_rate: null, weekly_hours: 40, ics_token: 'demo-token', created_at: created(-90) }]
 
   const clientSpecs = [

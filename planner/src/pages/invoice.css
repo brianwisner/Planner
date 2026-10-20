@@ -46,6 +46,7 @@
 }
 
 @media (max-width: 760px) {
+  .invoice-toolbar .btn { min-height: 40px; }
   .invoice-toolbar .back-link { max-width: 100%; flex: 1 1 100%; justify-content: flex-start; }
   .invoice-doc { padding: 24px 18px 22px; font-size: 12px; border-radius: 4px; }
   .inv-head { flex-direction: column; gap: 14px; padding-bottom: 18px; }

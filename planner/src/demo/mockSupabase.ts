@@ -17,6 +17,7 @@ const todayISO = () => { const d = new Date(); return `${d.getFullYear()}-${Stri
 const clone = <T,>(v: T): T => JSON.parse(JSON.stringify(v)) as T
 
 const DEFAULTS: Record<string, () => Row> = {
+  settings: () => ({ business_email: '' }),
   clients: () => ({ contact_name: '', email: '', phone: '', address: '', notes: '', is_sample: false }),
   jobs: () => ({ job_number: '', description: '', address: '', status: 'active', priority: 100, fee: null, queued_date: null, start_date: null, due_date: null }),
   phases: () => ({ sort_order: 0, status: 'not_started', estimate_hours: 0, start_date: null, due_date: null, assignee_id: null, notes: '' }),
