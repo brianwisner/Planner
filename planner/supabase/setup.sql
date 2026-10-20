@@ -8,6 +8,7 @@
 create table if not exists settings (
   id int primary key default 1 check (id = 1),
   company_name text not null default 'Wisner Engineering',
+  business_email text not null default '',       -- invoice contact and Gmail sender; separate from sign-in
   default_rate numeric not null default 150,     -- $/hour used for unbilled estimates
   weekly_capacity numeric not null default 40     -- default hours/week per person
 );

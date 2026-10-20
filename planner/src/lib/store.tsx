@@ -194,7 +194,7 @@ export function DataProvider({ session, children }: { session: Session | null; c
 
   const value = useMemo<Store>(() => {
     const me = data.profiles.find(p => p.id === session?.user.id) ?? null
-    const settings: Settings = data.settings[0] ?? { id: 1, company_name: 'Wisner Engineering', default_rate: 150, weekly_capacity: 40 }
+    const settings: Settings = data.settings[0] ?? { id: 1, company_name: 'Wisner Engineering', business_email: '', default_rate: 150, weekly_capacity: 40 }
     return {
       session, me, settings,
       profiles: [...data.profiles].sort((a, b) => a.full_name.localeCompare(b.full_name)),

@@ -31,6 +31,7 @@
 @media (max-width: 760px) {
   .settings-page .page-head .actions .btn { height: 40px; }
   .settings-page .card-body .btn, .settings-password .btn { min-height: 40px; }
+  .settings-page #set-business-email { min-height: 40px; }
   .color-dot { width: 36px; height: 36px; }
 }
 

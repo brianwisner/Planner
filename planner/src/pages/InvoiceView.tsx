@@ -75,7 +75,7 @@ export function InvoiceView() {
         <div>
           <div className="inv-company">{store.settings.company_name}</div>
           {owner?.full_name && <div className="inv-muted">{owner.full_name}</div>}
-          {owner?.email && <div className="inv-muted">{owner.email}</div>}
+          {store.settings.business_email?.trim() && <div className="inv-muted">{store.settings.business_email.trim()}</div>}
         </div>
         <div className="inv-title-block">
           <div className="inv-title">INVOICE</div>
