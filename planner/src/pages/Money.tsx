@@ -12,10 +12,11 @@ import { isWorkflowPhase } from '../lib/phases'
 import { PHASE_KIND_LABEL, type Invoice, type Job, type PhaseKind } from '../lib/types'
 import { downloadCSV, fmtDate, fmtHourlyRate, fmtHours, fmtMoney, sum, todayISO } from '../lib/utils'
 import { unpaidInvoices } from '../lib/views'
+import { FeeEstimator } from './FeeEstimator'
 import './money.css'
 
-type Tab = 'overview' | 'unbilled' | 'invoices' | 'deposits' | 'reports'
-const TABS: [Tab, string][] = [['overview', 'Overview'], ['unbilled', 'Ready to bill'], ['invoices', 'Invoices'], ['deposits', 'Deposits'], ['reports', 'Reports']]
+type Tab = 'overview' | 'unbilled' | 'invoices' | 'deposits' | 'reports' | 'estimate'
+const TABS: [Tab, string][] = [['overview', 'Overview'], ['unbilled', 'Ready to bill'], ['invoices', 'Invoices'], ['deposits', 'Deposits'], ['reports', 'Reports'], ['estimate', 'Fee estimator']]
 
 const daysSince = (iso: string, today: string) => Math.max(0, Math.round((Date.parse(today) - Date.parse(iso)) / 86400000))
 
@@ -65,6 +66,7 @@ export function Money() {
       {tab === 'unbilled' && <Unbilled ready={ready} />}
       {tab === 'invoices' && <Invoices filter={(params.get('filter') as InvoiceFilter) || 'unpaid'} setFilter={f => patch({ filter: f === 'unpaid' ? null : f })} today={today} />}
       {tab === 'deposits' && <Deposits />}
+      {tab === 'estimate' && <FeeEstimator jobId={params.get('job') ?? ''} typeId={params.get('type') ?? ''} patch={patch} />}
       {tab === 'reports' && <Reports range={(params.get('range') as RangeKey) || 'this_month'} from={params.get('from') ?? ''} to={params.get('to') ?? ''} patch={patch} />}
     </div>
   </div>

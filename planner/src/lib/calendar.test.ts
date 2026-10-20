@@ -3,7 +3,7 @@ import { buildICS, calendarItems, calendarOrder, googleCalendarLink, parseCalend
 import type { Client, Job, Phase, Task } from './types'
 
 const STAMP = '2026-10-19T12:00:00Z'
-function job(overrides: Partial<Job> = {}): Job { return { id: 'job', client_id: 'client', job_number: 'SYN-001', name: 'Synthetic residence', description: '', address: '', status: 'active', priority: 1, fee: null, queued_date: null, start_date: null, due_date: '2026-10-19', created_at: STAMP, ...overrides } }
+function job(overrides: Partial<Job> = {}): Job { return { id: 'job', client_id: 'client', job_number: 'SYN-001', name: 'Synthetic residence', description: '', address: '', status: 'active', priority: 1, fee: null, job_type_id: null, queued_date: null, start_date: null, due_date: '2026-10-19', created_at: STAMP, ...overrides } }
 function phase(overrides: Partial<Phase> = {}): Phase { return { id: 'phase', job_id: 'job', kind: 'design', name: 'Original design', sort_order: 1, status: 'in_progress', estimate_hours: 10, start_date: null, due_date: '2026-10-20', assignee_id: 'legacy', notes: '', ...overrides } }
 function task(overrides: Partial<Task> = {}): Task { return { id: 'task', job_id: 'job', phase_id: 'phase', title: 'Site inspection', description: '', status: 'todo', assignee_id: 'legacy', due_date: null, scheduled_at: new Date('2026-10-19T23:30:00').toISOString(), is_site_visit: true, estimate_hours: 1, recurrence: 'none', recurrence_parent_id: null, sort_order: 1, completed_at: null, created_by: 'legacy', created_at: STAMP, ...overrides } }
 function client(): Client { return { id: 'client', name: 'Synthetic Builders', contact_name: '', email: '', phone: '', address: '', notes: '', is_sample: true, created_at: STAMP } }

@@ -26,10 +26,11 @@ The shear wall analyzer that used to sit at this repository's root is kept in it
 
 ### Data model (Supabase / Postgres) — `planner/supabase/setup.sql`
 
-`clients → jobs → phases → tasks`, plus `time_entries`, `job_items`, `invoices`, `deposits`, `schedule_entries`, `comments`, `profiles` (one per login), and a single-row `settings` table.
+`clients → jobs → phases → tasks`, plus `job_types`, `time_entries`, `job_items`, `invoices`, `deposits`, `schedule_entries`, `comments`, `profiles` (one per login), and a single-row `settings` table.
 
 - New jobs get **five phases automatically** via the `add_standard_phases` trigger: `bidding`, `design`, `plan_check`, `construction`, `client_changes`. Older jobs may also have a retired `queued` phase: it is stored history only (`lib/phases.ts` `isWorkflowPhase()` excludes it; label "Planning history"). Phase `kind` is fixed; `name` is the label. `calc.ts` `workPhase()` picks the phase new hours/schedules default to (first unfinished workflow phase).
 - **Stages (v2 UI concept, no schema):** `lib/stages.ts` derives a job's pipeline stage from its phase statuses — Bidding · Ready to start · Design · Plan check · Construction. The most advanced main phase that is in progress/waiting wins; with none started, the first unfinished main phase decides (bidding not started → Bidding, design not started after bidding → Ready to start, later phases → that column, "not started"). `client_changes` is side work shown as a chip, never a stage. `stageChanges()` returns the phase status edits that put a job in a stage (earlier main phases complete, target started, later started phases reset; client changes untouched); the board, the job-page stepper and the card menus all use it via `lib/jobActions.ts` `moveJobToStage()`, which offers Undo.
+- **Fee estimator** (Money → Fee estimator, `/money?tab=estimate&job=&type=`; `lib/estimate.ts`): `job_types` hold the owner's starter hours for Design, Plan check and Construction; `jobs.job_type_id` links jobs to a type. Typical hours = starter numbers counted as 2 jobs (`STARTER_WEIGHT`) blended with the fee-phase hours of **complete/archived** jobs of that type (hours with no phase count as design; bidding and client changes are not part of the fee). Fee = hours × rate, rounded up to the next $50. "Save to job" sets the job's fee, type, and the three phase estimates (with Undo). Job types are edited from the estimator and picked in the job form.
 - `jobs.queued_date` is legacy storage (no longer shown). `jobs.priority` (lower = higher in queue) drives the List view order; `jobActions.mergeOrder()` keeps hidden jobs in place when a filtered list is reordered.
 - Job statuses are Active, On hold, Complete, Cancelled, and Archived. Cancelled keeps all history and money records but removes pending deadlines/tasks and planned hours from capacity totals; changing back to Active restores them.
 - `time_entries.hours` is null while a timer is running (`started_at` set). Stopping the timer fills `hours` (rounded to quarter hours, minimum 0.25). Only one timer runs at a time (`lib/timer.ts` stops others first; a second click while a start is saving reuses it). A timer running over 12 hours is never saved automatically: Stop opens the hours form (`components/useTimerActions.ts`), and a new start is refused until it's fixed. Time shows every running timer if there are ever several.
@@ -53,7 +54,7 @@ The shear wall analyzer that used to sit at this repository's root is kept in it
 
 **Changing the schema:** edit `setup.sql` so a fresh project still works, AND add a migration under `planner/supabase/migrations/` / give the owner a small SQL snippet for the existing project. Then update `src/lib/types.ts` (and the demo `DEFAULTS` in `src/demo/mockSupabase.ts`).
 
-Applied migrations (keep filenames aligned with the live history): `20261017182411_add_cancelled_job_status`, `20261018201758_preserve_deposit_credits_and_recurring_task_parent`, `20261018203905_add_billable_time_entries`, `20261019021910_retire_queued_phase_for_new_jobs`, `20261019045305_add_morning_review_planning`. SQL regression suites in `planner/supabase/tests/` are for a disposable local database; never run test writes against customer records. v2 needed **no** schema change.
+Applied migrations (keep filenames aligned with the live history): `20261017182411_add_cancelled_job_status`, `20261018201758_preserve_deposit_credits_and_recurring_task_parent`, `20261018203905_add_billable_time_entries`, `20261019021910_retire_queued_phase_for_new_jobs`, `20261019045305_add_morning_review_planning`, `20261020031520_add_business_email`, `20261020084453_add_job_types_for_fee_estimator`. SQL regression suites in `planner/supabase/tests/` are for a disposable local database; never run test writes against customer records. v2 itself needed no schema change; the fee estimator added `job_types` and `jobs.job_type_id`.
 
 ### Frontend layout — `planner/src/`
 
@@ -81,6 +82,7 @@ lib/
   timer.ts            start/stop timer, elapsed label
   taskActions.ts      task save/complete + recurrence (shared by every view)
   billingActions.ts   captures invoice work values and deposit credits
+  estimate.ts         fee estimator: blended hours per job type, fee rounding/split   (+ estimate.test.ts)
   calendar.ts         calendar items, Google link, .ics builder
   phases.ts           workflow vs retired phases
   reminders.ts        once-a-day browser notification (off in demo)
@@ -98,7 +100,7 @@ components/
   ui.tsx              Modal (focus trap, Esc, sheet on phone), ConfirmProvider/useConfirm, Menu,
                       StageChip, DueText, Progress, Avatar, TaskCheck, Empty, Segmented, Field,
                       NumberInput (keeps typed text)
-  editors.tsx         EditorProvider + useEditors(): task, job, client, time, deposit, charge,
+  editors.tsx         EditorProvider + useEditors(): task, job, job type, client, time, deposit, charge,
                       invoice (pick unbilled work), mark paid. Billing-lock rules live here.
   CommandPalette.tsx  search + commands (/ or Ctrl/Cmd+K)
   TaskRow.tsx         task line: tick (with Undo), open, start timer
@@ -112,7 +114,7 @@ views/                big reusable views
   MonthCalendar.tsx   Schedule → Calendar month grid + list (agenda, default on phones)
 pages/                one file per route (+ its own .css)
   Today, Jobs (Board / List), JobPage (Overview / Hours & charges / Billing / Notes),
-  Schedule, Time, Money (Overview / Ready to bill / Invoices / Deposits / Reports),
+  Schedule, Time, Money (Overview / Ready to bill / Invoices / Deposits / Reports / Fee estimator → FeeEstimator.tsx),
   InvoiceView (printable invoice), Clients, ClientPage, Settings, Login
 ```
 

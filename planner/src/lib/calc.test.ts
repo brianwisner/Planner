@@ -6,7 +6,7 @@ type MoneyStore = Parameters<typeof jobBilling>[0]
 
 const job: Job = {
   id: 'job', client_id: 'client', job_number: '1', name: 'Test job',
-  description: '', address: '', status: 'active', priority: 0, fee: null,
+  description: '', address: '', status: 'active', priority: 0, fee: null, job_type_id: null,
   queued_date: null, start_date: null, due_date: null, created_at: '2026-01-01T00:00:00Z',
 }
 

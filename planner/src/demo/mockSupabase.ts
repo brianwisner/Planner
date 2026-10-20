@@ -19,7 +19,8 @@ const clone = <T,>(v: T): T => JSON.parse(JSON.stringify(v)) as T
 const DEFAULTS: Record<string, () => Row> = {
   settings: () => ({ business_email: '' }),
   clients: () => ({ contact_name: '', email: '', phone: '', address: '', notes: '', is_sample: false }),
-  jobs: () => ({ job_number: '', description: '', address: '', status: 'active', priority: 100, fee: null, queued_date: null, start_date: null, due_date: null }),
+  jobs: () => ({ job_number: '', description: '', address: '', status: 'active', priority: 100, fee: null, job_type_id: null, queued_date: null, start_date: null, due_date: null }),
+  job_types: () => ({ design_hours: 0, plan_check_hours: 0, construction_hours: 0, notes: '' }),
   phases: () => ({ sort_order: 0, status: 'not_started', estimate_hours: 0, start_date: null, due_date: null, assignee_id: null, notes: '' }),
   tasks: () => ({ phase_id: null, description: '', status: 'todo', assignee_id: null, due_date: null, scheduled_at: null, is_site_visit: false, estimate_hours: null, recurrence: 'none', recurrence_parent_id: null, sort_order: 0, completed_at: null, created_by: null }),
   invoices: () => ({ number: '', amount: 0, issued_date: todayISO(), paid_date: null, notes: '' }),
@@ -39,6 +40,7 @@ const CASCADE: Record<string, { table: string; column: string; action: 'delete' 
     .map(table => ({ table, column: 'job_id', action: 'delete' as const })),
   phases: [{ table: 'tasks', column: 'phase_id', action: 'delete' }, { table: 'time_entries', column: 'phase_id', action: 'null' }, { table: 'schedule_entries', column: 'phase_id', action: 'delete' }],
   tasks: [{ table: 'time_entries', column: 'task_id', action: 'null' }, { table: 'tasks', column: 'recurrence_parent_id', action: 'null' }],
+  job_types: [{ table: 'jobs', column: 'job_type_id', action: 'null' }],
   invoices: [{ table: 'time_entries', column: 'invoice_id', action: 'null' }, { table: 'job_items', column: 'invoice_id', action: 'null' }],
 }
 

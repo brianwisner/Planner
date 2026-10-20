@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { lateCount, mondayOf, summarizeJob, taskOrder, weekDays } from './views'
 import type { Client, Job, Phase, Task } from './types'
 
-const job = (over: Partial<Job> = {}): Job => ({ id: 'j', client_id: 'c', job_number: '26-1', name: 'Job', description: '', address: '', status: 'active', priority: 1, fee: null, queued_date: null, start_date: null, due_date: null, created_at: '2026-01-01T00:00:00Z', ...over })
+const job = (over: Partial<Job> = {}): Job => ({ id: 'j', client_id: 'c', job_number: '26-1', name: 'Job', description: '', address: '', status: 'active', priority: 1, fee: null, job_type_id: null, queued_date: null, start_date: null, due_date: null, created_at: '2026-01-01T00:00:00Z', ...over })
 const task = (over: Partial<Task>): Task => ({ id: 't', job_id: 'j', phase_id: null, title: 'T', description: '', status: 'todo', assignee_id: null, due_date: null, scheduled_at: null, is_site_visit: false, estimate_hours: null, recurrence: 'none', recurrence_parent_id: null, sort_order: 0, completed_at: null, created_by: null, created_at: '2026-01-01T00:00:00Z', ...over })
 const phase = (over: Partial<Phase>): Phase => ({ id: 'p', job_id: 'j', kind: 'design', name: 'Design', sort_order: 2, status: 'not_started', estimate_hours: 0, start_date: null, due_date: null, assignee_id: null, notes: '', ...over })
 const client: Client = { id: 'c', name: 'Client', contact_name: '', email: '', phone: '', address: '', notes: '', is_sample: false, created_at: '' }

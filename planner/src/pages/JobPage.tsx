@@ -1,8 +1,8 @@
 // One job: where it stands, what's next, the phases, hours, money and notes.
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Link, Navigate, useParams, useSearchParams } from 'react-router-dom'
+import { Link, Navigate, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import {
-  Check, ChevronRight, Clock, Ellipsis, FileText, Mail, MapPin, MessageSquare, Pencil, Phone, Play, Plus, Receipt, Square, Trash2, Wallet,
+  Calculator, Check, ChevronRight, Clock, Ellipsis, FileText, Mail, MapPin, MessageSquare, Pencil, Phone, Play, Plus, Receipt, Square, Trash2, Wallet,
 } from 'lucide-react'
 import { useData } from '../lib/store'
 import { EMAIL_TARGET, useEmailLink } from '../lib/email'
@@ -28,6 +28,7 @@ export function JobPage() {
   const store = useData()
   const edit = useEditors()
   const [params, setParams] = useSearchParams()
+  const navigate = useNavigate()
   const job = store.jobs.find(j => j.id === id)
   const tab = (['overview', 'time', 'billing', 'notes'].includes(params.get('tab') ?? '') ? params.get('tab') : 'overview') as Tab
   const setTab = (t: Tab) => setParams(p => { const n = new URLSearchParams(p); if (t === 'overview') n.delete('tab'); else n.set('tab', t); n.delete('task'); return n }, { replace: true })
@@ -57,6 +58,7 @@ export function JobPage() {
     { label: 'Add charge', icon: <FileText size={15} />, onSelect: () => edit.charge(undefined, job.id) },
     { label: 'Record deposit', icon: <Wallet size={15} />, onSelect: () => edit.deposit(undefined, job.id) },
     { label: 'New invoice', icon: <Receipt size={15} />, onSelect: () => edit.invoice(job.id) },
+    { label: 'Estimate fee', icon: <Calculator size={15} />, onSelect: () => navigate(`/money?tab=estimate&job=${job.id}`) },
     'sep',
     { label: 'Site visit', icon: <MapPin size={15} />, onSelect: () => edit.task(undefined, { job_id: job.id, is_site_visit: true, due_date: todayISO() }) },
   ]
@@ -74,7 +76,8 @@ export function JobPage() {
           {job.job_number && <span>#{job.job_number}</span>}
           {job.address && <a href={`https://maps.google.com/?q=${encodeURIComponent(job.address)}`} target="_blank" rel="noreferrer"><MapPin size={13} />{job.address}</a>}
           {job.due_date && <span>Due {fmtDate(job.due_date, 'long')}</span>}
-          {job.fee != null && <span>Fee {fmtMoney(job.fee)}</span>}
+          {(t => t && <span>{t.name}</span>)(store.jobTypes.find(t => t.id === job.job_type_id))}
+          {job.fee != null ? <span>Fee {fmtMoney(job.fee)}</span> : open && <Link to={`/money?tab=estimate&job=${job.id}`}><Calculator size={13} />Estimate fee</Link>}
         </p>
       </div>
       <div className="actions">

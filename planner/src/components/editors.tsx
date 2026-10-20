@@ -6,7 +6,7 @@ import { useNavigate } from 'react-router-dom'
 import { AlertCircle, Briefcase, Building2, CalendarDays, Clock, FileText, Lock, MapPin, Repeat } from 'lucide-react'
 import { addDays, format, nextMonday } from 'date-fns'
 import { useData, type Store } from '../lib/store'
-import type { Client, Deposit, Invoice, Job, JobItem, JobStatus, Recurrence, Task, TaskStatus, TimeEntry } from '../lib/types'
+import type { Client, Deposit, Invoice, Job, JobItem, JobStatus, JobType, Recurrence, Task, TaskStatus, TimeEntry } from '../lib/types'
 import { ITEM_CATEGORIES, JOB_STATUS_LABEL, RECURRENCE_LABEL } from '../lib/types'
 import { jobCharges, rateFor, workPhase } from '../lib/calc'
 import { fmtDate, fmtHours, fmtMoney, todayISO } from '../lib/utils'
@@ -208,9 +208,9 @@ function suggestJobNumber(jobs: Job[]): string {
   return `${yy}-${String((nums.length ? Math.max(...nums) : 100) + 1).padStart(3, '0')}`
 }
 
-export function JobEditor({ job, defaults, onClose, onCreated, openClient }: { job?: Job; defaults?: JobDefaults; onClose: () => void; onCreated?: (j: Job) => void; openClient: (done: (c: Client) => void) => void }) {
+export function JobEditor({ job, defaults, onClose, onCreated, openClient, openJobType }: { job?: Job; defaults?: JobDefaults; onClose: () => void; onCreated?: (j: Job) => void; openClient: (done: (c: Client) => void) => void; openJobType: (done: (t: JobType) => void) => void }) {
   const store = useData()
-  const { clients, jobs, insert, update, remove, refresh, toast, fetchWhere } = store
+  const { clients, jobTypes, jobs, insert, update, remove, refresh, toast, fetchWhere } = store
   const confirm = useConfirm()
   const navigate = useNavigate()
   const form = useRecordForm('job', onClose, () => refresh('jobs'))
@@ -220,6 +220,7 @@ export function JobEditor({ job, defaults, onClose, onCreated, openClient }: { j
     name: job?.name ?? '', description: job?.description ?? '', address: job?.address ?? '',
     status: (job?.status ?? 'active') as JobStatus,
     fee: job?.fee ?? null as number | null,
+    job_type_id: job?.job_type_id ?? null as string | null,
     start_date: job?.start_date ?? null as string | null,
     due_date: job?.due_date ?? null as string | null,
   }))
@@ -284,8 +285,19 @@ export function JobEditor({ job, defaults, onClose, onCreated, openClient }: { j
         </Field> : <Field label="Starts in" hint="You can move the job along later by dragging it on the Jobs board.">
           <Segmented label="Starting stage" value={startStage} onChange={setStartStage} options={(['bidding', 'ready', 'design'] as Stage[]).map(s => ({ value: s, label: STAGE_LABEL[s] }))} />
         </Field>}
-        <div className="field-grid three">
+        <div className="field-grid">
+          <Field label="Job type" htmlFor={`${form.id}-type`} hint="The fee estimator learns from finished jobs of each type.">
+            <div className="row">
+              <select id={`${form.id}-type`} className="input" value={d.job_type_id ?? ''} onChange={e => set('job_type_id', e.target.value || null)}>
+                <option value="">No type</option>
+                {jobTypes.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+              </select>
+              <button type="button" className="btn" onClick={() => openJobType(t => set('job_type_id', t.id))}>New</button>
+            </div>
+          </Field>
           <Field label="Fee" htmlFor={`${form.id}-fee`}><NumberInput id={`${form.id}-fee`} value={d.fee} onChange={v => set('fee', v)} step={50} min={0} prefix="$" placeholder="Optional" /></Field>
+        </div>
+        <div className="field-grid">
           <Field label="Start" htmlFor={`${form.id}-start`}><input id={`${form.id}-start`} className="input" type="date" value={d.start_date ?? ''} onChange={e => set('start_date', e.target.value || null)} /></Field>
           <Field label="Due" htmlFor={`${form.id}-due`}><input id={`${form.id}-due`} className="input" type="date" value={d.due_date ?? ''} onChange={e => set('due_date', e.target.value || null)} /></Field>
         </div>
@@ -293,6 +305,61 @@ export function JobEditor({ job, defaults, onClose, onCreated, openClient }: { j
           <textarea id={`${form.id}-desc`} className="input" value={d.description} onChange={e => set('description', e.target.value)} placeholder="Structure type, scope, special conditions…" />
         </Field>
         {!job && <p className="tiny muted">Each job gets five phases automatically: Bidding, Original design, County / plan-check comments, Construction changes and Client-requested changes.</p>}
+      </fieldset>
+    </form>
+  </Modal>
+}
+
+/* ================= Job type ================= */
+
+export function JobTypeEditor({ jobType, onClose, onCreated }: { jobType?: JobType; onClose: () => void; onCreated?: (t: JobType) => void }) {
+  const { insert, update, remove, refresh, jobs, jobTypes } = useData()
+  const confirm = useConfirm()
+  const form = useRecordForm('job type', onClose, () => refresh('job_types'))
+  const [d, setD] = useState({
+    name: jobType?.name ?? '', notes: jobType?.notes ?? '',
+    design_hours: jobType ? Number(jobType.design_hours) : null as number | null,
+    plan_check_hours: jobType ? Number(jobType.plan_check_hours) : null as number | null,
+    construction_hours: jobType ? Number(jobType.construction_hours) : null as number | null,
+  })
+  const set = <K extends keyof typeof d>(k: K, v: (typeof d)[K]) => setD(x => ({ ...x, [k]: v }))
+  const total = (d.design_hours ?? 0) + (d.plan_check_hours ?? 0) + (d.construction_hours ?? 0)
+  async function save() {
+    if (form.busy.current) return
+    const name = d.name.trim()
+    if (!name) { form.fail('Name the job type, e.g. "ADU / addition".'); return }
+    if (jobTypes.some(t => t.id !== jobType?.id && t.name.trim().toLowerCase() === name.toLowerCase())) { form.fail(`There is already a job type called "${name}".`); return }
+    if ([d.design_hours, d.plan_check_hours, d.construction_hours].some(h => h != null && h < 0)) { form.fail('Hours cannot be negative.'); return }
+    const row = { name, notes: d.notes.trim(), design_hours: d.design_hours ?? 0, plan_check_hours: d.plan_check_hours ?? 0, construction_hours: d.construction_hours ?? 0 }
+    await form.run('save', async () => {
+      if (jobType) return update('job_types', jobType.id, row)
+      const created = await insert('job_types', row)
+      if (created) onCreated?.(created)
+      return Boolean(created)
+    })
+  }
+  async function del() {
+    if (!jobType || form.busy.current) return
+    const count = jobs.filter(j => j.job_type_id === jobType.id).length
+    if (!await confirm({ title: `Delete "${jobType.name}"?`, body: count ? `${count} job${count === 1 ? '' : 's'} will keep all their hours and money but have no type, so the estimator stops learning from them.` : 'No jobs use this type.', confirmLabel: 'Delete type', danger: true })) return
+    await form.run('delete', () => remove('job_types', jobType.id))
+  }
+  return <Modal title={jobType ? 'Edit job type' : 'New job type'} onClose={form.close} footer={<Footer form={form} onDelete={jobType ? del : undefined} deleteLabel="Delete type" saveLabel={jobType ? 'Save' : 'Add job type'} />}>
+    <FormError message={form.error} />
+    <form id={form.id} noValidate onSubmit={e => { e.preventDefault(); void save() }}>
+      <fieldset className="form-fields" disabled={form.pending !== null}>
+        <Field label="Name" htmlFor={`${form.id}-name`}><input id={`${form.id}-name`} className="input" autoFocus value={d.name} onChange={e => set('name', e.target.value)} placeholder="e.g. ADU / addition" /></Field>
+        <div>
+          <div className="field-label">Your usual hours</div>
+          <p className="tiny muted" style={{ margin: '4px 0 10px' }}>A best guess is fine. As jobs of this type are finished, the estimator blends in the hours you really logged.</p>
+          <div className="field-grid three">
+            <Field label="Design" htmlFor={`${form.id}-design`}><NumberInput id={`${form.id}-design`} value={d.design_hours} onChange={v => set('design_hours', v)} step={0.5} min={0} suffix="h" placeholder="0" /></Field>
+            <Field label="Plan check" htmlFor={`${form.id}-pc`}><NumberInput id={`${form.id}-pc`} value={d.plan_check_hours} onChange={v => set('plan_check_hours', v)} step={0.5} min={0} suffix="h" placeholder="0" /></Field>
+            <Field label="Construction" htmlFor={`${form.id}-con`}><NumberInput id={`${form.id}-con`} value={d.construction_hours} onChange={v => set('construction_hours', v)} step={0.5} min={0} suffix="h" placeholder="0" /></Field>
+          </div>
+          <p className="tiny muted" style={{ marginTop: 8 }}>Total {fmtHours(total)}. Bidding and client-requested changes aren't part of the fee.</p>
+        </div>
+        <Field label="Notes" htmlFor={`${form.id}-notes`}><textarea id={`${form.id}-notes`} className="input" value={d.notes} onChange={e => set('notes', e.target.value)} placeholder="What's included, typical size, things that make it take longer…" /></Field>
       </fieldset>
     </form>
   </Modal>
@@ -711,6 +778,7 @@ type EditorRequest =
   | { kind: 'task'; task?: Task; defaults?: TaskDefaults }
   | { kind: 'job'; job?: Job; defaults?: JobDefaults }
   | { kind: 'client'; client?: Client; onCreated?: (c: Client) => void }
+  | { kind: 'jobType'; jobType?: JobType; onCreated?: (t: JobType) => void }
   | { kind: 'time'; entry?: TimeEntry; defaults?: TimeDefaults }
   | { kind: 'deposit'; deposit?: Deposit; jobId?: string }
   | { kind: 'charge'; item?: JobItem; jobId?: string }
@@ -721,6 +789,7 @@ export interface Editors {
   task: (task?: Task, defaults?: TaskDefaults) => void
   job: (job?: Job, defaults?: JobDefaults) => void
   client: (client?: Client, onCreated?: (c: Client) => void) => void
+  jobType: (jobType?: JobType, onCreated?: (t: JobType) => void) => void
   time: (entry?: TimeEntry, defaults?: TimeDefaults) => void
   deposit: (deposit?: Deposit, jobId?: string) => void
   charge: (item?: JobItem, jobId?: string) => void
@@ -745,6 +814,7 @@ export function EditorProvider({ children }: { children: ReactNode }) {
     task: (task, defaults) => open({ kind: 'task', task, defaults }),
     job: (job, defaults) => open({ kind: 'job', job, defaults }),
     client: (client, onCreated) => open({ kind: 'client', client, onCreated }),
+    jobType: (jobType, onCreated) => open({ kind: 'jobType', jobType, onCreated }),
     time: (entry, defaults) => open({ kind: 'time', entry, defaults }),
     deposit: (deposit, jobId) => open({ kind: 'deposit', deposit, jobId }),
     charge: (item, jobId) => open({ kind: 'charge', item, jobId }),
@@ -758,8 +828,9 @@ export function EditorProvider({ children }: { children: ReactNode }) {
       const close = () => closeTop(id)
       switch (req.kind) {
         case 'task': return <TaskEditor key={id} task={req.task} defaults={req.defaults} onClose={close} />
-        case 'job': return <JobEditor key={id} job={req.job} defaults={req.defaults} onClose={close} openClient={done => editors.client(undefined, done)} />
+        case 'job': return <JobEditor key={id} job={req.job} defaults={req.defaults} onClose={close} openClient={done => editors.client(undefined, done)} openJobType={done => editors.jobType(undefined, done)} />
         case 'client': return <ClientEditor key={id} client={req.client} onCreated={req.onCreated} onClose={close} />
+        case 'jobType': return <JobTypeEditor key={id} jobType={req.jobType} onCreated={req.onCreated} onClose={close} />
         case 'time': return <TimeEditor key={id} entry={req.entry} defaults={req.defaults} onClose={close} />
         case 'deposit': return <DepositEditor key={id} deposit={req.deposit} jobId={req.jobId} onClose={close} />
         case 'charge': return <ChargeEditor key={id} item={req.item} jobId={req.jobId} onClose={close} />

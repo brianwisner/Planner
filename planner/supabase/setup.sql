@@ -109,6 +109,17 @@ create table if not exists clients (
 );
 
 -- ---------- Jobs ----------
+-- ---------- Job types (the fee estimator's starter hours) ----------
+create table if not exists job_types (
+  id uuid primary key default gen_random_uuid(),
+  name text not null,
+  design_hours numeric not null default 0 check (design_hours >= 0),
+  plan_check_hours numeric not null default 0 check (plan_check_hours >= 0),
+  construction_hours numeric not null default 0 check (construction_hours >= 0),
+  notes text not null default '',
+  created_at timestamptz not null default now()
+);
+
 create table if not exists jobs (
   id uuid primary key default gen_random_uuid(),
   client_id uuid not null references clients(id) on delete cascade,
@@ -119,6 +130,7 @@ create table if not exists jobs (
   status text not null default 'active' check (status in ('active','on_hold','complete','cancelled','archived')),
   priority int not null default 100,            -- lower number = higher in the queue
   fee numeric,                                  -- agreed fee, optional
+  job_type_id uuid references job_types(id) on delete set null, -- the estimator learns from finished jobs of each type
   queued_date date,                             -- when the job entered the queue
   start_date date,
   due_date date,
@@ -471,6 +483,7 @@ create index if not exists time_user_idx on time_entries(user_id);
 create index if not exists comments_job_idx on comments(job_id);
 create index if not exists deposits_job_idx on deposits(job_id);
 create index if not exists job_items_job_idx on job_items(job_id);
+create index if not exists jobs_type_idx on jobs(job_type_id);
 create index if not exists schedule_date_idx on schedule_entries(date);
 create index if not exists schedule_job_idx on schedule_entries(job_id);
 
@@ -478,6 +491,7 @@ create index if not exists schedule_job_idx on schedule_entries(job_id);
 alter table settings     enable row level security;
 alter table profiles     enable row level security;
 alter table clients      enable row level security;
+alter table job_types    enable row level security;
 alter table jobs         enable row level security;
 alter table phases       enable row level security;
 alter table tasks        enable row level security;
@@ -491,7 +505,7 @@ alter table comments     enable row level security;
 do $$
 declare t text;
 begin
-  foreach t in array array['settings','profiles','clients','jobs','phases','tasks','invoices','deposits','job_items','schedule_entries','time_entries','comments'] loop
+  foreach t in array array['settings','profiles','clients','job_types','jobs','phases','tasks','invoices','deposits','job_items','schedule_entries','time_entries','comments'] loop
     execute format('drop policy if exists team_all on %I', t);
     execute format('create policy team_all on %I for all to authenticated using (true) with check (true)', t);
   end loop;
@@ -501,7 +515,7 @@ end $$;
 do $$
 declare t text;
 begin
-  foreach t in array array['settings','profiles','clients','jobs','phases','tasks','invoices','deposits','job_items','schedule_entries','time_entries','comments'] loop
+  foreach t in array array['settings','profiles','clients','job_types','jobs','phases','tasks','invoices','deposits','job_items','schedule_entries','time_entries','comments'] loop
     begin
       execute format('alter publication supabase_realtime add table %I', t);
     exception when duplicate_object then null;

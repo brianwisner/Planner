@@ -6,13 +6,14 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import type { Session } from '@supabase/supabase-js'
 import { supabase } from './supabase'
-import type { Client, Comment, Deposit, Invoice, Job, JobItem, Phase, Profile, ScheduleEntry, Settings, Task, TimeEntry } from './types'
+import type { Client, Comment, Deposit, Invoice, Job, JobItem, JobType, Phase, Profile, ScheduleEntry, Settings, Task, TimeEntry } from './types'
 import type { InvoiceWorkLink } from './billingActions'
 
 export interface Tables {
   settings: Settings
   profiles: Profile
   clients: Client
+  job_types: JobType
   jobs: Job
   phases: Phase
   tasks: Task
@@ -25,12 +26,12 @@ export interface Tables {
 }
 export type TableName = keyof Tables
 
-const TABLE_NAMES: TableName[] = ['settings', 'profiles', 'clients', 'jobs', 'phases', 'tasks', 'invoices', 'deposits', 'job_items', 'schedule_entries', 'time_entries', 'comments']
+const TABLE_NAMES: TableName[] = ['settings', 'profiles', 'clients', 'job_types', 'jobs', 'phases', 'tasks', 'invoices', 'deposits', 'job_items', 'schedule_entries', 'time_entries', 'comments']
 
 type Data = { [K in TableName]: Tables[K][] }
 
 const emptyData: Data = {
-  settings: [], profiles: [], clients: [], jobs: [], phases: [], tasks: [], invoices: [], deposits: [], job_items: [], schedule_entries: [], time_entries: [], comments: [],
+  settings: [], profiles: [], clients: [], job_types: [], jobs: [], phases: [], tasks: [], invoices: [], deposits: [], job_items: [], schedule_entries: [], time_entries: [], comments: [],
 }
 
 export interface ToastAction { label: string; run: () => void | Promise<unknown> }
@@ -42,6 +43,7 @@ export interface Store {
   settings: Settings
   profiles: Profile[]
   clients: Client[]
+  jobTypes: JobType[]
   jobs: Job[]
   phases: Phase[]
   tasks: Task[]
@@ -199,6 +201,7 @@ export function DataProvider({ session, children }: { session: Session | null; c
       session, me, settings,
       profiles: [...data.profiles].sort((a, b) => a.full_name.localeCompare(b.full_name)),
       clients: [...data.clients].sort((a, b) => a.name.localeCompare(b.name)),
+      jobTypes: [...data.job_types].sort((a, b) => a.name.localeCompare(b.name)),
       jobs: [...data.jobs].sort((a, b) => a.priority - b.priority || a.created_at.localeCompare(b.created_at)),
       phases: [...data.phases].sort((a, b) => a.sort_order - b.sort_order),
       tasks: [...data.tasks].sort((a, b) => a.sort_order - b.sort_order || a.created_at.localeCompare(b.created_at)),

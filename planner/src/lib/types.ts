@@ -37,6 +37,17 @@ export interface Client {
   created_at: string
 }
 
+/** A kind of job with the owner's usual hours per phase, used by the fee estimator. */
+export interface JobType {
+  id: string
+  name: string
+  design_hours: number
+  plan_check_hours: number
+  construction_hours: number
+  notes: string
+  created_at: string
+}
+
 export interface Job {
   id: string
   client_id: string
@@ -47,6 +58,7 @@ export interface Job {
   status: JobStatus
   priority: number
   fee: number | null
+  job_type_id: string | null      // links finished jobs to the fee estimator
   queued_date: string | null      // legacy storage; no longer an active workflow control
   start_date: string | null
   due_date: string | null
