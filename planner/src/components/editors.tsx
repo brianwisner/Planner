@@ -11,6 +11,7 @@ import { ITEM_CATEGORIES, JOB_STATUS_LABEL, RECURRENCE_LABEL } from '../lib/type
 import { jobCharges, rateFor, workPhase } from '../lib/calc'
 import { fmtDate, fmtHours, fmtMoney, todayISO } from '../lib/utils'
 import { saveTask } from '../lib/taskActions'
+import { guessType } from '../lib/jobTyping'
 import type { InvoiceWorkLink } from '../lib/billingActions'
 import { isWorkflowPhase, phaseLabel } from '../lib/phases'
 import { STAGE_LABEL, jobStage, stageChanges, type Stage } from '../lib/stages'
@@ -228,7 +229,12 @@ export function JobEditor({ job, defaults, onClose, onCreated, openClient, openJ
     due_date: job?.due_date ?? null as string | null,
   }))
   const [startStage, setStartStage] = useState<Stage>('bidding')
-  const sizeUnit = jobTypes.find(t => t.id === d.job_type_id)?.size_unit.trim() ?? ''
+  // New jobs get a type guessed from their name and scope until one is picked by hand.
+  const [typeTouched, setTypeTouched] = useState(Boolean(job?.job_type_id))
+  const guess = useMemo(() => d.job_type_id ? null : guessType(store, `${d.name} ${d.description}`, job?.id), [store, d.job_type_id, d.name, d.description, job?.id])
+  const autoType = !job && !typeTouched ? guess?.type.id ?? null : null
+  const typeId = d.job_type_id ?? autoType
+  const sizeUnit = jobTypes.find(t => t.id === typeId)?.size_unit.trim() ?? ''
   const set = <K extends keyof typeof d>(k: K, v: (typeof d)[K]) => setD(x => ({ ...x, [k]: v }))
 
   async function save() {
@@ -238,7 +244,7 @@ export function JobEditor({ job, defaults, onClose, onCreated, openClient, openJ
     if ((d.start_date && !validDate(d.start_date)) || (d.due_date && !validDate(d.due_date))) { form.fail('Enter valid dates, or clear them.'); return }
     if (d.fee != null && d.fee < 0) { form.fail('The fee cannot be negative.'); return }
     if (d.size != null && d.size < 0) { form.fail('The size cannot be negative.'); return }
-    const row = { ...d, name: d.name.trim(), job_number: d.job_number.trim(), address: d.address.trim(), estimate_note: d.use_in_estimates ? '' : d.estimate_note.trim() }
+    const row = { ...d, job_type_id: typeId, name: d.name.trim(), job_number: d.job_number.trim(), address: d.address.trim(), estimate_note: d.use_in_estimates ? '' : d.estimate_note.trim() }
     await form.run('save', async () => {
       if (job) return update('jobs', job.id, row)
       // New jobs go to the end of the queue with a number no other job uses.
@@ -291,13 +297,17 @@ export function JobEditor({ job, defaults, onClose, onCreated, openClient, openJ
           <Segmented label="Starting stage" value={startStage} onChange={setStartStage} options={(['bidding', 'ready', 'design'] as Stage[]).map(s => ({ value: s, label: STAGE_LABEL[s] }))} />
         </Field>}
         <div className="field-grid">
-          <Field label="Job type" htmlFor={`${form.id}-type`} hint="The fee estimator learns from finished jobs of each type.">
+          <Field label="Job type" htmlFor={`${form.id}-type`} hint={autoType && guess
+            ? `Guessed from the name${guess.matched.length ? ` (“${guess.matched[0]}”)` : ''}. Change it if it's wrong.`
+            : !typeId && guess
+              ? <>Looks like {guess.type.name}. <button type="button" className="btn ghost xs" onClick={() => { setTypeTouched(true); set('job_type_id', guess.type.id) }}>Use it</button></>
+              : 'The fee estimator learns from finished jobs of each type.'}>
             <div className="row">
-              <select id={`${form.id}-type`} className="input" value={d.job_type_id ?? ''} onChange={e => set('job_type_id', e.target.value || null)}>
+              <select id={`${form.id}-type`} className="input" value={typeId ?? ''} onChange={e => { setTypeTouched(true); set('job_type_id', e.target.value || null) }}>
                 <option value="">No type</option>
                 {jobTypes.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
               </select>
-              <button type="button" className="btn" onClick={() => openJobType(t => set('job_type_id', t.id))}>New</button>
+              <button type="button" className="btn" onClick={() => openJobType(t => { setTypeTouched(true); set('job_type_id', t.id) })}>New</button>
             </div>
           </Field>
           <Field label="Fee" htmlFor={`${form.id}-fee`}><NumberInput id={`${form.id}-fee`} value={d.fee} onChange={v => set('fee', v)} step={50} min={0} prefix="$" placeholder="Optional" /></Field>
@@ -335,6 +345,7 @@ export function JobTypeEditor({ jobType, onClose, onCreated }: { jobType?: JobTy
     construction_hours: jobType ? Number(jobType.construction_hours) : null as number | null,
     site_visits: jobType ? Number(jobType.site_visits) : null as number | null,
     size_unit: jobType?.size_unit ?? '',
+    keywords: jobType?.keywords ?? '',
   })
   const set = <K extends keyof typeof d>(k: K, v: (typeof d)[K]) => setD(x => ({ ...x, [k]: v }))
   const total = (d.design_hours ?? 0) + (d.plan_check_hours ?? 0) + (d.construction_hours ?? 0)
@@ -344,7 +355,7 @@ export function JobTypeEditor({ jobType, onClose, onCreated }: { jobType?: JobTy
     if (!name) { form.fail('Name the job type, e.g. "ADU / addition".'); return }
     if (jobTypes.some(t => t.id !== jobType?.id && t.name.trim().toLowerCase() === name.toLowerCase())) { form.fail(`There is already a job type called "${name}".`); return }
     if ([d.design_hours, d.plan_check_hours, d.construction_hours, d.site_visits].some(h => h != null && h < 0)) { form.fail('Hours and visits cannot be negative.'); return }
-    const row = { name, notes: d.notes.trim(), design_hours: d.design_hours ?? 0, plan_check_hours: d.plan_check_hours ?? 0, construction_hours: d.construction_hours ?? 0, site_visits: d.site_visits ?? 0, size_unit: d.size_unit.trim() }
+    const row = { name, notes: d.notes.trim(), design_hours: d.design_hours ?? 0, plan_check_hours: d.plan_check_hours ?? 0, construction_hours: d.construction_hours ?? 0, site_visits: d.site_visits ?? 0, size_unit: d.size_unit.trim(), keywords: d.keywords.split(/[,;\n]/).map(k => k.trim()).filter(Boolean).join(', ') }
     await form.run('save', async () => {
       if (jobType) return update('job_types', jobType.id, row)
       const created = await insert('job_types', row)
@@ -382,6 +393,9 @@ export function JobTypeEditor({ jobType, onClose, onCreated }: { jobType?: JobTy
             <datalist id={`${form.id}-units`}><option value="sq ft" /><option value="ft of wall" /><option value="openings" /><option value="units" /></datalist>
           </Field>
         </div>
+        <Field label="Key words" htmlFor={`${form.id}-keys`} hint="Separate with commas. A job whose name or scope contains one of these gets this type automatically.">
+          <input id={`${form.id}-keys`} className="input" value={d.keywords} onChange={e => set('keywords', e.target.value)} placeholder="e.g. deck, porch, stair, balcony" />
+        </Field>
         <Field label="Notes" htmlFor={`${form.id}-notes`}><textarea id={`${form.id}-notes`} className="input" value={d.notes} onChange={e => set('notes', e.target.value)} placeholder="What's included, typical size, things that make it take longer…" /></Field>
       </fieldset>
     </form>

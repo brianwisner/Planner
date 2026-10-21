@@ -20,7 +20,8 @@ const DEFAULTS: Record<string, () => Row> = {
   settings: () => ({ business_email: '', minimum_fee: 0, site_visit_hours: 3, retainer_percent: 0, proposal_template: '' }),
   clients: () => ({ contact_name: '', email: '', phone: '', address: '', notes: '', is_sample: false }),
   jobs: () => ({ job_number: '', description: '', address: '', status: 'active', priority: 100, fee: null, job_type_id: null, size: null, use_in_estimates: true, estimate_note: '', closeout_reason: '', queued_date: null, start_date: null, due_date: null }),
-  job_types: () => ({ design_hours: 0, plan_check_hours: 0, construction_hours: 0, site_visits: 0, size_unit: '', notes: '' }),
+  job_types: () => ({ design_hours: 0, plan_check_hours: 0, construction_hours: 0, site_visits: 0, size_unit: '', keywords: '', notes: '' }),
+  past_jobs: () => ({ client: '', address: '', job_type_id: null, date: null, fee: null, hours: null, size: null, scope: '', source: '', use_in_estimates: true }),
   quotes: () => ({ job_type_id: null, rate: 0, design_hours: 0, plan_check_hours: 0, construction_hours: 0, site_visits: 0, visit_hours: 0, allowance_hours: 0, rush_percent: 0, size: null, suggested_fee: 0, fee: 0, fee_note: '' }),
   phases: () => ({ sort_order: 0, status: 'not_started', estimate_hours: 0, start_date: null, due_date: null, assignee_id: null, notes: '' }),
   tasks: () => ({ phase_id: null, description: '', status: 'todo', assignee_id: null, due_date: null, scheduled_at: null, is_site_visit: false, estimate_hours: null, recurrence: 'none', recurrence_parent_id: null, sort_order: 0, completed_at: null, created_by: null }),
@@ -41,7 +42,7 @@ const CASCADE: Record<string, { table: string; column: string; action: 'delete' 
     .map(table => ({ table, column: 'job_id', action: 'delete' as const })),
   phases: [{ table: 'tasks', column: 'phase_id', action: 'delete' }, { table: 'time_entries', column: 'phase_id', action: 'null' }, { table: 'schedule_entries', column: 'phase_id', action: 'delete' }],
   tasks: [{ table: 'time_entries', column: 'task_id', action: 'null' }, { table: 'tasks', column: 'recurrence_parent_id', action: 'null' }],
-  job_types: [{ table: 'jobs', column: 'job_type_id', action: 'null' }, { table: 'quotes', column: 'job_type_id', action: 'null' }],
+  job_types: [{ table: 'jobs', column: 'job_type_id', action: 'null' }, { table: 'past_jobs', column: 'job_type_id', action: 'null' }, { table: 'quotes', column: 'job_type_id', action: 'null' }],
   invoices: [{ table: 'time_entries', column: 'invoice_id', action: 'null' }, { table: 'job_items', column: 'invoice_id', action: 'null' }],
 }
 

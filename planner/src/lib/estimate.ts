@@ -3,7 +3,7 @@
 // visits, an allowance and rush premium; saved quotes vs. actual hours; and
 // the proposal text.
 import type { Store } from './store'
-import type { Job, JobType, PhaseKind, Quote } from './types'
+import type { Job, JobType, PastJob, PhaseKind, Quote } from './types'
 import { jobBilling } from './calc'
 import { fmtDate, fmtMoney, sum } from './utils'
 
@@ -42,7 +42,7 @@ function feePhase(kind: PhaseKind | undefined): FeePhase | null {
   return (FEE_PHASES as readonly string[]).includes(kind) ? kind as FeePhase : null
 }
 
-type EstimateStore = Pick<Store, 'jobs' | 'phases' | 'timeEntries' | 'invoices' | 'deposits' | 'items' | 'profiles' | 'settings' | 'quotes'>
+type EstimateStore = Pick<Store, 'jobs' | 'jobTypes' | 'phases' | 'timeEntries' | 'invoices' | 'deposits' | 'items' | 'profiles' | 'settings' | 'quotes'>
 
 /** The quote saved most recently for a job: the baseline its hours are compared with. */
 export function latestQuote(store: Pick<Store, 'quotes'>, jobId: string): Quote | undefined {
@@ -153,6 +153,30 @@ export function estimateHours(store: EstimateStore, type: JobType, exceptJobId?:
     rateThen: value > 0 && worked > 0 ? value / worked : null,
     unphased: sum(finished.map(f => f.unphased)),
   }
+}
+
+/** Past jobs (from before the planner) of this type with a fee: what you charged before. */
+export interface PastEvidence { jobs: PastJob[]; low: number; high: number; middle: number }
+
+export function pastEvidence(store: Pick<Store, 'pastJobs'>, typeId: string): PastEvidence | null {
+  const jobs = store.pastJobs.filter(p => p.job_type_id === typeId && p.use_in_estimates !== false && (p.fee ?? 0) > 0)
+  if (!jobs.length) return null
+  const fees = jobs.map(p => p.fee!).sort((a, b) => a - b)
+  const m = Math.floor(fees.length / 2)
+  return { jobs, low: fees[0], high: fees[fees.length - 1], middle: fees.length % 2 ? fees[m] : (fees[m - 1] + fees[m]) / 2 }
+}
+
+/**
+ * A best guess for a type with no hours of its own: the average typical hours
+ * of your other job types that have some.
+ */
+export function fallbackHours(store: EstimateStore, exceptTypeId: string): { hours: PhaseHours; types: number } | null {
+  const visit = Number(store.settings.site_visit_hours) || 0
+  const others = store.jobTypes.filter(t => t.id !== exceptTypeId).map(t => starterHours(t, visit)).filter(h => totalHours(h) > 0)
+  if (!others.length) return null
+  const hours = noHours()
+  for (const k of FEE_PHASES) hours[k] = sum(others.map(h => h[k])) / others.length
+  return { hours, types: others.length }
 }
 
 /* ---------------- Pricing ---------------- */

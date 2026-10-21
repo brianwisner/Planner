@@ -61,18 +61,18 @@ export function seedData(): Record<string, Row[]> {
   })
 
   // Job types with starter hours (design, plan check, construction) for the fee estimator.
-  const typeSpecs: [string, string, number, number, number, number, string][] = [
-    ['adu', 'ADU / addition', 30, 8, 2, 2, 'sq ft'],
-    ['beam', 'Beam or bearing wall removal', 10, 3, 2, 1, ''],
-    ['deck', 'Deck / stair', 8, 2, 2, 1, 'sq ft'],
-    ['multi', 'Multifamily (2–4 units)', 56, 10, 8, 3, 'sq ft'],
-    ['retro', 'Seismic retrofit', 48, 12, 10, 2, 'sq ft'],
-    ['wall', 'Retaining wall', 16, 4, 3, 1, 'ft of wall'],
+  const typeSpecs: [string, string, number, number, number, number, string, string][] = [
+    ['adu', 'ADU / addition', 30, 8, 2, 2, 'sq ft', 'adu, addition, accessory dwelling, garage apartment, second story'],
+    ['beam', 'Beam or bearing wall removal', 10, 3, 2, 1, '', 'beam, header, bearing wall, girder, ridge'],
+    ['deck', 'Deck / stair', 8, 2, 2, 1, 'sq ft', 'deck, stair, porch, balcony'],
+    ['multi', 'Multifamily (2–4 units)', 56, 10, 8, 3, 'sq ft', 'duplex, triplex, fourplex, multifamily'],
+    ['retro', 'Seismic retrofit', 48, 12, 10, 2, 'sq ft', 'seismic, retrofit, urm, anchorage'],
+    ['wall', 'Retaining wall', 16, 4, 3, 1, 'ft of wall', 'retaining wall, landscape wall, cantilevered wall'],
   ]
   const typeIds: Record<string, string> = {}
-  const job_types: Row[] = typeSpecs.map(([key, name, design_hours, plan_check_hours, construction_hours, site_visits, size_unit], i) => {
+  const job_types: Row[] = typeSpecs.map(([key, name, design_hours, plan_check_hours, construction_hours, site_visits, size_unit, keywords], i) => {
     typeIds[key] = uid('y')
-    return { id: typeIds[key], name, design_hours, plan_check_hours, construction_hours, site_visits, size_unit, notes: '', created_at: created(-100 + i) }
+    return { id: typeIds[key], name, design_hours, plan_check_hours, construction_hours, site_visits, size_unit, keywords, notes: '', created_at: created(-100 + i) }
   })
 
   const N: PhaseStatus = 'not_started', P: PhaseStatus = 'in_progress', W: PhaseStatus = 'waiting', C: PhaseStatus = 'complete'
@@ -226,6 +226,18 @@ export function seedData(): Record<string, Row[]> {
     quote('adu', -36, 31, 8, 8, 8800, { size: 900, suggested_fee: 8800 }),
   ]
 
+  // Jobs from before the planner, as found in old invoices and emails.
+  const pastJob = (name: string, client: string, type: string, days: number, fee: number, scope: string, source: string, size: number | null = null): Row => ({
+    id: uid('h'), name, client, address: '', job_type_id: typeIds[type], date: iso(days), fee, hours: null, size, scope, source, use_in_estimates: true, created_at: created(-5),
+  })
+  const past_jobs: Row[] = [
+    pastJob('Nelson garage ADU', 'Nelson family', 'adu', -420, 5800, 'ADU over detached garage', 'Invoice 2025-112', 700),
+    pastJob('Kerr addition', 'Cascade Builders', 'adu', -300, 4900, 'Single-story addition', 'Invoice 2025-140', 450),
+    pastJob('Bay St duplex', 'Pine Street Partners', 'multi', -380, 7600, 'Two-story duplex', 'Invoice 2025-118'),
+    pastJob('Sorensen deck', 'Harbor View Architects', 'deck', -260, 1600, 'Elevated deck and stair', 'Email quote, Mar 2025'),
+    pastJob('Lindgren kitchen wall', 'Elena & Tom Miller', 'beam', -200, 1350, 'Remove bearing wall, new flush beam', 'Invoice 2025-151'),
+  ]
+
   const job_items: Row[] = [
     { id: uid('x'), job_id: jobIds.adu, date: iso(-9), category: 'Mileage', description: 'Site visit — measure existing garage', quantity: 42, unit_price: 0.67, billed: false, invoice_id: null, deposit_applied: null, created_by: DEMO_USER.id, created_at: created(-9) },
     { id: uid('x'), job_id: jobIds.church, date: iso(-5), category: 'Printing / plotting', description: 'Full-size plan sets (3)', quantity: 3, unit_price: 28, billed: false, invoice_id: null, deposit_applied: null, created_by: DEMO_USER.id, created_at: created(-5) },
@@ -262,7 +274,7 @@ export function seedData(): Record<string, Row[]> {
   ]
 
   return {
-    settings, profiles, clients, job_types, jobs, quotes, phases, tasks, invoices, deposits, time_entries: time, job_items, schedule_entries, comments,
+    settings, profiles, clients, job_types, past_jobs, jobs, quotes, phases, tasks, invoices, deposits, time_entries: time, job_items, schedule_entries, comments,
     daily_reviews: [], follow_ups: [], daily_availability: [], availability_blocks: [], job_planning: [], job_decisions: [], planning_events: [],
   }
 }

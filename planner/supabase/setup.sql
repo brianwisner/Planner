@@ -122,6 +122,7 @@ create table if not exists job_types (
   construction_hours numeric not null default 0 check (construction_hours >= 0),
   site_visits numeric not null default 0 check (site_visits >= 0),
   size_unit text not null default '',             -- e.g. 'sq ft'; blank = size not tracked
+  keywords text not null default '',              -- words that identify this type, for automatic typing
   notes text not null default '',
   created_at timestamptz not null default now()
 );
@@ -144,6 +145,24 @@ create table if not exists jobs (
   queued_date date,                             -- when the job entered the queue
   start_date date,
   due_date date,
+  created_at timestamptz not null default now()
+);
+
+-- ---------- Past jobs from before the planner (from email, invoices, files) ----------
+-- Fee evidence for the estimator and examples for automatic job typing.
+create table if not exists past_jobs (
+  id uuid primary key default gen_random_uuid(),
+  name text not null,
+  client text not null default '',
+  address text not null default '',
+  job_type_id uuid references job_types(id) on delete set null,
+  date date,
+  fee numeric check (fee >= 0),               -- what was charged (invoiced or quoted)
+  hours numeric check (hours >= 0),           -- only when actually known
+  size numeric check (size >= 0),
+  scope text not null default '',
+  source text not null default '',            -- where it came from (invoice numbers, emails, files)
+  use_in_estimates boolean not null default true,
   created_at timestamptz not null default now()
 );
 
@@ -515,6 +534,7 @@ create index if not exists deposits_job_idx on deposits(job_id);
 create index if not exists job_items_job_idx on job_items(job_id);
 create index if not exists jobs_type_idx on jobs(job_type_id);
 create index if not exists quotes_job_idx on quotes(job_id);
+create index if not exists past_jobs_type_idx on past_jobs(job_type_id);
 create index if not exists schedule_date_idx on schedule_entries(date);
 create index if not exists schedule_job_idx on schedule_entries(job_id);
 
@@ -524,6 +544,7 @@ alter table profiles     enable row level security;
 alter table clients      enable row level security;
 alter table job_types    enable row level security;
 alter table quotes       enable row level security;
+alter table past_jobs    enable row level security;
 alter table jobs         enable row level security;
 alter table phases       enable row level security;
 alter table tasks        enable row level security;
@@ -537,7 +558,7 @@ alter table comments     enable row level security;
 do $$
 declare t text;
 begin
-  foreach t in array array['settings','profiles','clients','job_types','jobs','quotes','phases','tasks','invoices','deposits','job_items','schedule_entries','time_entries','comments'] loop
+  foreach t in array array['settings','profiles','clients','job_types','past_jobs','jobs','quotes','phases','tasks','invoices','deposits','job_items','schedule_entries','time_entries','comments'] loop
     execute format('drop policy if exists team_all on %I', t);
     execute format('create policy team_all on %I for all to authenticated using (true) with check (true)', t);
   end loop;
@@ -547,7 +568,7 @@ end $$;
 do $$
 declare t text;
 begin
-  foreach t in array array['settings','profiles','clients','job_types','jobs','quotes','phases','tasks','invoices','deposits','job_items','schedule_entries','time_entries','comments'] loop
+  foreach t in array array['settings','profiles','clients','job_types','past_jobs','jobs','quotes','phases','tasks','invoices','deposits','job_items','schedule_entries','time_entries','comments'] loop
     begin
       execute format('alter publication supabase_realtime add table %I', t);
     exception when duplicate_object then null;
