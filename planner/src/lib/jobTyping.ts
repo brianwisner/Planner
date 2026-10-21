@@ -49,24 +49,34 @@ export function guessType(store: TypingStore, text: string, exceptJobId?: string
   const spread = new Map<string, number>()
   for (const m of learned.values()) for (const w of m.keys()) spread.set(w, (spread.get(w) ?? 0) + 1)
 
-  let best: TypeGuess | null = null
+  let best: (TypeGuess & { at: number }) | null = null
   for (const t of store.jobTypes) {
-    let score = 0
+    let score = 0, at = Infinity
     const matched: string[] = []
-    for (const k of keywordList(t)) {
+    const keys = keywordList(t)
+    for (const k of keys) {
       const phrase = ` ${k.replace(/[^a-z0-9]+/g, ' ').trim()} `
-      const hit = phrase.trim().includes(' ') ? lower.includes(phrase) : words(k).some(w => mine.has(w))
-      if (hit) { score += 3; matched.push(k) }
+      const multi = phrase.trim().includes(' ')
+      const pos = multi ? lower.indexOf(phrase) : Math.min(...words(k).map(w => mine.has(w) ? firstAt(lower, w) : Infinity))
+      if (pos >= 0 && pos < Infinity) { score += multi ? 4 : 3; matched.push(k); at = Math.min(at, pos) }
     }
-    for (const w of new Set(words(t.name))) if (mine.has(w) && !matched.some(m => m.includes(w))) { score += 2; matched.push(w) }
+    // The type's own name only helps when it has no key words.
+    if (!keys.length) for (const w of new Set(words(t.name))) if (mine.has(w)) { score += 2; matched.push(w); at = Math.min(at, firstAt(lower, w)) }
     for (const [w, n] of learned.get(t.id) ?? []) {
       if (!mine.has(w) || matched.some(m => m.includes(w))) continue
       // A word seen on 3+ jobs of only this type is enough on its own.
       score += Math.min(2, (2 * n) / 3) / (spread.get(w) ?? 1)
     }
-    if (score > (best?.score ?? 0)) best = { type: t, score, matched }
+    // Ties go to the type mentioned first ("Deck remodel" is a deck).
+    if (score > (best?.score ?? 0) || (best && score === best.score && at < best.at)) best = { type: t, score, matched, at }
   }
-  return best && best.score >= 2 ? best : null
+  return best && best.score >= 2 ? { type: best.type, score: best.score, matched: best.matched } : null
+}
+
+/** Where a word (or its plural) first appears in the text, for breaking ties. */
+function firstAt(lower: string, w: string): number {
+  const m = new RegExp(`\\b${w}`).exec(lower)
+  return m ? m.index : Infinity
 }
 
 export const guessJobType = (store: TypingStore, job: Pick<Job, 'id' | 'name' | 'description'>) => guessType(store, jobText(job), job.id)

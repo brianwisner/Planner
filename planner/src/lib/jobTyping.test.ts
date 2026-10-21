@@ -26,6 +26,13 @@ describe('automatic job typing', () => {
     expect(guessType(s, 'Hunter Residence')).toBeNull()
   })
 
+  it('gives ties to the type mentioned first, and ignores words in type names', () => {
+    const s = { jobTypes: [...types, type('rem', 'Remodel', 'remodel, renovation'), type('lat', 'Lateral / shear wall', 'shear wall, lateral')], jobs: [], pastJobs: [] }
+    expect(guessType(s, 'Deck remodel')?.type.id).toBe('deck')
+    expect(guessType(s, 'Remodel with new deck')?.type.id).toBe('rem')
+    expect(guessType(s, 'Garden wall')).toBeNull()
+  })
+
   it('learns words from jobs and past records already of a type', () => {
     const s = {
       jobTypes: types, pastJobs: [past('Lee', 'Sunroom bump out', 'add'), past('Diaz', 'sunroom on slab', 'add')],
