@@ -6,7 +6,7 @@ type MoneyStore = Parameters<typeof jobBilling>[0]
 
 const job: Job = {
   id: 'job', client_id: 'client', job_number: '1', name: 'Test job',
-  description: '', address: '', status: 'active', priority: 0, fee: null, job_type_id: null,
+  description: '', address: '', status: 'active', priority: 0, fee: null, job_type_id: null, size: null, use_in_estimates: true, estimate_note: '', closeout_reason: '',
   queued_date: null, start_date: null, due_date: null, created_at: '2026-01-01T00:00:00Z',
 }
 
@@ -46,7 +46,7 @@ function invoice(patch: Partial<Invoice> = {}): Invoice {
 function store(patch: Partial<MoneyStore> = {}): MoneyStore {
   return {
     timeEntries: [entry()], items: [], deposits: [deposit()], invoices: [],
-    profiles: [], settings: { id: 1, company_name: 'Test', business_email: '', default_rate: 150, weekly_capacity: 40 },
+    profiles: [], settings: { id: 1, company_name: 'Test', business_email: '', default_rate: 150, weekly_capacity: 40, minimum_fee: 0, site_visit_hours: 3, retainer_percent: 0, proposal_template: '' },
     ...patch,
   }
 }

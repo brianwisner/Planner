@@ -10,7 +10,11 @@ create table if not exists settings (
   company_name text not null default 'Wisner Engineering',
   business_email text not null default '',       -- invoice contact and Gmail sender; separate from sign-in
   default_rate numeric not null default 150,     -- $/hour used for unbilled estimates
-  weekly_capacity numeric not null default 40     -- default hours/week per person
+  weekly_capacity numeric not null default 40,    -- default hours/week per person
+  minimum_fee numeric not null default 0 check (minimum_fee >= 0),           -- fee estimator floor
+  site_visit_hours numeric not null default 3 check (site_visit_hours >= 0), -- per visit, with travel
+  retainer_percent numeric not null default 0 check (retainer_percent between 0 and 100),
+  proposal_template text not null default ''      -- blank = the app's standard wording
 );
 insert into settings (id) values (1) on conflict do nothing;
 
@@ -116,6 +120,8 @@ create table if not exists job_types (
   design_hours numeric not null default 0 check (design_hours >= 0),
   plan_check_hours numeric not null default 0 check (plan_check_hours >= 0),
   construction_hours numeric not null default 0 check (construction_hours >= 0),
+  site_visits numeric not null default 0 check (site_visits >= 0),
+  size_unit text not null default '',             -- e.g. 'sq ft'; blank = size not tracked
   notes text not null default '',
   created_at timestamptz not null default now()
 );
@@ -131,9 +137,33 @@ create table if not exists jobs (
   priority int not null default 100,            -- lower number = higher in the queue
   fee numeric,                                  -- agreed fee, optional
   job_type_id uuid references job_types(id) on delete set null, -- the estimator learns from finished jobs of each type
+  size numeric check (size >= 0),               -- in the job type's size unit
+  use_in_estimates boolean not null default true, -- false leaves a finished job out of the estimator
+  estimate_note text not null default '',       -- why it was left out
+  closeout_reason text not null default '',     -- what made the hours differ from the quote
   queued_date date,                             -- when the job entered the queue
   start_date date,
   due_date date,
+  created_at timestamptz not null default now()
+);
+
+-- ---------- Quotes saved from the fee estimator (never edited, so the original survives) ----------
+create table if not exists quotes (
+  id uuid primary key default gen_random_uuid(),
+  job_id uuid not null references jobs(id) on delete cascade,
+  job_type_id uuid references job_types(id) on delete set null,
+  rate numeric not null default 0,
+  design_hours numeric not null default 0,
+  plan_check_hours numeric not null default 0,
+  construction_hours numeric not null default 0,
+  site_visits numeric not null default 0,
+  visit_hours numeric not null default 0,
+  allowance_hours numeric not null default 0,
+  rush_percent numeric not null default 0,
+  size numeric,
+  suggested_fee numeric not null default 0,
+  fee numeric not null default 0,
+  fee_note text not null default '',
   created_at timestamptz not null default now()
 );
 
@@ -484,6 +514,7 @@ create index if not exists comments_job_idx on comments(job_id);
 create index if not exists deposits_job_idx on deposits(job_id);
 create index if not exists job_items_job_idx on job_items(job_id);
 create index if not exists jobs_type_idx on jobs(job_type_id);
+create index if not exists quotes_job_idx on quotes(job_id);
 create index if not exists schedule_date_idx on schedule_entries(date);
 create index if not exists schedule_job_idx on schedule_entries(job_id);
 
@@ -492,6 +523,7 @@ alter table settings     enable row level security;
 alter table profiles     enable row level security;
 alter table clients      enable row level security;
 alter table job_types    enable row level security;
+alter table quotes       enable row level security;
 alter table jobs         enable row level security;
 alter table phases       enable row level security;
 alter table tasks        enable row level security;
@@ -505,7 +537,7 @@ alter table comments     enable row level security;
 do $$
 declare t text;
 begin
-  foreach t in array array['settings','profiles','clients','job_types','jobs','phases','tasks','invoices','deposits','job_items','schedule_entries','time_entries','comments'] loop
+  foreach t in array array['settings','profiles','clients','job_types','jobs','quotes','phases','tasks','invoices','deposits','job_items','schedule_entries','time_entries','comments'] loop
     execute format('drop policy if exists team_all on %I', t);
     execute format('create policy team_all on %I for all to authenticated using (true) with check (true)', t);
   end loop;
@@ -515,7 +547,7 @@ end $$;
 do $$
 declare t text;
 begin
-  foreach t in array array['settings','profiles','clients','job_types','jobs','phases','tasks','invoices','deposits','job_items','schedule_entries','time_entries','comments'] loop
+  foreach t in array array['settings','profiles','clients','job_types','jobs','quotes','phases','tasks','invoices','deposits','job_items','schedule_entries','time_entries','comments'] loop
     begin
       execute format('alter publication supabase_realtime add table %I', t);
     exception when duplicate_object then null;

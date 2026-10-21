@@ -1,7 +1,8 @@
 // Settings: your profile, business defaults, appearance, calendar sync,
 // reminders, installing on a phone, and links to other tools.
-import { useState } from 'react'
-import { Bell, Briefcase, CalendarDays, Copy, Download, ExternalLink, History, Keyboard, LogOut, Moon, Monitor, Palette, Smartphone, Sun, Trash2, User } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { useLocation } from 'react-router-dom'
+import { Bell, Briefcase, Calculator, CalendarDays, Copy, Download, ExternalLink, History, Keyboard, LogOut, Moon, Monitor, Palette, Smartphone, Sun, Trash2, User } from 'lucide-react'
 import { useData } from '../lib/store'
 import { DEMO, SUPABASE_URL, supabase } from '../lib/supabase'
 import { isEmailAddress } from '../lib/email'
@@ -9,6 +10,7 @@ import { applyTheme, savedTheme, type Theme } from '../lib/theme'
 import { enableNotifications } from '../lib/reminders'
 import { buildICS, calendarItems } from '../lib/calendar'
 import { downloadText, fmtMoney, todayISO } from '../lib/utils'
+import { DEFAULT_PROPOSAL_TEMPLATE, PROPOSAL_FIELDS } from '../lib/estimate'
 import { Avatar, Field, NumberInput, Segmented, useConfirm } from '../components/ui'
 import './settings.css'
 
@@ -25,7 +27,14 @@ export function Settings() {
   const [business, setBusiness] = useState(() => ({
     company_name: settings.company_name, business_email: settings.business_email ?? '', default_rate: settings.default_rate as number | null, weekly_capacity: settings.weekly_capacity as number | null,
   }))
-  const [busy, setBusy] = useState<'profile' | 'business' | 'password' | 'sample' | null>(null)
+  const [estimator, setEstimator] = useState(() => ({
+    minimum_fee: Number(settings.minimum_fee) || 0 as number | null, site_visit_hours: Number(settings.site_visit_hours) as number | null,
+    retainer_percent: Number(settings.retainer_percent) || 0 as number | null, proposal_template: settings.proposal_template?.trim() || DEFAULT_PROPOSAL_TEMPLATE,
+  }))
+  const [busy, setBusy] = useState<'profile' | 'business' | 'estimator' | 'password' | 'sample' | null>(null)
+  // Links like /settings#calendar scroll to that card.
+  const { hash } = useLocation()
+  useEffect(() => { if (hash) document.getElementById(hash.slice(1))?.scrollIntoView({ block: 'start' }) }, [hash])
   const [pw, setPw] = useState('')
   const [pwMsg, setPwMsg] = useState<{ text: string; ok: boolean } | null>(null)
   const [theme, setTheme] = useState<Theme>(savedTheme)
@@ -53,6 +62,22 @@ export function Settings() {
     const ok = await update('settings', 1, { company_name: business.company_name.trim() || 'Wisner Engineering', business_email: business.business_email.trim(), default_rate: business.default_rate, weekly_capacity: business.weekly_capacity })
     setBusy(null)
     if (ok) toast('Business settings saved')
+  }
+  async function saveEstimator() {
+    if (busy) return
+    const { minimum_fee, site_visit_hours, retainer_percent } = estimator
+    if (minimum_fee != null && minimum_fee < 0) { toast('The minimum fee cannot be negative.', 'error'); return }
+    if (site_visit_hours == null || site_visit_hours < 0) { toast('Enter the hours a site visit takes (zero or more).', 'error'); return }
+    if (retainer_percent != null && (retainer_percent < 0 || retainer_percent > 100)) { toast('The retainer must be between 0% and 100%.', 'error'); return }
+    const template = estimator.proposal_template.trim()
+    setBusy('estimator')
+    const ok = await update('settings', 1, {
+      minimum_fee: minimum_fee ?? 0, site_visit_hours, retainer_percent: retainer_percent ?? 0,
+      // Saving the standard wording unchanged keeps it blank, so later improvements to it still apply.
+      proposal_template: template === DEFAULT_PROPOSAL_TEMPLATE.trim() ? '' : template,
+    })
+    setBusy(null)
+    if (ok) toast('Fee estimator settings saved')
   }
   async function changePassword() {
     if (busy) return
@@ -140,6 +165,30 @@ export function Settings() {
             </div>
             <p className="form-note small">Changing a rate only affects hours logged from now on. Hours already logged keep the rate they were saved with{settings.default_rate ? ` (currently ${fmtMoney(settings.default_rate)}/h by default)` : ''}.</p>
             <div className="row" style={{ justifyContent: 'flex-end' }}><button className="btn primary" disabled={busy !== null}>{busy === 'business' ? 'Saving…' : 'Save business settings'}</button></div>
+          </form>
+        </section>
+
+        <section className="card" id="estimator">
+          <div className="card-head"><h2><Calculator size={17} className="muted" /> Fee estimator and proposals</h2></div>
+          <form className="card-body form-fields" onSubmit={e => { e.preventDefault(); void saveEstimator() }}>
+            <div className="field-grid three">
+              <Field label="Minimum fee" htmlFor="set-min-fee" hint="Never suggest less.">
+                <NumberInput id="set-min-fee" value={estimator.minimum_fee} onChange={v => setEstimator(x => ({ ...x, minimum_fee: v }))} step={50} min={0} prefix="$" placeholder="None" />
+              </Field>
+              <Field label="Hours per site visit" htmlFor="set-visit-hours" hint="Including travel and follow-up.">
+                <NumberInput id="set-visit-hours" value={estimator.site_visit_hours} onChange={v => setEstimator(x => ({ ...x, site_visit_hours: v }))} step={0.5} min={0} suffix="h" />
+              </Field>
+              <Field label="Retainer" htmlFor="set-retainer" hint="Shown on proposals. 0 leaves it out.">
+                <NumberInput id="set-retainer" value={estimator.retainer_percent} onChange={v => setEstimator(x => ({ ...x, retainer_percent: v }))} step={5} min={0} suffix="% of fee" />
+              </Field>
+            </div>
+            <Field label="Proposal wording" htmlFor="set-proposal" hint={<>Words in braces are filled in for each job: {PROPOSAL_FIELDS.map(([k, label], i) => <span key={k}>{i ? ', ' : ''}<code title={label}>{k}</code></span>)}. A line whose fields are all empty (like the retainer when it's 0) is left out.</>}>
+              <textarea id="set-proposal" className="input proposal-template" value={estimator.proposal_template} onChange={e => setEstimator(x => ({ ...x, proposal_template: e.target.value }))} spellCheck />
+            </Field>
+            <div className="row between wrap">
+              <button type="button" className="btn ghost sm" onClick={() => setEstimator(x => ({ ...x, proposal_template: DEFAULT_PROPOSAL_TEMPLATE }))} disabled={estimator.proposal_template.trim() === DEFAULT_PROPOSAL_TEMPLATE.trim()}>Use the standard wording</button>
+              <button className="btn primary" disabled={busy !== null}>{busy === 'estimator' ? 'Saving…' : 'Save estimator settings'}</button>
+            </div>
           </form>
         </section>
 

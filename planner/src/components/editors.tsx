@@ -221,10 +221,14 @@ export function JobEditor({ job, defaults, onClose, onCreated, openClient, openJ
     status: (job?.status ?? 'active') as JobStatus,
     fee: job?.fee ?? null as number | null,
     job_type_id: job?.job_type_id ?? null as string | null,
+    size: job?.size ?? null as number | null,
+    use_in_estimates: job?.use_in_estimates !== false,
+    estimate_note: job?.estimate_note ?? '',
     start_date: job?.start_date ?? null as string | null,
     due_date: job?.due_date ?? null as string | null,
   }))
   const [startStage, setStartStage] = useState<Stage>('bidding')
+  const sizeUnit = jobTypes.find(t => t.id === d.job_type_id)?.size_unit.trim() ?? ''
   const set = <K extends keyof typeof d>(k: K, v: (typeof d)[K]) => setD(x => ({ ...x, [k]: v }))
 
   async function save() {
@@ -233,7 +237,8 @@ export function JobEditor({ job, defaults, onClose, onCreated, openClient, openJ
     if (!d.client_id) { form.fail('Choose a client, or add a new one.'); return }
     if ((d.start_date && !validDate(d.start_date)) || (d.due_date && !validDate(d.due_date))) { form.fail('Enter valid dates, or clear them.'); return }
     if (d.fee != null && d.fee < 0) { form.fail('The fee cannot be negative.'); return }
-    const row = { ...d, name: d.name.trim(), job_number: d.job_number.trim(), address: d.address.trim() }
+    if (d.size != null && d.size < 0) { form.fail('The size cannot be negative.'); return }
+    const row = { ...d, name: d.name.trim(), job_number: d.job_number.trim(), address: d.address.trim(), estimate_note: d.use_in_estimates ? '' : d.estimate_note.trim() }
     await form.run('save', async () => {
       if (job) return update('jobs', job.id, row)
       // New jobs go to the end of the queue with a number no other job uses.
@@ -304,6 +309,13 @@ export function JobEditor({ job, defaults, onClose, onCreated, openClient, openJ
         <Field label="Scope / description" htmlFor={`${form.id}-desc`}>
           <textarea id={`${form.id}-desc`} className="input" value={d.description} onChange={e => set('description', e.target.value)} placeholder="Structure type, scope, special conditions…" />
         </Field>
+        {(sizeUnit || d.size != null) && <Field label={`Size${sizeUnit ? ` (${sizeUnit})` : ''}`} htmlFor={`${form.id}-size`} hint="Lets the fee estimator compare jobs of different sizes.">
+          <NumberInput id={`${form.id}-size`} value={d.size} onChange={v => set('size', v)} step={10} min={0} placeholder="Optional" />
+        </Field>}
+        {job && (d.status === 'complete' || d.status === 'archived' || !d.use_in_estimates) && <div className="option-row">
+          <label className="switch"><input type="checkbox" checked={d.use_in_estimates} onChange={e => set('use_in_estimates', e.target.checked)} /> Use this job in future fee estimates</label>
+          {!d.use_in_estimates && <input className="input sm grow" value={d.estimate_note} onChange={e => set('estimate_note', e.target.value)} placeholder="Why not? e.g. stopped after design, hours incomplete" aria-label="Why this job is left out" />}
+        </div>}
         {!job && <p className="tiny muted">Each job gets five phases automatically: Bidding, Original design, County / plan-check comments, Construction changes and Client-requested changes.</p>}
       </fieldset>
     </form>
@@ -321,6 +333,8 @@ export function JobTypeEditor({ jobType, onClose, onCreated }: { jobType?: JobTy
     design_hours: jobType ? Number(jobType.design_hours) : null as number | null,
     plan_check_hours: jobType ? Number(jobType.plan_check_hours) : null as number | null,
     construction_hours: jobType ? Number(jobType.construction_hours) : null as number | null,
+    site_visits: jobType ? Number(jobType.site_visits) : null as number | null,
+    size_unit: jobType?.size_unit ?? '',
   })
   const set = <K extends keyof typeof d>(k: K, v: (typeof d)[K]) => setD(x => ({ ...x, [k]: v }))
   const total = (d.design_hours ?? 0) + (d.plan_check_hours ?? 0) + (d.construction_hours ?? 0)
@@ -329,8 +343,8 @@ export function JobTypeEditor({ jobType, onClose, onCreated }: { jobType?: JobTy
     const name = d.name.trim()
     if (!name) { form.fail('Name the job type, e.g. "ADU / addition".'); return }
     if (jobTypes.some(t => t.id !== jobType?.id && t.name.trim().toLowerCase() === name.toLowerCase())) { form.fail(`There is already a job type called "${name}".`); return }
-    if ([d.design_hours, d.plan_check_hours, d.construction_hours].some(h => h != null && h < 0)) { form.fail('Hours cannot be negative.'); return }
-    const row = { name, notes: d.notes.trim(), design_hours: d.design_hours ?? 0, plan_check_hours: d.plan_check_hours ?? 0, construction_hours: d.construction_hours ?? 0 }
+    if ([d.design_hours, d.plan_check_hours, d.construction_hours, d.site_visits].some(h => h != null && h < 0)) { form.fail('Hours and visits cannot be negative.'); return }
+    const row = { name, notes: d.notes.trim(), design_hours: d.design_hours ?? 0, plan_check_hours: d.plan_check_hours ?? 0, construction_hours: d.construction_hours ?? 0, site_visits: d.site_visits ?? 0, size_unit: d.size_unit.trim() }
     await form.run('save', async () => {
       if (jobType) return update('job_types', jobType.id, row)
       const created = await insert('job_types', row)
@@ -358,6 +372,15 @@ export function JobTypeEditor({ jobType, onClose, onCreated }: { jobType?: JobTy
             <Field label="Construction" htmlFor={`${form.id}-con`}><NumberInput id={`${form.id}-con`} value={d.construction_hours} onChange={v => set('construction_hours', v)} step={0.5} min={0} suffix="h" placeholder="0" /></Field>
           </div>
           <p className="tiny muted" style={{ marginTop: 8 }}>Total {fmtHours(total)}. Bidding and client-requested changes aren't part of the fee.</p>
+        </div>
+        <div className="field-grid">
+          <Field label="Usual site visits" htmlFor={`${form.id}-visits`} hint="Hours per visit are set in Settings. Leave them out of Construction above.">
+            <NumberInput id={`${form.id}-visits`} value={d.site_visits} onChange={v => set('site_visits', v)} step={1} min={0} placeholder="0" />
+          </Field>
+          <Field label="Measure size in" htmlFor={`${form.id}-unit`} hint="Optional, e.g. sq ft or ft of wall.">
+            <input id={`${form.id}-unit`} className="input" list={`${form.id}-units`} value={d.size_unit} onChange={e => set('size_unit', e.target.value)} placeholder="Not tracked" />
+            <datalist id={`${form.id}-units`}><option value="sq ft" /><option value="ft of wall" /><option value="openings" /><option value="units" /></datalist>
+          </Field>
         </div>
         <Field label="Notes" htmlFor={`${form.id}-notes`}><textarea id={`${form.id}-notes`} className="input" value={d.notes} onChange={e => set('notes', e.target.value)} placeholder="What's included, typical size, things that make it take longer…" /></Field>
       </fieldset>

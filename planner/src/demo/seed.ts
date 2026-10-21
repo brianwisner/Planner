@@ -31,7 +31,7 @@ function uid(kind: string): string {
 type PhaseStatus = 'not_started' | 'in_progress' | 'waiting' | 'complete'
 interface JobSpec {
   key: string; number: string; name: string; client: string; address: string; description: string
-  status: string; fee: number | null; due: number | null; type?: string
+  status: string; fee: number | null; due: number | null; type?: string; size?: number; closeout?: string
   phases: [PhaseStatus, PhaseStatus, PhaseStatus, PhaseStatus, PhaseStatus]
   estimates: [number, number, number, number, number]
   dates?: Partial<Record<'bidding' | 'design' | 'plan_check' | 'construction' | 'client_changes', [number | null, number | null]>>
@@ -40,7 +40,7 @@ interface JobSpec {
 export function seedData(): Record<string, Row[]> {
   counter = 0
   const created = (days: number) => at(days, 9)
-  const settings = [{ id: 1, company_name: 'Wisner Engineering', business_email: 'office@example.com', default_rate: 185, weekly_capacity: 40 }]
+  const settings = [{ id: 1, company_name: 'Wisner Engineering', business_email: 'office@example.com', default_rate: 185, weekly_capacity: 40, minimum_fee: 1200, site_visit_hours: 3, retainer_percent: 25, proposal_template: '' }]
   const profiles = [{ id: DEMO_USER.id, email: DEMO_USER.email, full_name: 'Brian Wisner', color: '#2f5bea', hourly_rate: null, weekly_hours: 40, ics_token: 'demo-token', created_at: created(-90) }]
 
   const clientSpecs = [
@@ -61,29 +61,29 @@ export function seedData(): Record<string, Row[]> {
   })
 
   // Job types with starter hours (design, plan check, construction) for the fee estimator.
-  const typeSpecs: [string, string, number, number, number][] = [
-    ['adu', 'ADU / addition', 30, 8, 6],
-    ['beam', 'Beam or bearing wall removal', 10, 3, 2],
-    ['deck', 'Deck / stair', 8, 2, 2],
-    ['multi', 'Multifamily (2–4 units)', 56, 10, 8],
-    ['retro', 'Seismic retrofit', 48, 12, 10],
-    ['wall', 'Retaining wall', 16, 4, 3],
+  const typeSpecs: [string, string, number, number, number, number, string][] = [
+    ['adu', 'ADU / addition', 30, 8, 2, 2, 'sq ft'],
+    ['beam', 'Beam or bearing wall removal', 10, 3, 2, 1, ''],
+    ['deck', 'Deck / stair', 8, 2, 2, 1, 'sq ft'],
+    ['multi', 'Multifamily (2–4 units)', 56, 10, 8, 3, 'sq ft'],
+    ['retro', 'Seismic retrofit', 48, 12, 10, 2, 'sq ft'],
+    ['wall', 'Retaining wall', 16, 4, 3, 1, 'ft of wall'],
   ]
   const typeIds: Record<string, string> = {}
-  const job_types: Row[] = typeSpecs.map(([key, name, design_hours, plan_check_hours, construction_hours], i) => {
+  const job_types: Row[] = typeSpecs.map(([key, name, design_hours, plan_check_hours, construction_hours, site_visits, size_unit], i) => {
     typeIds[key] = uid('y')
-    return { id: typeIds[key], name, design_hours, plan_check_hours, construction_hours, notes: '', created_at: created(-100 + i) }
+    return { id: typeIds[key], name, design_hours, plan_check_hours, construction_hours, site_visits, size_unit, notes: '', created_at: created(-100 + i) }
   })
 
   const N: PhaseStatus = 'not_started', P: PhaseStatus = 'in_progress', W: PhaseStatus = 'waiting', C: PhaseStatus = 'complete'
   const jobSpecs: JobSpec[] = [
-    { key: 'adu', number: '26-118', name: 'Miller ADU & garage addition', client: 'miller', address: '2210 Cedar Ln, Bellingham', description: 'Two-story ADU over a new detached garage. Wood framing, shear walls, spread footings.', type: 'adu', status: 'active', fee: 6800, due: 12, phases: [C, P, N, N, N], estimates: [3, 34, 8, 6, 0], dates: { bidding: [-40, -33], design: [-12, 6], plan_check: [14, 30] } },
+    { key: 'adu', number: '26-118', name: 'Miller ADU & garage addition', client: 'miller', address: '2210 Cedar Ln, Bellingham', description: 'Two-story ADU over a new detached garage. Wood framing, shear walls, spread footings.', type: 'adu', size: 900, status: 'active', fee: 8800, due: 12, phases: [C, P, N, N, N], estimates: [3, 34, 8, 6, 0], dates: { bidding: [-40, -33], design: [-12, 6], plan_check: [14, 30] } },
     { key: 'church', number: '26-104', name: 'Lakeside Church seismic retrofit', client: 'lakeside', address: '77 Lakeview Rd, Sedro-Woolley', description: 'URM wall anchorage and roof diaphragm strengthening for the 1952 sanctuary.', type: 'retro', status: 'active', fee: 14500, due: 9, phases: [C, C, P, N, N], estimates: [4, 60, 12, 10, 0], dates: { design: [-60, -21], plan_check: [-6, 4] } },
-    { key: 'fourplex', number: '26-111', name: 'Pine Street 4-plex', client: 'pine', address: '318 Pine St, Mount Vernon', description: 'Three-story wood-framed 4-plex over slab on grade.', type: 'multi', status: 'active', fee: 18000, due: 24, phases: [C, P, N, N, P], estimates: [4, 72, 12, 10, 6], dates: { design: [-20, 15], client_changes: [-3, 3] } },
+    { key: 'fourplex', number: '26-111', name: 'Pine Street 4-plex', client: 'pine', address: '318 Pine St, Mount Vernon', description: 'Three-story wood-framed 4-plex over slab on grade.', type: 'multi', size: 4200, status: 'active', fee: 18000, due: 24, phases: [C, P, N, N, P], estimates: [4, 72, 12, 10, 6], dates: { design: [-20, 15], client_changes: [-3, 3] } },
     { key: 'deck', number: '26-121', name: 'Deck & exterior stair — Olsen', client: 'harbor', address: '14 Bay View Ct, Bellingham', description: 'Elevated deck with steel posts and new exterior stair.', type: 'deck', status: 'active', fee: 2600, due: 7, phases: [C, W, N, N, N], estimates: [1, 10, 3, 2, 0], dates: { design: [-5, 5] } },
     { key: 'retail', number: '26-123', name: 'Northgate retail TI — Suite 140', client: 'northgate', address: '900 Northgate Way, Seattle', description: 'New storefront header and rooftop unit support framing.', status: 'active', fee: 4200, due: 30, phases: [C, N, N, N, N], estimates: [2, 16, 4, 2, 0], dates: { design: [7, 18] } },
     { key: 'lot12', number: '26-124', name: 'Bayside Lot 12 custom home', client: 'bayside', address: 'Lot 12, Harbor Loop, Anacortes', description: 'Custom single-family home, view lot with a daylight basement.', status: 'active', fee: 9500, due: 45, phases: [C, N, N, N, N], estimates: [3, 44, 8, 6, 0], dates: { design: [12, 35] } },
-    { key: 'wall', number: '26-125', name: 'Hillside retaining wall', client: 'summit', address: '88 Ridge Rd, Everett', description: '12-ft cantilevered retaining wall with a surcharge from the driveway.', type: 'wall', status: 'active', fee: null, due: null, phases: [P, N, N, N, N], estimates: [3, 18, 4, 2, 0], dates: { bidding: [-2, 2] } },
+    { key: 'wall', number: '26-125', name: 'Hillside retaining wall', client: 'summit', address: '88 Ridge Rd, Everett', description: '12-ft cantilevered retaining wall with a surcharge from the driveway.', type: 'wall', size: 60, status: 'active', fee: null, due: null, phases: [P, N, N, N, N], estimates: [3, 18, 4, 2, 0], dates: { bidding: [-2, 2] } },
     { key: 'garage', number: '26-126', name: 'Garcia garage conversion', client: 'garcia', address: '58 Alder St, Burlington', description: 'Convert the attached garage to a bedroom suite; new header at the garage door.', type: 'beam', status: 'active', fee: 1800, due: null, phases: [W, N, N, N, N], estimates: [1, 8, 2, 1, 0], dates: { bidding: [-6, -1] } },
     { key: 'mezz', number: '26-097', name: 'Cascade warehouse mezzanine', client: 'cascade', address: '45 Industrial Way, Ferndale', description: 'Steel mezzanine, 2,400 sf storage, with a moment frame and new footings.', status: 'active', fee: 12000, due: 20, phases: [C, C, C, P, N], estimates: [3, 52, 10, 12, 0], dates: { construction: [-14, 40] } },
     { key: 'remodel', number: '26-109', name: 'Harbor View — Chen residence remodel', client: 'harbor', address: '402 Chuckanut Dr, Bellingham', description: 'Remove a bearing wall; new flush beam and posts down to new footings.', type: 'beam', status: 'active', fee: 3900, due: 16, phases: [C, C, W, N, N], estimates: [2, 20, 6, 3, 0], dates: { plan_check: [-10, 10] } },
@@ -92,9 +92,9 @@ export function seedData(): Record<string, Row[]> {
     { key: 'stair', number: '26-102', name: 'Cascade office stair replacement', client: 'cascade', address: '45 Industrial Way, Ferndale', description: 'Replace the steel stair to the second-floor offices.', type: 'deck', status: 'on_hold', fee: 3400, due: null, phases: [C, P, N, N, N], estimates: [2, 14, 3, 2, 0] },
     { key: 'fence', number: '26-115', name: 'Miller fence & landscape walls', client: 'miller', address: '2210 Cedar Ln, Bellingham', description: 'Low landscape walls and a 7-ft privacy fence.', type: 'wall', status: 'on_hold', fee: null, due: null, phases: [W, N, N, N, N], estimates: [1, 6, 0, 0, 0] },
     { key: 'duplex', number: '26-071', name: 'Pine Street duplex', client: 'pine', address: '312 Pine St, Mount Vernon', description: 'Two-story duplex.', type: 'multi', status: 'complete', fee: 8200, due: -20, phases: [C, C, C, C, N], estimates: [3, 40, 8, 6, 0] },
-    { key: 'beam', number: '26-064', name: 'Lakeside parsonage beam replacement', client: 'lakeside', address: '79 Lakeview Rd, Sedro-Woolley', description: 'Replace a sagging ridge beam.', type: 'beam', status: 'complete', fee: 1500, due: -45, phases: [C, C, N, N, N], estimates: [1, 8, 0, 0, 0] },
-    { key: 'hayes', number: '26-052', name: 'Hayes backyard ADU', client: 'summit', address: '19 Ridge Rd, Everett', description: 'One-story ADU on slab. Wood shear walls.', type: 'adu', status: 'complete', fee: 6200, due: -70, phases: [C, C, C, C, N], estimates: [2, 30, 8, 6, 0] },
-    { key: 'ortiz', number: '26-060', name: 'Ortiz garage + ADU above', client: 'bayside', address: '7 Harbor Loop, Anacortes', description: 'ADU over a detached two-car garage.', type: 'adu', status: 'complete', fee: 7400, due: -35, phases: [C, C, C, C, N], estimates: [2, 32, 8, 6, 0] },
+    { key: 'beam', number: '26-064', name: 'Lakeside parsonage beam replacement', client: 'lakeside', address: '79 Lakeview Rd, Sedro-Woolley', description: 'Replace a sagging ridge beam.', type: 'beam', closeout: 'Went as planned', status: 'complete', fee: 1500, due: -45, phases: [C, C, N, N, N], estimates: [1, 8, 0, 0, 0] },
+    { key: 'hayes', number: '26-052', name: 'Hayes backyard ADU', client: 'summit', address: '19 Ridge Rd, Everett', description: 'One-story ADU on slab. Wood shear walls.', type: 'adu', size: 640, closeout: 'Plan-check comments', status: 'complete', fee: 6200, due: -70, phases: [C, C, C, C, N], estimates: [2, 30, 8, 6, 0] },
+    { key: 'ortiz', number: '26-060', name: 'Ortiz garage + ADU above', client: 'bayside', address: '7 Harbor Loop, Anacortes', description: 'ADU over a detached two-car garage.', type: 'adu', size: 800, closeout: 'Existing conditions', status: 'complete', fee: 7400, due: -35, phases: [C, C, C, C, N], estimates: [2, 32, 8, 6, 0] },
     { key: 'carport', number: '26-119', name: 'Summit carport', client: 'summit', address: '6 Ridge Rd, Everett', description: 'Two-car carport. Owner decided not to build.', status: 'cancelled', fee: 900, due: null, phases: [C, N, N, N, N], estimates: [1, 5, 0, 0, 0] },
   ]
   const kinds = ['bidding', 'design', 'plan_check', 'construction', 'client_changes'] as const
@@ -105,7 +105,7 @@ export function seedData(): Record<string, Row[]> {
   const phases: Row[] = []
   jobSpecs.forEach((s, i) => {
     jobIds[s.key] = uid('j')
-    jobs.push({ id: jobIds[s.key], client_id: clientIds[s.client], job_number: s.number, name: s.name, description: s.description, address: s.address, status: s.status, priority: i + 1, fee: s.fee, job_type_id: s.type ? typeIds[s.type] : null, queued_date: null, start_date: null, due_date: s.due == null ? null : iso(s.due), created_at: created(-80 + i * 3) })
+    jobs.push({ id: jobIds[s.key], client_id: clientIds[s.client], job_number: s.number, name: s.name, description: s.description, address: s.address, status: s.status, priority: i + 1, fee: s.fee, job_type_id: s.type ? typeIds[s.type] : null, size: s.size ?? null, use_in_estimates: true, estimate_note: '', closeout_reason: s.closeout ?? '', queued_date: null, start_date: null, due_date: s.due == null ? null : iso(s.due), created_at: created(-80 + i * 3) })
     kinds.forEach((kind, k) => {
       const pid = uid('p')
       phaseIds[`${s.key}:${kind}`] = pid
@@ -185,6 +185,7 @@ export function seedData(): Record<string, Row[]> {
   log('ortiz', 'design', -68, 16, 'Shear walls and foundation', { billed: true, invoice_id: invOrtiz.id, deposit_applied: 0 })
   log('ortiz', 'plan_check', -55, 6, 'Plan-check response', { billed: true, invoice_id: invOrtiz.id, deposit_applied: 0 })
   log('ortiz', 'construction', -42, 8, 'Framing observation and RFIs', { billed: true, invoice_id: invOrtiz.id, deposit_applied: 0 })
+  log('ortiz', null, -62, 3, 'Calls with the architect', { billed: true, invoice_id: invOrtiz.id, deposit_applied: 0 })
   log('beam', 'design', -58, 7, 'Ridge beam and post design', { billed: true, invoice_id: invBeam.id, deposit_applied: 0 })
   // Recent, unbilled work
   const recent: [string, typeof kinds[number] | null, number, number, string, Row?][] = [
@@ -213,6 +214,17 @@ export function seedData(): Record<string, Row[]> {
     if (!job) { log('adu', null, day, hours, notes, extra); continue }
     log(job, phase, day, hours, notes, extra)
   }
+
+  // Saved quotes: the finished ADUs ran over on design; Miller has a current quote.
+  const quote = (job: string, days: number, d: number, pc: number, c: number, fee: number, extra: Row = {}): Row => ({
+    id: uid('q'), job_id: jobIds[job], job_type_id: typeIds.adu, rate: 185, design_hours: d, plan_check_hours: pc, construction_hours: c,
+    site_visits: 2, visit_hours: 3, allowance_hours: 0, rush_percent: 0, size: null, suggested_fee: fee, fee, fee_note: '', created_at: created(days), ...extra,
+  })
+  const quotes: Row[] = [
+    quote('hayes', -118, 24, 6, 8, 6200, { size: 640, suggested_fee: 7050, fee_note: 'Repeat client, matched last year' }),
+    quote('ortiz', -82, 30, 8, 8, 7400, { size: 800, suggested_fee: 8700, fee_note: 'Budget-conscious owner' }),
+    quote('adu', -36, 31, 8, 8, 8800, { size: 900, suggested_fee: 8800 }),
+  ]
 
   const job_items: Row[] = [
     { id: uid('x'), job_id: jobIds.adu, date: iso(-9), category: 'Mileage', description: 'Site visit — measure existing garage', quantity: 42, unit_price: 0.67, billed: false, invoice_id: null, deposit_applied: null, created_by: DEMO_USER.id, created_at: created(-9) },
@@ -250,7 +262,7 @@ export function seedData(): Record<string, Row[]> {
   ]
 
   return {
-    settings, profiles, clients, job_types, jobs, phases, tasks, invoices, deposits, time_entries: time, job_items, schedule_entries, comments,
+    settings, profiles, clients, job_types, jobs, quotes, phases, tasks, invoices, deposits, time_entries: time, job_items, schedule_entries, comments,
     daily_reviews: [], follow_ups: [], daily_availability: [], availability_blocks: [], job_planning: [], job_decisions: [], planning_events: [],
   }
 }

@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { lateCount, mondayOf, summarizeJob, taskOrder, weekDays } from './views'
 import type { Client, Job, Phase, Task } from './types'
 
-const job = (over: Partial<Job> = {}): Job => ({ id: 'j', client_id: 'c', job_number: '26-1', name: 'Job', description: '', address: '', status: 'active', priority: 1, fee: null, job_type_id: null, queued_date: null, start_date: null, due_date: null, created_at: '2026-01-01T00:00:00Z', ...over })
+const job = (over: Partial<Job> = {}): Job => ({ id: 'j', client_id: 'c', job_number: '26-1', name: 'Job', description: '', address: '', status: 'active', priority: 1, fee: null, job_type_id: null, size: null, use_in_estimates: true, estimate_note: '', closeout_reason: '', queued_date: null, start_date: null, due_date: null, created_at: '2026-01-01T00:00:00Z', ...over })
 const task = (over: Partial<Task>): Task => ({ id: 't', job_id: 'j', phase_id: null, title: 'T', description: '', status: 'todo', assignee_id: null, due_date: null, scheduled_at: null, is_site_visit: false, estimate_hours: null, recurrence: 'none', recurrence_parent_id: null, sort_order: 0, completed_at: null, created_by: null, created_at: '2026-01-01T00:00:00Z', ...over })
 const phase = (over: Partial<Phase>): Phase => ({ id: 'p', job_id: 'j', kind: 'design', name: 'Design', sort_order: 2, status: 'not_started', estimate_hours: 0, start_date: null, due_date: null, assignee_id: null, notes: '', ...over })
 const client: Client = { id: 'c', name: 'Client', contact_name: '', email: '', phone: '', address: '', notes: '', is_sample: false, created_at: '' }
@@ -26,7 +26,7 @@ describe('summarizeJob', () => {
     const store = {
       jobs: [job({ due_date: '2026-11-30' })], clients: [client], phases: [phase({ due_date: '2026-11-01' })],
       tasks: [task({ id: 'w', title: 'Waiting', status: 'waiting', due_date: '2026-10-22' }), task({ id: 'n', title: 'Next', due_date: '2026-10-25' }), task({ id: 'x', title: 'Done', status: 'done', due_date: '2026-10-01' })],
-      timeEntries: [], invoices: [], deposits: [], items: [], profiles: [], schedule: [], settings: { id: 1, company_name: '', business_email: '', default_rate: 100, weekly_capacity: 40 },
+      timeEntries: [], invoices: [], deposits: [], items: [], profiles: [], schedule: [], settings: { id: 1, company_name: '', business_email: '', default_rate: 100, weekly_capacity: 40, minimum_fee: 0, site_visit_hours: 3, retainer_percent: 0, proposal_template: '' },
     }
     const s = summarizeJob(store, store.jobs[0], '2026-10-21')
     expect(s.nextTask?.title).toBe('Next')
@@ -45,7 +45,7 @@ describe('taskOrder', () => {
 describe('weekDays', () => {
   it('splits weekly capacity over weekdays and sums plans on active jobs only', () => {
     const days = weekDays({
-      jobs: [job(), job({ id: 'held', status: 'on_hold' })], me: null, settings: { id: 1, company_name: '', business_email: '', default_rate: 100, weekly_capacity: 40 },
+      jobs: [job(), job({ id: 'held', status: 'on_hold' })], me: null, settings: { id: 1, company_name: '', business_email: '', default_rate: 100, weekly_capacity: 40, minimum_fee: 0, site_visit_hours: 3, retainer_percent: 0, proposal_template: '' },
       schedule: [{ id: 's1', job_id: 'j', phase_id: null, user_id: 'u', date: '2026-10-21', hours: 3, note: '', created_at: '' }, { id: 's2', job_id: 'held', phase_id: null, user_id: 'u', date: '2026-10-21', hours: 5, note: '', created_at: '' }],
       timeEntries: [],
     }, mondayOf('2026-10-21'), '2026-10-21')

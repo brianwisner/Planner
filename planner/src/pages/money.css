@@ -45,6 +45,22 @@
 .est-phase-bar { position: absolute; left: 0; top: 0; bottom: 0; min-width: 3px; border-radius: 999px; background: var(--stage); }
 .est-phase-tick { position: absolute; top: -3px; bottom: -3px; width: 2px; margin-left: -1px; border-radius: 1px; background: var(--text); opacity: .55; }
 .est-basis { margin: 16px 0 0; }
+.est-phase-row { display: grid; grid-template-columns: 96px minmax(0, 1fr) 124px; align-items: center; gap: 12px; }
+.est-h-input .input, .est-h-input.input { text-align: right; }
+.est-extras { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 14px; margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--border); }
+.est-visit-row { gap: 6px; flex-wrap: nowrap; }
+.est-visit-row > * { flex: 1; min-width: 0; }
+.est-visit-row > span { flex: none; }
+.est-diff { display: flex; flex-direction: column; gap: 6px; margin-top: -4px; }
+.est-actions-row { display: flex; gap: 8px; }
+.est-actions-row > * { flex: 1; justify-content: center; }
+.est-preview summary { cursor: pointer; color: var(--accent-text); }
+.est-preview pre { margin: 8px 0; padding: 12px; max-height: 340px; overflow: auto; white-space: pre-wrap; font: 12.5px/1.5 inherit; font-family: inherit; color: var(--text-2); background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; }
+.est-badge { display: inline-block; margin-top: 4px; }
+.est-table td { vertical-align: top; }
+.est-left { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; padding: 10px 18px; border-top: 1px solid var(--border); }
+.est-left-item { display: inline-flex; align-items: center; gap: 4px; }
+.est-split .tiny { margin-left: 4px; }
 .est-result { position: sticky; top: 16px; display: flex; flex-direction: column; }
 .est-result-top { display: flex; flex-direction: column; gap: 4px; padding: 18px 18px 14px; border-bottom: 1px solid var(--border); }
 .est-fee { font-size: 34px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.1; color: var(--text); }
@@ -65,6 +81,8 @@
 }
 @media (max-width: 760px) {
   .est-pickers { grid-template-columns: minmax(0, 1fr); }
+  .est-phase-row { grid-template-columns: minmax(0, 1fr) 124px; }
+  .est-phase-row .est-phase-track { grid-column: 1 / -1; grid-row: 2; }
   .est-fee { font-size: 30px; }
 }
 
