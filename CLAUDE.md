@@ -26,7 +26,7 @@ The shear wall analyzer that used to sit at this repository's root is kept in it
 
 ### Data model (Supabase / Postgres) — `planner/supabase/setup.sql`
 
-`clients → jobs → phases → tasks`, plus `job_types`, `quotes`, `time_entries`, `job_items`, `invoices`, `deposits`, `schedule_entries`, `comments`, `profiles` (one per login), and a single-row `settings` table.
+`clients → jobs → phases → tasks`, plus `job_types`, `past_jobs`, `quotes`, `time_entries`, `job_items`, `invoices`, `deposits`, `schedule_entries`, `comments`, `profiles` (one per login), and a single-row `settings` table.
 
 - New jobs get **five phases automatically** via the `add_standard_phases` trigger: `bidding`, `design`, `plan_check`, `construction`, `client_changes`. Older jobs may also have a retired `queued` phase: it is stored history only (`lib/phases.ts` `isWorkflowPhase()` excludes it; label "Planning history"). Phase `kind` is fixed; `name` is the label. `calc.ts` `workPhase()` picks the phase new hours/schedules default to (first unfinished workflow phase).
 - **Stages (v2 UI concept, no schema):** `lib/stages.ts` derives a job's pipeline stage from its phase statuses — Bidding · Ready to start · Design · Plan check · Construction. The most advanced main phase that is in progress/waiting wins; with none started, the first unfinished main phase decides (bidding not started → Bidding, design not started after bidding → Ready to start, later phases → that column, "not started"). `client_changes` is side work shown as a chip, never a stage. `stageChanges()` returns the phase status edits that put a job in a stage (earlier main phases complete, target started, later started phases reset; client changes untouched); the board, the job-page stepper and the card menus all use it via `lib/jobActions.ts` `moveJobToStage()`, which offers Undo.
@@ -36,6 +36,8 @@ The shear wall analyzer that used to sit at this repository's root is kept in it
   - Pricing (`priceEstimate`): the owner can edit each phase's hours; visits above/below the type's usual adjust Construction; an allowance for unknowns is spread across phases; rush % is added; fee = hours × rate, rounded up to the next $50, never below `settings.minimum_fee`. A fee that differs from the suggestion asks for a reason.
   - Evidence: past range and middle job, earned per hour vs. the **rates saved on those hours** (not today's rate), hours/fee per size unit, phases that ran over their quote on most jobs, and closeout reasons.
   - "Save quote" inserts a `quotes` row (never edited, so the original survives; the latest one is the job's baseline) and sets the job's fee, type, size and phase estimates (with Undo). The job page's **Quote vs. actual** card compares the latest quote with actual hours, warns while active, and on closed jobs asks for a `closeout_reason` (`CLOSEOUT_REASONS`) and the use-in-estimates switch.
+  - **Automatic typing** (`lib/jobTyping.ts` `guessType`): a job's name + scope is matched against each type's `keywords` (phrases count), its name, and words learned from jobs and `past_jobs` already of that type. New jobs get the guess until a type is picked by hand; the job form suggests one for untyped jobs; the estimator guesses for an untyped job; Job types → "Sort them" bulk-assigns guesses (with Undo).
+  - `past_jobs` = jobs from before the planner (found in invoices, email, files): fee evidence ("Before the planner you charged …"), listed under "From your records" (each can be left out), and typing examples. They don't blend into hours (starter hours were derived from them). A type with no hours falls back to the average of the other types (`fallbackHours`), labeled as a best guess.
   - Proposal text comes from `settings.proposal_template` (blank = `DEFAULT_PROPOSAL_TEMPLATE`; fields like `{fee}` listed in `PROPOSAL_FIELDS`; a line whose fields are all blank is dropped). `settings.retainer_percent` adds the retainer line. Copy, Email (Gmail) and a preview are on the estimator; the wording is edited in Settings → Fee estimator and proposals (`/settings#estimator`).
 - `jobs.queued_date` is legacy storage (no longer shown). `jobs.priority` (lower = higher in queue) drives the List view order; `jobActions.mergeOrder()` keeps hidden jobs in place when a filtered list is reordered.
 - Job statuses are Active, On hold, Complete, Cancelled, and Archived. Cancelled keeps all history and money records but removes pending deadlines/tasks and planned hours from capacity totals; changing back to Active restores them.
@@ -60,7 +62,7 @@ The shear wall analyzer that used to sit at this repository's root is kept in it
 
 **Changing the schema:** edit `setup.sql` so a fresh project still works, AND add a migration under `planner/supabase/migrations/` / give the owner a small SQL snippet for the existing project. Then update `src/lib/types.ts` (and the demo `DEFAULTS` in `src/demo/mockSupabase.ts`).
 
-Applied migrations (keep filenames aligned with the live history): `20261017182411_add_cancelled_job_status`, `20261018201758_preserve_deposit_credits_and_recurring_task_parent`, `20261018203905_add_billable_time_entries`, `20261019021910_retire_queued_phase_for_new_jobs`, `20261019045305_add_morning_review_planning`, `20261020031520_add_business_email`, `20261020084453_add_job_types_for_fee_estimator`, `20261021065135_fee_estimator_quotes_and_settings`. SQL regression suites in `planner/supabase/tests/` are for a disposable local database; never run test writes against customer records. v2 itself needed no schema change; the fee estimator added `job_types`, `quotes`, and job/settings fields.
+Applied migrations (keep filenames aligned with the live history): `20261017182411_add_cancelled_job_status`, `20261018201758_preserve_deposit_credits_and_recurring_task_parent`, `20261018203905_add_billable_time_entries`, `20261019021910_retire_queued_phase_for_new_jobs`, `20261019045305_add_morning_review_planning`, `20261020031520_add_business_email`, `20261020084453_add_job_types_for_fee_estimator`, `20261021065135_fee_estimator_quotes_and_settings`, `20261021074050_job_type_keywords_and_past_jobs`. SQL regression suites in `planner/supabase/tests/` are for a disposable local database; never run test writes against customer records. v2 itself needed no schema change; the fee estimator added `job_types`, `quotes`, and job/settings fields.
 
 ### Frontend layout — `planner/src/`
 
@@ -88,7 +90,8 @@ lib/
   timer.ts            start/stop timer, elapsed label
   taskActions.ts      task save/complete + recurrence (shared by every view)
   billingActions.ts   captures invoice work values and deposit credits
-  estimate.ts         fee estimator: blended hours, pricing, overruns, per-size, proposal text   (+ estimate.test.ts)
+  estimate.ts         fee estimator: blended hours, pricing, overruns, per-size, past records, proposal text   (+ estimate.test.ts)
+  jobTyping.ts        guess a job's type from its name/scope (key words + learned words)   (+ jobTyping.test.ts)
   calendar.ts         calendar items, Google link, .ics builder
   phases.ts           workflow vs retired phases
   reminders.ts        once-a-day browser notification (off in demo)

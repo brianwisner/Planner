@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { closeoutReasons, estimateHours, excludedJobs, finishedJobs, overruns, perUnit, priceEstimate, proposalText, roundFee, splitFee, unitScale } from './estimate'
+import { closeoutReasons, estimateHours, excludedJobs, fallbackHours, finishedJobs, pastEvidence, overruns, perUnit, priceEstimate, proposalText, roundFee, splitFee, unitScale } from './estimate'
 import type { Invoice, Job, JobType, Phase, PhaseKind, Quote, TimeEntry } from './types'
 
 type EstimateStore = Parameters<typeof estimateHours>[0]
 
-const adu: JobType = { id: 'adu', name: 'ADU', design_hours: 30, plan_check_hours: 8, construction_hours: 6, site_visits: 0, size_unit: 'sq ft', notes: '', created_at: '2026-01-01T00:00:00Z' }
+const adu: JobType = { id: 'adu', name: 'ADU', design_hours: 30, plan_check_hours: 8, construction_hours: 6, site_visits: 0, size_unit: 'sq ft', keywords: '', notes: '', created_at: '2026-01-01T00:00:00Z' }
 
 function job(id: string, patch: Partial<Job> = {}): Job {
   return {
@@ -42,7 +42,7 @@ function quote(jobId: string, d: number, pc: number, c: number, at = '2026-01-05
 
 function store(jobs: Job[], timeEntries: TimeEntry[], invoices: Invoice[] = [], quotes: Quote[] = []): EstimateStore {
   return {
-    jobs, phases: jobs.flatMap(j => phases(j.id)), timeEntries, invoices, deposits: [], items: [], profiles: [], quotes,
+    jobs, phases: jobs.flatMap(j => phases(j.id)), timeEntries, invoices, deposits: [], items: [], profiles: [], quotes, jobTypes: [adu],
     settings: { id: 1, company_name: '', business_email: '', default_rate: 150, weekly_capacity: 40, minimum_fee: 0, site_visit_hours: 3, retainer_percent: 0, proposal_template: '' },
   }
 }
@@ -168,5 +168,22 @@ describe('proposal text', () => {
   it('adds the retainer, hides the breakdown on request and keeps unknown fields as typed', () => {
     const text = proposalText('Fee {fee}\n{breakdown}\nRetainer {retainer}\nCall me {soon}', { ...input, showBreakdown: false, retainerPercent: 25 })
     expect(text).toBe('Fee $7,000\nRetainer $1,750\nCall me {soon}')
+  })
+})
+
+describe('past records and best guesses', () => {
+  it('summarizes what was charged before the planner, leaving out excluded records', () => {
+    const rec = (fee: number | null, use = true) => ({ job_type_id: 'adu', fee, use_in_estimates: use }) as import('./types').PastJob
+    const ev = pastEvidence({ pastJobs: [rec(3000), rec(5000), rec(4000), rec(9000, false), rec(null)] }, 'adu')
+    expect(ev).toMatchObject({ low: 3000, high: 5000, middle: 4000 })
+    expect(ev?.jobs).toHaveLength(3)
+    expect(pastEvidence({ pastJobs: [] }, 'adu')).toBeNull()
+  })
+
+  it('falls back to the average of the other types when a type has no hours', () => {
+    const blank = { ...adu, id: 'blank', design_hours: 0, plan_check_hours: 0, construction_hours: 0 }
+    const deck = { ...adu, id: 'deck', design_hours: 10, plan_check_hours: 2, construction_hours: 0, site_visits: 1 }
+    const fb = fallbackHours({ ...store([], []), jobTypes: [adu, deck, blank] }, 'blank')
+    expect(fb).toEqual({ types: 2, hours: { design: 20, plan_check: 5, construction: (6 + 3) / 2 } })
   })
 })

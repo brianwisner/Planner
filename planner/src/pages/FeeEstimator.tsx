@@ -4,24 +4,27 @@
 // job's real hours can be compared with it later.
 import { useMemo, useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
-import { AlertTriangle, Calculator, ClipboardCopy, EyeOff, Mail, Pencil, Plus, RotateCcw, Save, Undo2 } from 'lucide-react'
+import { AlertTriangle, Calculator, ClipboardCopy, EyeOff, Mail, Pencil, Plus, RotateCcw, Save, Sparkles, Undo2 } from 'lucide-react'
 import { useData } from '../lib/store'
 import { EMAIL_TARGET, useEmailLink } from '../lib/email'
 import { useEditors } from '../components/editors'
-import { Empty, Field, NumberInput, useConfirm } from '../components/ui'
+import { Empty, Field, Modal, NumberInput, useConfirm } from '../components/ui'
+import { guessJobType } from '../lib/jobTyping'
 import {
-  closeoutReasons, estimateHours, excludedJobs, FEE_PHASES, FEE_PHASE_LABEL, finishedJobs, halfHours, overruns, perUnit, priceEstimate,
-  proposalText, quotedHours, splitFee, STARTER_WEIGHT, unitScale, type Estimate, type FeePhase, type PhaseHours,
+  closeoutReasons, estimateHours, excludedJobs, fallbackHours, FEE_PHASES, FEE_PHASE_LABEL, finishedJobs, halfHours, overruns, pastEvidence, perUnit, priceEstimate,
+  proposalText, quotedHours, splitFee, STARTER_WEIGHT, unitScale, type Estimate, type FeePhase, type PastEvidence, type PhaseHours,
 } from '../lib/estimate'
 import { jobPhaseGroups } from '../lib/phases'
-import type { Job, JobType } from '../lib/types'
-import { fmtHourlyRate, fmtHours, fmtMoney } from '../lib/utils'
+import type { Job, JobType, PastJob } from '../lib/types'
+import { fmtDate, fmtHourlyRate, fmtHours, fmtMoney } from '../lib/utils'
 
 export function FeeEstimator({ jobId, typeId, patch }: { jobId: string; typeId: string; patch: (n: Record<string, string | null>) => void }) {
   const store = useData()
   const edit = useEditors()
   const job = store.jobs.find(j => j.id === jobId)
-  const type = store.jobTypes.find(t => t.id === (typeId || job?.job_type_id))
+  // A job without a type gets one guessed from its name and scope.
+  const guessed = job && !job.job_type_id && !typeId ? guessJobType(store, job) : null
+  const type = store.jobTypes.find(t => t.id === (typeId || job?.job_type_id)) ?? guessed?.type
   const [rate, setRate] = useState<number | null>(store.me?.hourly_rate ?? store.settings.default_rate)
   const openJobs = store.jobs.filter(j => j.status === 'active' || j.status === 'on_hold')
 
@@ -60,6 +63,7 @@ export function FeeEstimator({ jobId, typeId, patch }: { jobId: string; typeId: 
         <NumberInput id="est-rate" value={rate} onChange={setRate} step={5} min={0} prefix="$" suffix="/h" />
       </Field>
     </div>
+    {guessed && <p className="tiny muted est-guess"><Sparkles size={12} className="inline-ico" /> Type guessed from the job's name and scope{guessed.matched.length ? ` (“${guessed.matched[0]}”)` : ''}. Saving the quote sets it on the job.</p>}
   </section>
 
   if (!type) return <div className="est-layout">
@@ -95,7 +99,11 @@ function EstimateBody({ type, job, rate, picker, onPickType }: { type: JobType; 
   const [showBreakdown, setShowBreakdown] = useState(true)
   const [saving, setSaving] = useState(false)
 
-  const typical: PhaseHours = { design: quarter(est.hours.design), plan_check: quarter(est.hours.plan_check), construction: quarter(est.hours.construction) }
+  // No hours for this type yet: start from the average of your other types.
+  const fallback = est.total <= 0 ? fallbackHours(store, type.id) : null
+  const source = fallback?.hours ?? est.hours
+  const typical: PhaseHours = { design: quarter(source.design), plan_check: quarter(source.plan_check), construction: quarter(source.construction) }
+  const past = pastEvidence(store, type.id)
   const base: PhaseHours = { design: hours.design ?? typical.design, plan_check: hours.plan_check ?? typical.plan_check, construction: hours.construction ?? typical.construction }
   const extraVisitHours = ((visits ?? 0) - usualVisits) * (visitHours ?? 0)
   const priced = priceEstimate({ hours: base, visits: visits ?? 0, usualVisits, visitHours: visitHours ?? 0, allowance: allowance ?? 0, rushPercent: rush ?? 0, rate, minimumFee: Number(settings.minimum_fee) || 0 })
@@ -162,7 +170,9 @@ function EstimateBody({ type, job, rate, picker, onPickType }: { type: JobType; 
           {edited && <button className="btn ghost xs" onClick={() => setHours({})}><RotateCcw size={13} /> Use typical hours</button>}
         </div>
         <div className="card-body">
-          {est.total <= 0 && !edited && <p className="form-note small">"{type.name}" has no hours yet. Type your estimate below, or <button className="btn ghost xs" onClick={() => edit.jobType(type)}>add your usual hours to the job type</button>.</p>}
+          {est.total <= 0 && !edited && <p className="form-note small">{fallback
+            ? <>"{type.name}" has no hours yet, so this is a best guess: the average of your other {fallback.types} job types. Adjust the hours below, or </>
+            : <>"{type.name}" has no hours yet. Type your estimate below, or </>}<button className="btn ghost xs" onClick={() => edit.jobType(type)}>add usual hours to the job type</button>.</p>}
           <ul className="est-phases">{FEE_PHASES.map(k => {
             const avg = est.finished.length ? est.finished.reduce((a, f) => a + f.hours[k], 0) / est.finished.length : null
             const flag = flags.find(f => f.phase === k)
@@ -222,7 +232,7 @@ function EstimateBody({ type, job, rate, picker, onPickType }: { type: JobType; 
             : `${fmtHours(priced.total)} × ${fmtHourlyRate(rate)}${(rush ?? 0) > 0 ? ` + ${rush}% rush` : ''}, rounded up to the next $50`}
         </span>
       </div>
-      <Evidence est={est} rate={rate} size={size} unit={unit} pu={pu} />
+      <Evidence est={est} rate={rate} size={size} unit={unit} pu={pu} past={past} />
       <div className="est-result-body">
         <Field label="Fee to quote" htmlFor="est-fee">
           <NumberInput id="est-fee" value={fee} onChange={v => setFeeOverride(v ?? 0)} step={50} min={0} prefix="$" />
@@ -270,10 +280,13 @@ function Basis({ est }: { est: Estimate }) {
   </>
 }
 
-function Evidence({ est, rate, size, unit, pu }: { est: Estimate; rate: number; size: number | null; unit: string; pu: ReturnType<typeof perUnit> }) {
+function Evidence({ est, rate, size, unit, pu, past }: { est: Estimate; rate: number; size: number | null; unit: string; pu: ReturnType<typeof perUnit>; past: PastEvidence | null }) {
   const covered = est.earnedPerHour != null && est.rateThen ? est.earnedPerHour / est.rateThen : null
   const scale = pu ? unitScale(pu.hours) : 1
   return <>
+    {past && <p className="small est-range">
+      Before the planner you charged <strong>{past.jobs.length === 1 ? fmtMoney(past.low) : `${fmtMoney(past.low)} to ${fmtMoney(past.high)}`}</strong> for {past.jobs.length} job{past.jobs.length === 1 ? '' : 's'} like this{past.jobs.length >= 3 ? `, middle ${fmtMoney(past.middle)}` : ''}.
+    </p>}
     {est.low != null && est.high != null && <p className="small est-range">
       Past jobs ranged from <strong>{fmtHours(est.low)} to {fmtHours(est.high)}</strong>{est.median != null ? `, middle job ${fmtHours(est.median)}` : ''}. At {fmtHourlyRate(rate)} that's {fmtMoney(est.low * rate)} to {fmtMoney(est.high * rate)}.
     </p>}
@@ -292,7 +305,13 @@ function FinishedTable({ typeId, type, exceptJobId }: { typeId: string; type: Jo
   const store = useData()
   const list = useMemo(() => finishedJobs(store, typeId, exceptJobId), [store, typeId, exceptJobId])
   const left = excludedJobs(store, typeId).filter(j => j.id !== exceptJobId)
+  const records = store.pastJobs.filter(p => p.job_type_id === typeId)
   const unit = type.size_unit.trim()
+  function setRecordUse(p: PastJob, use: boolean) {
+    void store.update('past_jobs', p.id, { use_in_estimates: use }).then(ok => {
+      if (ok) store.toast(use ? `${p.name} is back in your estimates` : `${p.name} left out of estimates`, 'ok', { label: 'Undo', run: () => store.update('past_jobs', p.id, { use_in_estimates: !use }) })
+    })
+  }
   function setUse(job: Job, use: boolean) {
     const before = { use_in_estimates: job.use_in_estimates, estimate_note: job.estimate_note }
     void store.update('jobs', job.id, { use_in_estimates: use }).then(ok => {
@@ -322,15 +341,37 @@ function FinishedTable({ typeId, type, exceptJobId }: { typeId: string; type: Jo
       <span className="tiny muted">Left out of estimates:</span>
       {left.map(j => <span key={j.id} className="est-left-item small"><Link to={`/jobs/${j.id}`}>{j.name}</Link>{j.estimate_note && <span className="muted"> ({j.estimate_note})</span>}<button className="btn ghost xs" onClick={() => setUse(j, true)}>Use again</button></span>)}
     </div>}
+    {records.length > 0 && <>
+      <div className="card-head est-records-head"><h2>From your records <span className="count">{records.length}</span></h2><span className="sub">Before the planner: invoices, emails and files</span></div>
+      <div className="table-wrap"><table className="table est-table">
+        <thead><tr><th>Job</th><th className="hide-sm">When</th>{unit && <th className="num hide-sm">Size</th>}<th className="num">Fee</th><th /></tr></thead>
+        <tbody>{records.map(p => <tr key={p.id} className={p.use_in_estimates === false ? 'est-off' : ''}>
+          <td><span className="strong">{p.name}</span><div className="tiny muted clamp-2">{[p.client, p.scope].filter(Boolean).join(' · ')}</div>{p.source && <div className="tiny muted">{p.source}</div>}</td>
+          <td className="hide-sm nowrap small">{p.date ? fmtDate(p.date) + ' ' + p.date.slice(0, 4) : '—'}</td>
+          {unit && <td className="num hide-sm">{p.size ? p.size.toLocaleString() : <span className="muted">—</span>}</td>}
+          <td className="num">{p.fee != null ? fmtMoney(p.fee) : <span className="muted">—</span>}{p.hours != null && <div className="tiny muted">{fmtHours(p.hours)}</div>}</td>
+          <td className="right">{p.use_in_estimates === false
+            ? <button className="btn ghost xs" onClick={() => setRecordUse(p, true)}>Use again</button>
+            : <button className="btn ghost icon xs" onClick={() => setRecordUse(p, false)} aria-label={`Leave ${p.name} out of estimates`} title="Leave out of estimates"><EyeOff size={14} /></button>}</td>
+        </tr>)}</tbody>
+      </table></div>
+    </>}
   </section>
 }
 
 function JobTypesCard({ activeId, onPick }: { activeId?: string; onPick: (id: string) => void }) {
   const store = useData()
   const edit = useEditors()
+  const [sorting, setSorting] = useState(false)
   const counts = (id: string) => store.jobs.filter(j => j.job_type_id === id).length
+  const untyped = store.jobs.filter(j => !j.job_type_id && j.status !== 'archived')
   return <section className="card">
     <div className="card-head"><h2>Job types</h2><button className="btn sm" onClick={() => edit.jobType(undefined, t => onPick(t.id))}><Plus size={15} /> Add</button></div>
+    {untyped.length > 0 && <div className="est-untyped">
+      <span className="small">{untyped.length} job{untyped.length === 1 ? ' has' : 's have'} no type, so the estimator can't learn from {untyped.length === 1 ? 'it' : 'them'}.</span>
+      <button className="btn sm soft" onClick={() => setSorting(true)}><Sparkles size={14} /> Sort them</button>
+    </div>}
+    {sorting && <SortJobs jobs={untyped} onClose={() => setSorting(false)} />}
     <ul className="list">{store.jobTypes.map(t => { const total = Number(t.design_hours) + Number(t.plan_check_hours) + Number(t.construction_hours); const n = counts(t.id); return <li key={t.id} className={`list-row ${t.id === activeId ? 'est-type-on' : ''}`}>
       <button className="grow est-type-pick" onClick={() => onPick(t.id)}>
         <span className="title">{t.name}</span>
@@ -339,4 +380,34 @@ function JobTypesCard({ activeId, onPick }: { activeId?: string; onPick: (id: st
       <button className="btn ghost icon sm" aria-label={`Edit ${t.name}`} onClick={() => edit.jobType(t)}><Pencil size={15} /></button>
     </li> })}</ul>
   </section>
+}
+
+/** Suggest a type for every job without one, and save them all at once. */
+function SortJobs({ jobs, onClose }: { jobs: Job[]; onClose: () => void }) {
+  const store = useData()
+  const [picks, setPicks] = useState<Record<string, string>>(() => Object.fromEntries(jobs.map(j => [j.id, guessJobType(store, j)?.type.id ?? ''])))
+  const [busy, setBusy] = useState(false)
+  const chosen = jobs.filter(j => picks[j.id])
+  async function save() {
+    if (busy || !chosen.length) return
+    setBusy(true)
+    const results = await Promise.all(chosen.map(j => store.update('jobs', j.id, { job_type_id: picks[j.id] })))
+    setBusy(false)
+    const done = chosen.filter((_, i) => results[i])
+    store.toast(`Set the type on ${done.length} job${done.length === 1 ? '' : 's'}`, 'ok', { label: 'Undo', run: () => Promise.all(done.map(j => store.update('jobs', j.id, { job_type_id: null }))) })
+    onClose()
+  }
+  return <Modal title="Sort jobs into types" subtitle="Guessed from each job's name and scope. Change any that are wrong, or leave them blank." size="wide" onClose={onClose}
+    footer={<><button className="btn" onClick={onClose}>Cancel</button><button className="btn primary" disabled={busy || !chosen.length} onClick={() => void save()}>{busy ? 'Saving…' : `Save ${chosen.length} type${chosen.length === 1 ? '' : 's'}`}</button></>}>
+    <ul className="list est-sort-list">{jobs.map(j => { const g = guessJobType(store, j); return <li key={j.id} className="list-row">
+      <div className="grow" style={{ minWidth: 0 }}>
+        <div className="title truncate">{j.name}</div>
+        <div className="meta truncate">{[store.clients.find(c => c.id === j.client_id)?.name, j.description].filter(Boolean).join(' · ') || 'No scope written'}{g && picks[j.id] === g.type.id ? ` · guessed from “${g.matched[0] ?? g.type.name}”` : ''}</div>
+      </div>
+      <select className="input sm est-sort-select" value={picks[j.id] ?? ''} aria-label={`Type for ${j.name}`} onChange={e => setPicks(p => ({ ...p, [j.id]: e.target.value }))}>
+        <option value="">No type</option>
+        {store.jobTypes.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+      </select>
+    </li> })}</ul>
+  </Modal>
 }

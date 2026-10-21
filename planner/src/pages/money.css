@@ -61,6 +61,13 @@
 .est-left { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; padding: 10px 18px; border-top: 1px solid var(--border); }
 .est-left-item { display: inline-flex; align-items: center; gap: 4px; }
 .est-split .tiny { margin-left: 4px; }
+.est-guess { margin: 10px 0 0; }
+.est-records-head { border-top: 1px solid var(--border); }
+.est-off td { opacity: .55; }
+.est-untyped { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; padding: 10px 18px; background: var(--warn-soft); border-bottom: 1px solid var(--border); }
+.est-sort-list .list-row { gap: 12px; }
+.est-sort-select { width: 210px; flex: none; }
+@media (max-width: 760px) { .est-sort-list .list-row { flex-wrap: wrap; } .est-sort-select { width: 100%; } }
 .est-result { position: sticky; top: 16px; display: flex; flex-direction: column; }
 .est-result-top { display: flex; flex-direction: column; gap: 4px; padding: 18px 18px 14px; border-bottom: 1px solid var(--border); }
 .est-fee { font-size: 34px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.1; color: var(--text); }

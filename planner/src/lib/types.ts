@@ -50,6 +50,7 @@ export interface JobType {
   construction_hours: number
   site_visits: number           // usual number of site visits during construction
   size_unit: string             // e.g. "sq ft" or "ft of wall"; blank = size not tracked
+  keywords: string              // comma-separated words that identify this type (automatic typing)
   notes: string
   created_at: string
 }
@@ -72,6 +73,23 @@ export interface Job {
   queued_date: string | null      // legacy storage; no longer an active workflow control
   start_date: string | null
   due_date: string | null
+  created_at: string
+}
+
+/** A job from before the planner (found in email, invoices or files): fee evidence and typing examples. */
+export interface PastJob {
+  id: string
+  name: string
+  client: string
+  address: string
+  job_type_id: string | null
+  date: string | null
+  fee: number | null            // what was charged
+  hours: number | null          // only when actually known
+  size: number | null
+  scope: string
+  source: string
+  use_in_estimates: boolean
   created_at: string
 }
 
