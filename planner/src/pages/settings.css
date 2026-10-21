@@ -39,3 +39,6 @@
 .settings-page .card-body.form-fields { padding: 16px 18px; }
 .settings-page .steps li { display: block; position: relative; padding-left: 32px; line-height: 22px; }
 .settings-page .steps li::before { position: absolute; left: 0; top: 0; }
+
+.settings-page textarea.proposal-template { min-height: 360px; font-size: 13.5px; line-height: 1.5; }
+.settings-page code { font-size: 12px; padding: 0 3px; border-radius: 4px; background: var(--surface-2); }

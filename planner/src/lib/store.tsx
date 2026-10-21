@@ -6,14 +6,16 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import type { Session } from '@supabase/supabase-js'
 import { supabase } from './supabase'
-import type { Client, Comment, Deposit, Invoice, Job, JobItem, Phase, Profile, ScheduleEntry, Settings, Task, TimeEntry } from './types'
+import type { Client, Comment, Deposit, Invoice, Job, JobItem, JobType, Phase, Quote, Profile, ScheduleEntry, Settings, Task, TimeEntry } from './types'
 import type { InvoiceWorkLink } from './billingActions'
 
 export interface Tables {
   settings: Settings
   profiles: Profile
   clients: Client
+  job_types: JobType
   jobs: Job
+  quotes: Quote
   phases: Phase
   tasks: Task
   invoices: Invoice
@@ -25,12 +27,12 @@ export interface Tables {
 }
 export type TableName = keyof Tables
 
-const TABLE_NAMES: TableName[] = ['settings', 'profiles', 'clients', 'jobs', 'phases', 'tasks', 'invoices', 'deposits', 'job_items', 'schedule_entries', 'time_entries', 'comments']
+const TABLE_NAMES: TableName[] = ['settings', 'profiles', 'clients', 'job_types', 'jobs', 'quotes', 'phases', 'tasks', 'invoices', 'deposits', 'job_items', 'schedule_entries', 'time_entries', 'comments']
 
 type Data = { [K in TableName]: Tables[K][] }
 
 const emptyData: Data = {
-  settings: [], profiles: [], clients: [], jobs: [], phases: [], tasks: [], invoices: [], deposits: [], job_items: [], schedule_entries: [], time_entries: [], comments: [],
+  settings: [], profiles: [], clients: [], job_types: [], jobs: [], quotes: [], phases: [], tasks: [], invoices: [], deposits: [], job_items: [], schedule_entries: [], time_entries: [], comments: [],
 }
 
 export interface ToastAction { label: string; run: () => void | Promise<unknown> }
@@ -42,7 +44,9 @@ export interface Store {
   settings: Settings
   profiles: Profile[]
   clients: Client[]
+  jobTypes: JobType[]
   jobs: Job[]
+  quotes: Quote[]
   phases: Phase[]
   tasks: Task[]
   invoices: Invoice[]
@@ -194,11 +198,13 @@ export function DataProvider({ session, children }: { session: Session | null; c
 
   const value = useMemo<Store>(() => {
     const me = data.profiles.find(p => p.id === session?.user.id) ?? null
-    const settings: Settings = data.settings[0] ?? { id: 1, company_name: 'Wisner Engineering', business_email: '', default_rate: 150, weekly_capacity: 40 }
+    const settings: Settings = data.settings[0] ?? { id: 1, company_name: 'Wisner Engineering', business_email: '', default_rate: 150, weekly_capacity: 40, minimum_fee: 0, site_visit_hours: 3, retainer_percent: 0, proposal_template: '' }
     return {
       session, me, settings,
       profiles: [...data.profiles].sort((a, b) => a.full_name.localeCompare(b.full_name)),
       clients: [...data.clients].sort((a, b) => a.name.localeCompare(b.name)),
+      jobTypes: [...data.job_types].sort((a, b) => a.name.localeCompare(b.name)),
+      quotes: [...data.quotes].sort((a, b) => a.created_at.localeCompare(b.created_at)),
       jobs: [...data.jobs].sort((a, b) => a.priority - b.priority || a.created_at.localeCompare(b.created_at)),
       phases: [...data.phases].sort((a, b) => a.sort_order - b.sort_order),
       tasks: [...data.tasks].sort((a, b) => a.sort_order - b.sort_order || a.created_at.localeCompare(b.created_at)),

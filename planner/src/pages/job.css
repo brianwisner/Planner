@@ -82,3 +82,9 @@
   .job-head .actions .btn.primary { flex: 1; }
   .step { min-width: 118px; }
 }
+
+.quote-table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+.quote-table th { font-size: 12px; font-weight: 550; color: var(--text-3); text-align: left; padding: 0 0 6px; }
+.quote-table td { padding: 5px 0; border-top: 1px solid var(--border); }
+.quote-table .num { text-align: right; padding-left: 10px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.quote-table tr.total td { font-weight: 650; }

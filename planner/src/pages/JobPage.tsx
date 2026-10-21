@@ -1,8 +1,8 @@
 // One job: where it stands, what's next, the phases, hours, money and notes.
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Link, Navigate, useParams, useSearchParams } from 'react-router-dom'
+import { Link, Navigate, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import {
-  Check, ChevronRight, Clock, Ellipsis, FileText, Mail, MapPin, MessageSquare, Pencil, Phone, Play, Plus, Receipt, Square, Trash2, Wallet,
+  Calculator, Check, ChevronRight, Clock, Ellipsis, FileText, Mail, MapPin, MessageSquare, Pencil, Phone, Play, Plus, Receipt, Square, Trash2, Wallet,
 } from 'lucide-react'
 import { useData } from '../lib/store'
 import { EMAIL_TARGET, useEmailLink } from '../lib/email'
@@ -17,7 +17,8 @@ import { jobPhaseGroups, phaseLabel } from '../lib/phases'
 import { runningTimer, startTimer, elapsedLabel } from '../lib/timer'
 import { useStopTimer } from '../components/useTimerActions'
 import { summarizeJob, taskOrder } from '../lib/views'
-import { JOB_STATUS_LABEL, PHASE_STATUS_LABEL, type JobStatus, type Phase, type PhaseStatus } from '../lib/types'
+import { FEE_PHASES, FEE_PHASE_LABEL, jobActuals, latestQuote, quotedHours } from '../lib/estimate'
+import { CLOSEOUT_REASONS, JOB_STATUS_LABEL, PHASE_STATUS_LABEL, type JobStatus, type Phase, type PhaseStatus } from '../lib/types'
 import { fmtDate, fmtDateTime, fmtHourlyRate, fmtHours, fmtMoney, fmtSigned, sum, todayISO } from '../lib/utils'
 import './job.css'
 
@@ -28,6 +29,7 @@ export function JobPage() {
   const store = useData()
   const edit = useEditors()
   const [params, setParams] = useSearchParams()
+  const navigate = useNavigate()
   const job = store.jobs.find(j => j.id === id)
   const tab = (['overview', 'time', 'billing', 'notes'].includes(params.get('tab') ?? '') ? params.get('tab') : 'overview') as Tab
   const setTab = (t: Tab) => setParams(p => { const n = new URLSearchParams(p); if (t === 'overview') n.delete('tab'); else n.set('tab', t); n.delete('task'); return n }, { replace: true })
@@ -57,6 +59,7 @@ export function JobPage() {
     { label: 'Add charge', icon: <FileText size={15} />, onSelect: () => edit.charge(undefined, job.id) },
     { label: 'Record deposit', icon: <Wallet size={15} />, onSelect: () => edit.deposit(undefined, job.id) },
     { label: 'New invoice', icon: <Receipt size={15} />, onSelect: () => edit.invoice(job.id) },
+    { label: 'Estimate fee', icon: <Calculator size={15} />, onSelect: () => navigate(`/money?tab=estimate&job=${job.id}`) },
     'sep',
     { label: 'Site visit', icon: <MapPin size={15} />, onSelect: () => edit.task(undefined, { job_id: job.id, is_site_visit: true, due_date: todayISO() }) },
   ]
@@ -74,7 +77,8 @@ export function JobPage() {
           {job.job_number && <span>#{job.job_number}</span>}
           {job.address && <a href={`https://maps.google.com/?q=${encodeURIComponent(job.address)}`} target="_blank" rel="noreferrer"><MapPin size={13} />{job.address}</a>}
           {job.due_date && <span>Due {fmtDate(job.due_date, 'long')}</span>}
-          {job.fee != null && <span>Fee {fmtMoney(job.fee)}</span>}
+          {(t => t && <span>{t.name}</span>)(store.jobTypes.find(t => t.id === job.job_type_id))}
+          {job.fee != null ? <span>Fee {fmtMoney(job.fee)}</span> : open && <Link to={`/money?tab=estimate&job=${job.id}`}><Calculator size={13} />Estimate fee</Link>}
         </p>
       </div>
       <div className="actions">
@@ -185,6 +189,8 @@ function Overview({ jobId }: { jobId: string }) {
         </div>
       </section>
 
+      <QuoteCard jobId={jobId} />
+
       {client && <section className="card">
         <div className="card-head"><h2>Client</h2><Link className="small" to={`/clients/${client.id}`}>Open</Link></div>
         <div className="card-body contact">
@@ -209,6 +215,47 @@ function Overview({ jobId }: { jobId: string }) {
       </section>}
     </div>
   </div>
+}
+
+/* ---------------- Quote vs. actual ---------------- */
+
+function QuoteCard({ jobId }: { jobId: string }) {
+  const store = useData()
+  const job = store.jobs.find(j => j.id === jobId)!
+  const quote = latestQuote(store, jobId)
+  if (!quote) return null
+  const q = quotedHours(quote)
+  const a = jobActuals(store, jobId)
+  const earlier = store.quotes.filter(x => x.job_id === jobId).length - 1
+  const closed = job.status === 'complete' || job.status === 'archived'
+  const over = FEE_PHASES.filter(k => a.hours[k] - q[k] >= 1)
+  const qTotal = q.design + q.plan_check + q.construction
+  const diff = (d: number) => Math.abs(d) < 0.25 ? <span className="muted">on target</span> : <span className={d > 0 ? 'danger-text' : 'ok-text'}>{fmtHours(Math.abs(d))} {d > 0 ? 'over' : 'under'}</span>
+  return <section className="card">
+    <div className="card-head"><h2>Quote vs. actual</h2><Link className="small" to={`/money?tab=estimate&job=${jobId}`}>Re-estimate</Link></div>
+    <div className="card-body stack">
+      <div className="small muted">Quoted {fmtMoney(quote.fee)} on {fmtDate(quote.created_at.slice(0, 10))}{earlier > 0 ? ` · ${earlier} earlier quote${earlier === 1 ? '' : 's'} kept` : ''}{quote.fee_note ? ` · "${quote.fee_note}"` : ''}</div>
+      <table className="quote-table">
+        <thead><tr><th /><th className="num">Quoted</th><th className="num">Actual</th><th className="num">Difference</th></tr></thead>
+        <tbody>
+          {FEE_PHASES.map(k => <tr key={k}><td>{FEE_PHASE_LABEL[k]}</td><td className="num">{fmtHours(q[k])}</td><td className="num">{fmtHours(a.hours[k])}</td><td className="num">{diff(a.hours[k] - q[k])}</td></tr>)}
+          <tr className="total"><td>Total</td><td className="num">{fmtHours(qTotal)}</td><td className="num">{fmtHours(a.total)}</td><td className="num">{diff(a.total - qTotal)}</td></tr>
+        </tbody>
+      </table>
+      {a.clientChanges > 0 && <div className="tiny muted">Client-requested changes: {fmtHours(a.clientChanges)}, billed separately.</div>}
+      {a.unphased > 0 && <div className="tiny warn-text">{fmtHours(a.unphased)} logged with no phase are counted as Design. <Link to={`/jobs/${jobId}?tab=time`}>Assign a phase</Link></div>}
+      {!closed && over.length > 0 && <div className="form-note warn small">{over.map(k => FEE_PHASE_LABEL[k]).join(' and ')} {over.length === 1 ? 'is' : 'are'} over the quote. If the scope grew, it may be an additional service to price with the client.</div>}
+      {closed && <div className="stack">
+        <label className="small strong" htmlFor="closeout-reason">{a.total - qTotal >= 1 ? 'What made it take longer?' : 'How did it go?'}</label>
+        <select id="closeout-reason" className="input sm" value={job.closeout_reason} onChange={e => void store.update('jobs', jobId, { closeout_reason: e.target.value })}>
+          <option value="">Choose a reason…</option>
+          {CLOSEOUT_REASONS.map(r => <option key={r} value={r}>{r}</option>)}
+          {job.closeout_reason && !(CLOSEOUT_REASONS as readonly string[]).includes(job.closeout_reason) && <option value={job.closeout_reason}>{job.closeout_reason}</option>}
+        </select>
+        <label className="switch small"><input type="checkbox" checked={job.use_in_estimates !== false} onChange={e => void store.update('jobs', jobId, { use_in_estimates: e.target.checked })} /> Use this job in future fee estimates</label>
+      </div>}
+    </div>
+  </section>
 }
 
 /* ---------------- Phases ---------------- */

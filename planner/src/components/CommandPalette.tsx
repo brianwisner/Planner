@@ -2,7 +2,7 @@
 import { useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
-import { Briefcase, Building2, CalendarDays, CheckSquare, CircleDollarSign, Clock, FileText, Keyboard, MapPin, Play, Plus, Search, Settings, Sun } from 'lucide-react'
+import { Briefcase, Building2, Calculator, CalendarDays, CheckSquare, CircleDollarSign, Clock, FileText, Keyboard, MapPin, Play, Plus, Search, Settings, Sun } from 'lucide-react'
 import { useData } from '../lib/store'
 import { startTimer } from '../lib/timer'
 import { jobStage, STAGE_LABEL } from '../lib/stages'
@@ -33,6 +33,7 @@ export function CommandPalette({ onClose, onHelp }: { onClose: () => void; onHel
       { id: 'c-job', group: 'Actions', label: 'New job', icon: <Briefcase size={16} />, run: act(() => edit.job()), keywords: 'project add' },
       { id: 'c-client', group: 'Actions', label: 'New client', icon: <Building2 size={16} />, run: act(() => edit.client()), keywords: 'customer add' },
       { id: 'c-deposit', group: 'Actions', label: 'Record deposit', icon: <CircleDollarSign size={16} />, run: act(() => edit.deposit()), keywords: 'retainer payment money' },
+      { id: 'c-estimate', group: 'Actions', label: 'Estimate a fee', icon: <Calculator size={16} />, run: go('/money?tab=estimate'), keywords: 'proposal quote bid price fee estimator' },
       { id: 'g-today', group: 'Go to', label: 'Today', icon: <Sun size={16} />, run: go('/'), keywords: 'home dashboard' },
       { id: 'g-jobs', group: 'Go to', label: 'Jobs', icon: <Briefcase size={16} />, run: go('/jobs'), keywords: 'board pipeline projects' },
       { id: 'g-schedule', group: 'Go to', label: 'Schedule', icon: <CalendarDays size={16} />, run: go('/schedule'), keywords: 'calendar plan timeline gantt week' },

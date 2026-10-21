@@ -12,6 +12,10 @@ export interface Settings {
   business_email: string
   default_rate: number
   weekly_capacity: number
+  minimum_fee: number           // the fee estimator never suggests less
+  site_visit_hours: number      // hours per site visit, including travel and follow-up
+  retainer_percent: number      // retainer shown on proposals; 0 leaves it out
+  proposal_template: string     // blank uses DEFAULT_PROPOSAL_TEMPLATE in lib/estimate.ts
 }
 
 export interface Profile {
@@ -37,6 +41,19 @@ export interface Client {
   created_at: string
 }
 
+/** A kind of job with the owner's usual hours per phase, used by the fee estimator. */
+export interface JobType {
+  id: string
+  name: string
+  design_hours: number
+  plan_check_hours: number
+  construction_hours: number
+  site_visits: number           // usual number of site visits during construction
+  size_unit: string             // e.g. "sq ft" or "ft of wall"; blank = size not tracked
+  notes: string
+  created_at: string
+}
+
 export interface Job {
   id: string
   client_id: string
@@ -47,11 +64,38 @@ export interface Job {
   status: JobStatus
   priority: number
   fee: number | null
+  job_type_id: string | null      // links finished jobs to the fee estimator
+  size: number | null             // in the job type's size unit
+  use_in_estimates: boolean       // false leaves a finished job out of the fee estimator
+  estimate_note: string           // why it was left out
+  closeout_reason: string         // what made the hours differ from the quote (CLOSEOUT_REASONS)
   queued_date: string | null      // legacy storage; no longer an active workflow control
   start_date: string | null
   due_date: string | null
   created_at: string
 }
+
+/** A fee saved from the estimator. Never edited, so the original quote survives later changes. */
+export interface Quote {
+  id: string
+  job_id: string
+  job_type_id: string | null
+  rate: number
+  design_hours: number          // final hours per phase, including visits and allowance
+  plan_check_hours: number
+  construction_hours: number
+  site_visits: number
+  visit_hours: number
+  allowance_hours: number
+  rush_percent: number
+  size: number | null
+  suggested_fee: number
+  fee: number
+  fee_note: string              // why the fee differs from the suggestion
+  created_at: string
+}
+
+export const CLOSEOUT_REASONS = ['Went as planned', 'Scope was bigger than quoted', 'Existing conditions', 'Plan-check comments', 'Coordination with others', 'Rework / my changes', 'Time records incomplete'] as const
 
 export interface Phase {
   id: string

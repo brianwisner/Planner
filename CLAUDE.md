@@ -26,10 +26,17 @@ The shear wall analyzer that used to sit at this repository's root is kept in it
 
 ### Data model (Supabase / Postgres) — `planner/supabase/setup.sql`
 
-`clients → jobs → phases → tasks`, plus `time_entries`, `job_items`, `invoices`, `deposits`, `schedule_entries`, `comments`, `profiles` (one per login), and a single-row `settings` table.
+`clients → jobs → phases → tasks`, plus `job_types`, `quotes`, `time_entries`, `job_items`, `invoices`, `deposits`, `schedule_entries`, `comments`, `profiles` (one per login), and a single-row `settings` table.
 
 - New jobs get **five phases automatically** via the `add_standard_phases` trigger: `bidding`, `design`, `plan_check`, `construction`, `client_changes`. Older jobs may also have a retired `queued` phase: it is stored history only (`lib/phases.ts` `isWorkflowPhase()` excludes it; label "Planning history"). Phase `kind` is fixed; `name` is the label. `calc.ts` `workPhase()` picks the phase new hours/schedules default to (first unfinished workflow phase).
 - **Stages (v2 UI concept, no schema):** `lib/stages.ts` derives a job's pipeline stage from its phase statuses — Bidding · Ready to start · Design · Plan check · Construction. The most advanced main phase that is in progress/waiting wins; with none started, the first unfinished main phase decides (bidding not started → Bidding, design not started after bidding → Ready to start, later phases → that column, "not started"). `client_changes` is side work shown as a chip, never a stage. `stageChanges()` returns the phase status edits that put a job in a stage (earlier main phases complete, target started, later started phases reset; client changes untouched); the board, the job-page stepper and the card menus all use it via `lib/jobActions.ts` `moveJobToStage()`, which offers Undo.
+- **Fee estimator** (Money → Fee estimator, `/money?tab=estimate&job=&type=`; `lib/estimate.ts`, `pages/FeeEstimator.tsx`):
+  - `job_types` hold starter hours for Design, Plan check and Construction (construction **excluding** site visits), the usual number of `site_visits`, and an optional `size_unit`. `jobs.job_type_id` links jobs to a type; `jobs.size` is in that unit.
+  - Typical hours = starter numbers (usual visits × `settings.site_visit_hours` added to Construction) counted as 2 jobs (`STARTER_WEIGHT`) blended with the fee-phase hours of **complete/archived** jobs of that type with `use_in_estimates` true (`estimate_note` says why one was left out). Hours with no phase count as Design and are flagged; bidding and client changes are not part of the fee.
+  - Pricing (`priceEstimate`): the owner can edit each phase's hours; visits above/below the type's usual adjust Construction; an allowance for unknowns is spread across phases; rush % is added; fee = hours × rate, rounded up to the next $50, never below `settings.minimum_fee`. A fee that differs from the suggestion asks for a reason.
+  - Evidence: past range and middle job, earned per hour vs. the **rates saved on those hours** (not today's rate), hours/fee per size unit, phases that ran over their quote on most jobs, and closeout reasons.
+  - "Save quote" inserts a `quotes` row (never edited, so the original survives; the latest one is the job's baseline) and sets the job's fee, type, size and phase estimates (with Undo). The job page's **Quote vs. actual** card compares the latest quote with actual hours, warns while active, and on closed jobs asks for a `closeout_reason` (`CLOSEOUT_REASONS`) and the use-in-estimates switch.
+  - Proposal text comes from `settings.proposal_template` (blank = `DEFAULT_PROPOSAL_TEMPLATE`; fields like `{fee}` listed in `PROPOSAL_FIELDS`; a line whose fields are all blank is dropped). `settings.retainer_percent` adds the retainer line. Copy, Email (Gmail) and a preview are on the estimator; the wording is edited in Settings → Fee estimator and proposals (`/settings#estimator`).
 - `jobs.queued_date` is legacy storage (no longer shown). `jobs.priority` (lower = higher in queue) drives the List view order; `jobActions.mergeOrder()` keeps hidden jobs in place when a filtered list is reordered.
 - Job statuses are Active, On hold, Complete, Cancelled, and Archived. Cancelled keeps all history and money records but removes pending deadlines/tasks and planned hours from capacity totals; changing back to Active restores them.
 - `time_entries.hours` is null while a timer is running (`started_at` set). Stopping the timer fills `hours` (rounded to quarter hours, minimum 0.25). Only one timer runs at a time (`lib/timer.ts` stops others first; a second click while a start is saving reuses it). A timer running over 12 hours is never saved automatically: Stop opens the hours form (`components/useTimerActions.ts`), and a new start is refused until it's fixed. Time shows every running timer if there are ever several.
@@ -53,7 +60,7 @@ The shear wall analyzer that used to sit at this repository's root is kept in it
 
 **Changing the schema:** edit `setup.sql` so a fresh project still works, AND add a migration under `planner/supabase/migrations/` / give the owner a small SQL snippet for the existing project. Then update `src/lib/types.ts` (and the demo `DEFAULTS` in `src/demo/mockSupabase.ts`).
 
-Applied migrations (keep filenames aligned with the live history): `20261017182411_add_cancelled_job_status`, `20261018201758_preserve_deposit_credits_and_recurring_task_parent`, `20261018203905_add_billable_time_entries`, `20261019021910_retire_queued_phase_for_new_jobs`, `20261019045305_add_morning_review_planning`. SQL regression suites in `planner/supabase/tests/` are for a disposable local database; never run test writes against customer records. v2 needed **no** schema change.
+Applied migrations (keep filenames aligned with the live history): `20261017182411_add_cancelled_job_status`, `20261018201758_preserve_deposit_credits_and_recurring_task_parent`, `20261018203905_add_billable_time_entries`, `20261019021910_retire_queued_phase_for_new_jobs`, `20261019045305_add_morning_review_planning`, `20261020031520_add_business_email`, `20261020084453_add_job_types_for_fee_estimator`, `20261021065135_fee_estimator_quotes_and_settings`. SQL regression suites in `planner/supabase/tests/` are for a disposable local database; never run test writes against customer records. v2 itself needed no schema change; the fee estimator added `job_types`, `quotes`, and job/settings fields.
 
 ### Frontend layout — `planner/src/`
 
@@ -81,6 +88,7 @@ lib/
   timer.ts            start/stop timer, elapsed label
   taskActions.ts      task save/complete + recurrence (shared by every view)
   billingActions.ts   captures invoice work values and deposit credits
+  estimate.ts         fee estimator: blended hours, pricing, overruns, per-size, proposal text   (+ estimate.test.ts)
   calendar.ts         calendar items, Google link, .ics builder
   phases.ts           workflow vs retired phases
   reminders.ts        once-a-day browser notification (off in demo)
@@ -98,7 +106,7 @@ components/
   ui.tsx              Modal (focus trap, Esc, sheet on phone), ConfirmProvider/useConfirm, Menu,
                       StageChip, DueText, Progress, Avatar, TaskCheck, Empty, Segmented, Field,
                       NumberInput (keeps typed text)
-  editors.tsx         EditorProvider + useEditors(): task, job, client, time, deposit, charge,
+  editors.tsx         EditorProvider + useEditors(): task, job, job type, client, time, deposit, charge,
                       invoice (pick unbilled work), mark paid. Billing-lock rules live here.
   CommandPalette.tsx  search + commands (/ or Ctrl/Cmd+K)
   TaskRow.tsx         task line: tick (with Undo), open, start timer
@@ -112,7 +120,7 @@ views/                big reusable views
   MonthCalendar.tsx   Schedule → Calendar month grid + list (agenda, default on phones)
 pages/                one file per route (+ its own .css)
   Today, Jobs (Board / List), JobPage (Overview / Hours & charges / Billing / Notes),
-  Schedule, Time, Money (Overview / Ready to bill / Invoices / Deposits / Reports),
+  Schedule, Time, Money (Overview / Ready to bill / Invoices / Deposits / Reports / Fee estimator → FeeEstimator.tsx),
   InvoiceView (printable invoice), Clients, ClientPage, Settings, Login
 ```
 
