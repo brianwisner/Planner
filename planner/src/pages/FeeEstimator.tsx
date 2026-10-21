@@ -31,7 +31,10 @@ export function FeeEstimator({ jobId, typeId, patch }: { jobId: string; typeId: 
   const pickType = (id: string) => patch({ type: id || null })
   function pickJob(id: string) {
     const j = store.jobs.find(x => x.id === id)
-    patch({ job: id || null, type: j?.job_type_id ? null : type?.id ?? null })
+    // A job with a type, or one whose type can be guessed, decides the type itself.
+    // Keep the type on screen only when the new job gives nothing to go on.
+    const keep = j && !j.job_type_id && !guessJobType(store, j)
+    patch({ job: id || null, type: keep ? type?.id ?? null : null })
   }
 
   if (!store.jobTypes.length) return <section className="card">

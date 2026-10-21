@@ -22,6 +22,7 @@ export function words(text: string): string[] {
 
 export const keywordList = (t: Pick<JobType, 'keywords'>) => t.keywords.split(/[,;\n]/).map(k => k.trim().toLowerCase()).filter(Boolean)
 
+
 const jobText = (j: Pick<Job, 'name' | 'description'>) => `${j.name} ${j.description ?? ''}`
 
 export interface TypeGuess { type: JobType; score: number; matched: string[] }
@@ -44,7 +45,7 @@ export function guessType(store: TypingStore, text: string, exceptJobId?: string
     const m = typeId ? learned.get(typeId) : undefined
     if (m) for (const w of new Set(words(text))) m.set(w, (m.get(w) ?? 0) + 1)
   }
-  for (const j of store.jobs) if (j.id !== exceptJobId) learn(j.job_type_id, j.description ?? '')
+  for (const j of store.jobs) if (j.id !== exceptJobId) learn(j.job_type_id, jobText(j))
   for (const p of store.pastJobs) learn(p.job_type_id, `${p.name} ${p.scope}`)
   const spread = new Map<string, number>()
   for (const m of learned.values()) for (const w of m.keys()) spread.set(w, (spread.get(w) ?? 0) + 1)
