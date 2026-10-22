@@ -405,24 +405,35 @@ export function JobTypeEditor({ jobType, onClose, onCreated }: { jobType?: JobTy
 /* ================= Client ================= */
 
 export function ClientEditor({ client, onClose, onCreated }: { client?: Client; onClose: () => void; onCreated?: (c: Client) => void }) {
-  const { insert, update, conditionalUpdate, remove, refresh, jobs } = useData()
+  const { clients, insert, update, conditionalUpdate, remove, refresh, jobs } = useData()
   const confirm = useConfirm()
   const navigate = useNavigate()
   const form = useRecordForm('client', onClose, () => refresh('clients'))
-  const initialNotes = useRef(client?.notes ?? null).current
+  const [notesBase, setNotesBase] = useState(client?.notes ?? null)
   const [d, setD] = useState({
     name: client?.name ?? '', contact_name: client?.contact_name ?? '', email: client?.email ?? '', phone: client?.phone ?? '',
     address: client?.address ?? '', notes: client?.notes ?? '',
   })
   const set = (k: keyof typeof d, v: string) => setD(x => ({ ...x, [k]: v }))
-  async function save() {
+  const latestClient = client ? clients.find(c => c.id === client.id) : undefined
+  const latestNotes = latestClient ? latestClient.notes : notesBase
+  const notesChanged = d.notes !== (notesBase ?? '')
+  const notesConflict = Boolean(client && notesChanged && latestNotes !== notesBase)
+  function useLatestNotes() {
+    if (form.busy.current) return
+    setNotesBase(latestNotes)
+    setD(x => ({ ...x, notes: latestNotes ?? '' }))
+    form.fail('')
+  }
+  async function save(replaceLatestNotes = false) {
     if (form.busy.current) return
     const row = { ...d, name: d.name.trim(), contact_name: d.contact_name.trim(), email: d.email.trim(), phone: d.phone.trim(), address: d.address.trim() }
     if (!row.name) { form.fail('Enter a client or company name.'); return }
     if (row.email && !/^[^\s@]+@[^\s@]+$/.test(row.email)) { form.fail('Enter a valid email address, or leave it blank.'); return }
+    if (notesConflict && !replaceLatestNotes) { form.fail('The saved notes changed. Review them below, then choose which version to keep.'); return }
     await form.run('save', async () => {
       if (client) {
-        if (row.notes !== (initialNotes ?? '')) return conditionalUpdate('clients', client.id, row, { notes: initialNotes })
+        if (notesChanged) return conditionalUpdate('clients', client.id, row, { notes: replaceLatestNotes ? latestNotes : notesBase })
         // A contact-only edit must not put an old copy of the notes back.
         const { notes: _notes, ...contact } = row
         return update('clients', client.id, contact)
@@ -450,6 +461,15 @@ export function ClientEditor({ client, onClose, onCreated }: { client?: Client; 
         <Field label="Email" htmlFor={`${form.id}-email`}><input id={`${form.id}-email`} className="input" type="email" value={d.email} onChange={e => set('email', e.target.value)} /></Field>
         <Field label="Address" htmlFor={`${form.id}-addr`}><input id={`${form.id}-addr`} className="input" value={d.address} onChange={e => set('address', e.target.value)} /></Field>
         <Field label="Notes" htmlFor={`${form.id}-notes`}><textarea id={`${form.id}-notes`} className="input" value={d.notes} onChange={e => set('notes', e.target.value)} placeholder="Billing preferences, how they like drawings delivered…" /></Field>
+        {notesConflict && <div className="stack" role="alert">
+          <p className="small warn-text">The saved notes changed while this form was open. Your draft is still in the Notes box.</p>
+          <details><summary style={{ minHeight: 40, display: 'flex', alignItems: 'center', cursor: 'pointer' }}>Latest saved notes</summary><p className="small soft" style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{latestNotes || 'No notes saved.'}</p></details>
+          <p className="small muted">Use the latest notes, or replace them with your draft and save this client.</p>
+          <div className="row wrap">
+            <button type="button" className="btn" style={{ minHeight: 40 }} onClick={useLatestNotes}>Use latest notes</button>
+            <button type="button" className="btn" style={{ minHeight: 40 }} onClick={() => void save(true)}>Save my version</button>
+          </div>
+        </div>}
       </fieldset>
     </form>
   </Modal>
