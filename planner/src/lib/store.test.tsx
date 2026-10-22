@@ -9,8 +9,10 @@ const db = vi.hoisted(() => ({
   filters: [] as [string, string, unknown][],
   patch: {} as Record<string, unknown>,
   save: vi.fn(),
+  rpc: vi.fn(),
 }))
 vi.mock('./supabase', () => ({ supabase: {
+  rpc: (...args: unknown[]) => db.rpc(...args),
   from: (table: string) => ({
     select: async () => ({ data: table === 'clients' ? [{ id: 'client', name: 'Example client', notes: db.notes }] : [], error: null }),
     update: (patch: Record<string, unknown>) => {
@@ -39,7 +41,7 @@ function Snapshot() {
 
 beforeEach(async () => {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)
-  db.notes = 'Original notes'; db.filters = []; db.patch = {}; db.save.mockReset()
+  db.notes = 'Original notes'; db.filters = []; db.patch = {}; db.save.mockReset(); db.rpc.mockReset()
   host = document.createElement('div'); document.body.append(host); root = createRoot(host)
   await act(async () => root.render(<DataProvider session={session}><Snapshot /></DataProvider>))
 })
@@ -75,5 +77,33 @@ describe('conditional record updates', () => {
     db.save.mockResolvedValue({ data: null, error: { message: 'Connection failed' } })
     await act(async () => { expect(await store.conditionalUpdate('clients', 'client', { notes: 'My draft' }, { notes: 'Original notes' })).toBe(false) })
     expect(host.textContent).toBe('Original notes')
+  })
+})
+
+
+describe('atomic quote RPCs', () => {
+  const request = { id: 'request', quote: { job_id: 'job', fee: 1200 }, expected: { fee: null, job_type_id: null, size: null, phases: [] } } as unknown as import('./quoteSave').QuoteRequest
+  it('uses one RPC for quote, job and phases', async () => {
+    db.rpc.mockReturnValue({ single: async () => ({ data: { id: 'quote', fee: 1200 }, error: null }) })
+    await act(async () => { expect((await store.recordQuote(request)).quote?.id).toBe('quote') })
+    expect(db.rpc).toHaveBeenCalledExactlyOnceWith('record_quote', { p_request_id: request.id, p_quote: request.quote, p_expected: request.expected })
+    expect(db.save).not.toHaveBeenCalled()
+  })
+  it('distinguishes a rolled-back rejection from an ambiguous response', async () => {
+    db.rpc.mockReturnValue({ single: async () => ({ data: null, error: { code: '40001', message: 'Changed' } }) })
+    await act(async () => { expect(await store.recordQuote(request)).toEqual({ quote: null, rejected: true }) })
+    db.rpc.mockReturnValue({ single: async () => ({ data: null, error: { message: 'Network error' } }) })
+    await act(async () => { expect(await store.recordQuote(request)).toEqual({ quote: null, rejected: false }) })
+    db.rpc.mockReturnValue({ single: async () => ({ data: null, error: { code: '42501', message: 'Sign in again' } }) })
+    await act(async () => { expect(await store.recordQuote(request)).toEqual({ quote: null, rejected: false }) })
+    db.rpc.mockReturnValue({ single: async () => { throw new Error('Disconnected') } })
+    await act(async () => { expect(await store.recordQuote(request)).toEqual({ quote: null, rejected: false }) })
+  })
+  it('undo uses the guarded transaction instead of independent writes', async () => {
+    db.rpc.mockResolvedValue({ data: true, error: null })
+    await act(async () => { expect(await store.undoQuote('request')).toBe(true) })
+    expect(db.rpc).toHaveBeenCalledExactlyOnceWith('undo_quote', { p_request_id: 'request' })
+    db.rpc.mockResolvedValue({ data: null, error: { message: 'Newer change' } })
+    await act(async () => { expect(await store.undoQuote('request')).toBe(false) })
   })
 })

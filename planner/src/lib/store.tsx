@@ -8,6 +8,7 @@ import type { Session } from '@supabase/supabase-js'
 import { supabase } from './supabase'
 import type { Client, Comment, Deposit, Invoice, Job, JobItem, JobType, PastJob, Phase, Quote, Profile, ScheduleEntry, Settings, Task, TimeEntry } from './types'
 import type { InvoiceWorkLink } from './billingActions'
+import type { QuoteRequest, QuoteSaveResult } from './quoteSave'
 
 export interface Tables {
   settings: Settings
@@ -67,6 +68,8 @@ export interface Store {
   conditionalUpdate: <K extends TableName>(table: K, id: string | number, patch: Partial<Tables[K]>, expected: Partial<Tables[K]>) => Promise<boolean>
   remove: (table: TableName, id: string | number) => Promise<boolean>
   recordInvoice: (invoice: Omit<Invoice, 'id' | 'created_at'>, links: InvoiceWorkLink[]) => Promise<Invoice | null>
+  recordQuote: (request: QuoteRequest) => Promise<QuoteSaveResult>
+  undoQuote: (requestId: string) => Promise<boolean>
   /** Fresh rows straight from the database, e.g. the phases a new job just got. */
   fetchWhere: <K extends TableName>(table: K, column: string, value: string) => Promise<Tables[K][]>
   signOut: () => Promise<void>
@@ -215,6 +218,44 @@ export function DataProvider({ session, children }: { session: Session | null; c
     return created as Invoice
   }, [toast, refresh])
 
+  const recordQuote = useCallback(async (request: QuoteRequest): Promise<QuoteSaveResult> => {
+    try {
+      const { data: created, error: err } = await supabase.rpc('record_quote', {
+        p_request_id: request.id, p_quote: request.quote, p_expected: request.expected,
+      }).single()
+      if (err) {
+        // Explicit validation/conflict/constraint failures roll back. Other failures
+        // can hide a committed save, so the caller must retain its request ID.
+        // Auth, timeout and server failures on a retry cannot establish the original outcome.
+        const rejected = ['22023', '40001', 'P0001'].includes(err.code ?? '') || /^23[0-9A-Z]{3}$/.test(err.code ?? '')
+        toast(rejected ? `Quote save was not applied: ${err.message}` : 'Could not confirm the quote save. Retry to check the same save safely.', 'error')
+        await refresh()
+        return { quote: null, rejected }
+      }
+      if (!created) return { quote: null, rejected: false }
+      await refresh()
+      return { quote: created as Quote, rejected: false }
+    } catch {
+      toast('Could not confirm the quote save. Retry to check the same save safely.', 'error')
+      return { quote: null, rejected: false }
+    }
+  }, [toast, refresh])
+
+  const undoQuote = useCallback(async (requestId: string) => {
+    try {
+      const { data: undone, error: err } = await supabase.rpc('undo_quote', { p_request_id: requestId })
+      await refresh()
+      if (err || undone !== true) {
+        toast(`Could not undo quote: ${err?.message ?? 'The save could not be confirmed. Retry Undo.'}`, 'error')
+        return false
+      }
+      return true
+    } catch {
+      toast('Could not confirm Undo. Retry Undo to check it safely.', 'error')
+      return false
+    }
+  }, [toast, refresh])
+
   const fetchWhere = useCallback(async <K extends TableName>(table: K, column: string, value: string) => {
     const { data: rows, error: err } = await supabase.from(table).select('*').eq(column, value)
     if (err) return []
@@ -245,9 +286,9 @@ export function DataProvider({ session, children }: { session: Session | null; c
       schedule: [...data.schedule_entries].sort((a, b) => a.date.localeCompare(b.date)),
       timeEntries: [...data.time_entries].sort((a, b) => b.date.localeCompare(a.date) || b.created_at.localeCompare(a.created_at)),
       comments: [...data.comments].sort((a, b) => a.created_at.localeCompare(b.created_at)),
-      loading, error, online, refresh, insert, update, conditionalUpdate, remove, recordInvoice, fetchWhere, signOut, toast, dismissToast, toasts,
+      loading, error, online, refresh, insert, update, conditionalUpdate, remove, recordInvoice, recordQuote, undoQuote, fetchWhere, signOut, toast, dismissToast, toasts,
     }
-  }, [data, session, loading, error, online, refresh, insert, update, conditionalUpdate, remove, recordInvoice, fetchWhere, signOut, toast, dismissToast, toasts])
+  }, [data, session, loading, error, online, refresh, insert, update, conditionalUpdate, remove, recordInvoice, recordQuote, undoQuote, fetchWhere, signOut, toast, dismissToast, toasts])
 
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>
 }

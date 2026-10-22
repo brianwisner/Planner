@@ -2,7 +2,7 @@
 // with the real hours on finished jobs of that type. The owner adjusts hours,
 // site visits, an allowance and rush premium; saving keeps the quote so the
 // job's real hours can be compared with it later.
-import { useMemo, useState, type ReactNode } from 'react'
+import { useMemo, useRef, useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { AlertTriangle, Calculator, ClipboardCopy, EyeOff, Mail, Pencil, Plus, RotateCcw, Save, Sparkles, Undo2 } from 'lucide-react'
 import { useData } from '../lib/store'
@@ -15,6 +15,7 @@ import {
   proposalText, quotedHours, splitFee, STARTER_WEIGHT, unitScale, type Estimate, type FeePhase, type PastEvidence, type PhaseHours,
 } from '../lib/estimate'
 import { jobPhaseGroups } from '../lib/phases'
+import { forgetQuote, pendingQuote, rememberQuote, type QuoteRequest } from '../lib/quoteSave'
 import type { Job, JobType, PastJob } from '../lib/types'
 import { fmtDate, fmtHourlyRate, fmtHours, fmtMoney } from '../lib/utils'
 
@@ -26,10 +27,21 @@ export function FeeEstimator({ jobId, typeId, patch }: { jobId: string; typeId: 
   const guessed = job && !job.job_type_id && !typeId ? guessJobType(store, job) : null
   const type = store.jobTypes.find(t => t.id === (typeId || job?.job_type_id)) ?? guessed?.type
   const [rate, setRate] = useState<number | null>(store.me?.hourly_rate ?? store.settings.default_rate)
+  const [draft, setDraft] = useState({ typeId: type?.id, jobId: job?.id, basisJobId: job?.id, version: 0 })
+  // Choosing a different job or type starts over, but unlinking a job keeps the
+  // working estimate. Track the transition rather than keying directly by job.
+  if (draft.typeId !== type?.id || draft.jobId !== job?.id) {
+    const reset = draft.typeId !== type?.id || job != null
+    setDraft({ typeId: type?.id, jobId: job?.id, basisJobId: reset ? job?.id : draft.basisJobId, version: draft.version + (reset ? 1 : 0) })
+  }
   const openJobs = store.jobs.filter(j => j.status === 'active' || j.status === 'on_hold')
 
   const pickType = (id: string) => patch({ type: id || null })
   function pickJob(id: string) {
+    if (!id) {
+      patch({ job: null, type: type?.id ?? null })
+      return
+    }
     const j = store.jobs.find(x => x.id === id)
     // A job with a type, or one whose type can be guessed, decides the type itself.
     // Keep the type on screen only when the new job gives nothing to go on.
@@ -77,22 +89,25 @@ export function FeeEstimator({ jobId, typeId, patch }: { jobId: string; typeId: 
     </div>
   </div>
 
-  // A new type or job starts a fresh estimate; the rate carries over.
-  return <EstimateBody key={`${type.id}:${job?.id ?? ''}`} type={type} job={job} rate={rate ?? 0} picker={picker} onPickType={pickType} />
+  // The rate carries over even when a new estimate is started.
+  return <EstimateBody key={draft.version} type={type} job={job} basisJobId={draft.basisJobId} rate={rate ?? 0} picker={picker} onPickType={pickType} />
 }
 
-function EstimateBody({ type, job, rate, picker, onPickType }: { type: JobType; job?: Job; rate: number; picker: ReactNode; onPickType: (id: string) => void }) {
+function EstimateBody({ type, job, basisJobId, rate, picker, onPickType }: { type: JobType; job?: Job; basisJobId?: string; rate: number; picker: ReactNode; onPickType: (id: string) => void }) {
   const store = useData()
   const edit = useEditors()
   const confirm = useConfirm()
   const emailLink = useEmailLink()
   const { settings } = store
-  const est = useMemo(() => estimateHours(store, type, job?.id), [store, type, job?.id])
+  const est = useMemo(() => estimateHours(store, type, basisJobId), [store, type, basisJobId])
   const client = store.clients.find(c => c.id === job?.client_id)
 
   const [hours, setHours] = useState<Partial<PhaseHours>>({})
   const usualVisits = Number(type.site_visits) || 0
-  const [visits, setVisits] = useState<number | null>(usualVisits)
+  // Until edited, follow changes to this type's usual visits. Even a deliberate
+  // zero, blank or value equal to the old default remains the owner's choice.
+  const [visitOverride, setVisits] = useState<number | null | undefined>(undefined)
+  const visits = visitOverride === undefined ? usualVisits : visitOverride
   const [visitHours, setVisitHours] = useState<number | null>(Number(settings.site_visit_hours) || 0)
   const [allowance, setAllowance] = useState<number | null>(0)
   const [rush, setRush] = useState<number | null>(0)
@@ -121,38 +136,49 @@ function EstimateBody({ type, job, rate, picker, onPickType }: { type: JobType; 
   const text = proposalText(settings.proposal_template, { job, client: client?.name, fee, split, showBreakdown, visits: visits ?? 0, retainerPercent: Number(settings.retainer_percent) || 0, today: new Date() })
   const edited = FEE_PHASES.some(k => hours[k] != null && hours[k] !== typical[k])
 
+  const saveLock = useRef(false)
   async function saveToJob(target: Job) {
-    if (saving) return
-    if (diff !== 0 && !feeNote.trim() && !await confirm({ title: 'Save without a reason?', body: `Your fee is ${fmtMoney(Math.abs(diff))} ${diff < 0 ? 'below' : 'above'} the suggestion. A short reason helps when you look back at this job.`, confirmLabel: 'Save anyway' })) return
-    const phases = jobPhaseGroups(store.phases, target.id).workflow.filter(p => (FEE_PHASES as readonly string[]).includes(p.kind))
-    const next = phases.map(p => ({ phase: p, hours: halfHours(priced.phases[p.kind as FeePhase]) }))
-    const replacing = (target.fee != null && target.fee !== fee) || next.some(n => n.phase.estimate_hours > 0 && n.phase.estimate_hours !== n.hours)
-    if (replacing && !await confirm({
-      title: `Replace the fee and estimates on ${target.name}?`,
-      body: `Fee ${fmtMoney(target.fee)} → ${fmtMoney(fee)}. ${next.map(n => `${FEE_PHASE_LABEL[n.phase.kind as FeePhase]} ${fmtHours(n.phase.estimate_hours)} → ${fmtHours(n.hours)}`).join(', ')}. Earlier quotes stay on record, and you can undo this right after.`,
-      confirmLabel: 'Replace',
-    })) return
-    const before = { fee: target.fee, job_type_id: target.job_type_id, size: target.size, phases: phases.map(p => ({ id: p.id, estimate_hours: p.estimate_hours })) }
+    if (saveLock.current) return
+    saveLock.current = true
+    try {
+      const owner = store.session?.user.id ?? 'demo'
+      const pending = pendingQuote(owner, target.id)
+      if (pending) {
+        if (!await confirm({ title: 'Check the earlier save?', body: `The earlier quote of ${fmtMoney(pending.quote.fee)} has not been confirmed. Retry that exact save first so it cannot create a duplicate. Your current edited inputs will not be saved in this retry.`, confirmLabel: 'Retry earlier save' })) return
+        await submit(pending, target.name, owner)
+        return
+      }
+      if (diff !== 0 && !feeNote.trim() && !await confirm({ title: 'Save without a reason?', body: `Your fee is ${fmtMoney(Math.abs(diff))} ${diff < 0 ? 'below' : 'above'} the suggestion. A short reason helps when you look back at this job.`, confirmLabel: 'Save anyway' })) return
+      const phases = jobPhaseGroups(store.phases, target.id).workflow.filter(p => (FEE_PHASES as readonly string[]).includes(p.kind))
+      const next = phases.map(p => ({ phase: p, hours: halfHours(priced.phases[p.kind as FeePhase]) }))
+      const replacing = (target.fee != null && target.fee !== fee) || next.some(n => n.phase.estimate_hours > 0 && n.phase.estimate_hours !== n.hours)
+      if (replacing && !await confirm({
+        title: `Replace the fee and estimates on ${target.name}?`,
+        body: `Fee ${fmtMoney(target.fee)} → ${fmtMoney(fee)}. ${next.map(n => `${FEE_PHASE_LABEL[n.phase.kind as FeePhase]} ${fmtHours(n.phase.estimate_hours)} → ${fmtHours(n.hours)}`).join(', ')}. Earlier quotes stay on record, and you can undo this right after.`,
+        confirmLabel: 'Replace',
+      })) return
+      const before = { fee: target.fee, job_type_id: target.job_type_id, size: target.size, phases: phases.map(p => ({ id: p.id, estimate_hours: p.estimate_hours })) }
+      const request: QuoteRequest = { id: crypto.randomUUID(), expected: before, quote: {
+        job_id: target.id, job_type_id: type.id, rate, size,
+        design_hours: halfHours(priced.phases.design), plan_check_hours: halfHours(priced.phases.plan_check), construction_hours: halfHours(priced.phases.construction),
+        site_visits: visits ?? 0, visit_hours: visitHours ?? 0, allowance_hours: allowance ?? 0, rush_percent: rush ?? 0,
+        suggested_fee: priced.suggested, fee, fee_note: feeNote.trim(),
+      } }
+      rememberQuote(owner, request)
+      await submit(request, target.name, owner)
+    } finally { saveLock.current = false; setSaving(false) }
+  }
+
+  async function submit(request: QuoteRequest, name: string, owner: string) {
     setSaving(true)
-    const quote = await store.insert('quotes', {
-      job_id: target.id, job_type_id: type.id, rate, size,
-      design_hours: halfHours(priced.phases.design), plan_check_hours: halfHours(priced.phases.plan_check), construction_hours: halfHours(priced.phases.construction),
-      site_visits: visits ?? 0, visit_hours: visitHours ?? 0, allowance_hours: allowance ?? 0, rush_percent: rush ?? 0,
-      suggested_fee: priced.suggested, fee, fee_note: feeNote.trim(),
-    })
-    const results = quote ? await Promise.all([
-      store.update('jobs', target.id, { fee, job_type_id: type.id, size }),
-      ...next.map(n => store.update('phases', n.phase.id, { estimate_hours: n.hours })),
-    ]) : [false]
-    setSaving(false)
-    if (quote && results.every(Boolean)) store.toast(`Quote of ${fmtMoney(fee)} saved to ${target.name}`, 'ok', {
-      label: 'Undo',
-      run: () => Promise.all([
-        store.remove('quotes', quote.id),
-        store.update('jobs', target.id, { fee: before.fee, job_type_id: before.job_type_id, size: before.size }),
-        ...before.phases.map(p => store.update('phases', p.id, { estimate_hours: p.estimate_hours })),
-      ]),
-    })
+    const result = await store.recordQuote(request)
+    if (result.quote || result.rejected) forgetQuote(owner, request.quote.job_id)
+    if (result.quote) {
+      const undo = async () => {
+        if (!await store.undoQuote(request.id)) store.toast('Undo was not completed. You can retry without overwriting newer work.', 'error', { label: 'Retry Undo', run: undo })
+      }
+      store.toast(`Quote of ${fmtMoney(result.quote.fee)} saved to ${name}`, 'ok', { label: 'Undo', run: undo })
+    }
   }
 
   async function copyProposal() {
@@ -221,7 +247,7 @@ function EstimateBody({ type, job, rate, picker, onPickType }: { type: JobType; 
         </div>
       </section>
 
-      <FinishedTable typeId={type.id} type={type} exceptJobId={job?.id} />
+      <FinishedTable typeId={type.id} type={type} exceptJobId={basisJobId} />
       <JobTypesCard activeId={type.id} onPick={onPickType} />
     </div>
 

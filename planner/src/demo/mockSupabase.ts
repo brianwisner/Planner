@@ -18,6 +18,21 @@ const clone = <T,>(v: T): T => JSON.parse(JSON.stringify(v)) as T
 const clientOrder = (a: Row, b: Row) => Number(a.client_priority ?? a.priority) - Number(b.client_priority ?? b.priority)
   || Number(a.priority) - Number(b.priority) || String(a.created_at).localeCompare(String(b.created_at)) || String(a.id).localeCompare(String(b.id))
 
+const FEE_PHASES = new Set(['design', 'plan_check', 'construction'])
+const QUOTE_NUMBERS = ['rate', 'design_hours', 'plan_check_hours', 'construction_hours', 'site_visits', 'visit_hours', 'allowance_hours', 'rush_percent', 'suggested_fee', 'fee']
+const QUOTE_FIELDS = ['job_id', 'job_type_id', ...QUOTE_NUMBERS, 'size', 'fee_note']
+const isRow = (v: unknown): v is Row => v != null && typeof v === 'object' && !Array.isArray(v)
+const isUUID = (v: unknown): v is string => typeof v === 'string' && /^[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}$/i.test(v)
+const isNumber = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v)
+const exactKeys = (row: Row, keys: string[]) => Object.keys(row).length === keys.length && keys.every(key => Object.hasOwn(row, key))
+// JSONB ignores object-key order. Phase snapshots are sets, not display order.
+const canonical = (v: unknown): string => JSON.stringify(v, (_key, value: unknown) =>
+  isRow(value) ? Object.fromEntries(Object.entries(value).sort(([a], [b]) => a.localeCompare(b))) : value)
+const byId = (rows: Row[]) => [...rows].sort((a, b) => String(a.id).localeCompare(String(b.id)))
+const quoteJobFields = (row: Row): Row => ({ fee: row.fee, job_type_id: row.job_type_id, size: row.size })
+const quotePhaseFields = (rows: Row[]): Row[] => byId(rows.map(row => ({ id: row.id, kind: row.kind, estimate_hours: row.estimate_hours })))
+type QuoteOperation = { request: string; quote: Row; job: Row; phases: Row[]; priorQuoteIds: unknown[]; undone: boolean }
+
 const DEFAULTS: Record<string, () => Row> = {
   settings: () => ({ business_email: '', minimum_fee: 0, site_visit_hours: 3, retainer_percent: 0, proposal_template: '' }),
   clients: () => ({ contact_name: '', email: '', phone: '', address: '', notes: '', is_sample: false }),
@@ -52,6 +67,8 @@ class MockDB {
   tables: Tables
   listeners = new Set<(c: Change) => void>()
   failNext: string | null = null
+  // Keep receipts after Undo: a delayed retry must never resurrect an undone quote.
+  quoteOperations = new Map<string, QuoteOperation>()
   constructor(tables: Tables) { this.tables = tables }
   rows(table: string) { return (this.tables[table] ??= []) }
   emit(table: string, eventType: Change['eventType']) {
@@ -223,6 +240,8 @@ class Rpc implements PromiseLike<Result> {
   }
   private run(): Result {
     const db = this.db, a = this.args
+    if (this.name === 'record_quote') return this.recordQuote()
+    if (this.name === 'undo_quote') return this.undoQuote()
     if (this.name === 'reorder_client_jobs') {
       if (db.failNext === 'jobs' || db.failNext === '*') {
         db.failNext = null
@@ -266,6 +285,109 @@ class Rpc implements PromiseLike<Result> {
       return { data: true, error: null }
     }
     return { data: null, error: { message: `Unknown function ${this.name}` } }
+  }
+
+  private quoteFailure(): Result | null {
+    if (this.db.failNext && ['jobs', 'phases', 'quotes', '*'].includes(this.db.failNext)) {
+      this.db.failNext = null
+      return { data: null, error: { message: 'Simulated network failure' } }
+    }
+    return null
+  }
+
+  private recordQuote(): Result {
+    const db = this.db, a = this.args, quote = a.p_quote, expected = a.p_expected
+    const invalid = (message: string): Result => ({ data: null, error: { message, code: '22023' } })
+    const conflict = (message: string): Result => ({ data: null, error: { message, code: '40001' } })
+    if (!isUUID(a.p_request_id) || !isRow(quote) || !exactKeys(quote, QUOTE_FIELDS)
+      || !isUUID(quote.job_id) || (quote.job_type_id !== null && !isUUID(quote.job_type_id))
+      || QUOTE_NUMBERS.some(key => !isNumber(quote[key]) || (quote[key] as number) < 0)
+      || (quote.size !== null && (!isNumber(quote.size) || quote.size < 0)) || typeof quote.fee_note !== 'string') {
+      return invalid('Invalid quote. Check the fee, hours, job and job type.')
+    }
+    if (!isRow(expected) || !exactKeys(expected, ['fee', 'job_type_id', 'size', 'phases'])
+      || (expected.fee !== null && !isNumber(expected.fee))
+      || (expected.size !== null && !isNumber(expected.size))
+      || (expected.job_type_id !== null && !isUUID(expected.job_type_id))
+      || !Array.isArray(expected.phases) || expected.phases.some(phase => !isRow(phase)
+        || !exactKeys(phase, ['id', 'estimate_hours']) || !isUUID(phase.id) || !isNumber(phase.estimate_hours))) {
+      return invalid('Invalid original job or phase estimates. Refresh and try again.')
+    }
+    const expectedPhases = (expected.phases as Row[]).map(phase => ({ ...phase, id: String(phase.id).toLowerCase() }))
+    if (new Set(expectedPhases.map(phase => phase.id)).size !== expectedPhases.length) {
+      return invalid('The original phase estimates contain a duplicate phase.')
+    }
+    const requestId = a.p_request_id.toLowerCase()
+    const original = { ...expected, job_type_id: expected.job_type_id === null ? null : String(expected.job_type_id).toLowerCase(), phases: byId(expectedPhases) }
+    const request = canonical({ quote, expected: original })
+    const receipt = db.quoteOperations.get(requestId)
+    if (receipt) {
+      if (receipt.request !== request) return invalid('This quote request was already used with different details.')
+      if (receipt.undone) return conflict('This quote was already undone. Save again with a new request.')
+      const saved = db.rows('quotes').find(row => row.id === receipt.quote.id)
+      if (!saved || canonical(saved) !== canonical(receipt.quote)) {
+        return conflict('The saved quote changed or was removed. Refresh before saving again.')
+      }
+      return { data: this.mode === 'single' ? clone(receipt.quote) : [clone(receipt.quote)], error: null }
+    }
+    const quoteValues = { ...quote, job_id: quote.job_id.toLowerCase(), job_type_id: quote.job_type_id === null ? null : String(quote.job_type_id).toLowerCase() }
+    const job = db.rows('jobs').find(row => row.id === quoteValues.job_id)
+    if (!job) return conflict('This job is no longer available. Refresh and try again.')
+    if (quoteValues.job_type_id !== null && !db.rows('job_types').some(row => row.id === quoteValues.job_type_id)) {
+      return conflict('This job type is no longer available. Refresh and try again.')
+    }
+    const phases = db.rows('phases').filter(row => row.job_id === job.id && FEE_PHASES.has(String(row.kind)))
+    if (canonical(quoteJobFields(job)) !== canonical(quoteJobFields(original))
+      || canonical(byId(phases.map(row => ({ id: row.id, estimate_hours: row.estimate_hours })))) !== canonical(byId(expectedPhases))) {
+      return conflict('The job or phase estimates changed. Refresh and try again.')
+    }
+    const saved = db.prepareInsert('quotes', clone(quoteValues))
+    const operation: QuoteOperation = {
+      request, quote: clone(saved), job: clone(quoteJobFields(job)), phases: clone(quotePhaseFields(phases)),
+      priorQuoteIds: db.rows('quotes').filter(row => row.job_id === job.id).map(row => row.id), undone: false,
+    }
+    // Validate and simulate every possible write failure before touching any row.
+    const failure = this.quoteFailure()
+    if (failure) return failure
+    db.rows('quotes').push(saved)
+    Object.assign(job, quoteJobFields(saved))
+    for (const phase of phases) phase.estimate_hours = quote[`${String(phase.kind)}_hours`]
+    db.quoteOperations.set(requestId, operation)
+    db.emit('quotes', 'INSERT'); db.emit('jobs', 'UPDATE'); db.emit('phases', 'UPDATE')
+    return { data: this.mode === 'single' ? clone(saved) : [clone(saved)], error: null }
+  }
+
+  private undoQuote(): Result {
+    const db = this.db
+    const conflict = (message: string): Result => ({ data: null, error: { message, code: '40001' } })
+    if (!isUUID(this.args.p_request_id)) return { data: null, error: { message: 'Invalid quote request.', code: '22023' } }
+    const receipt = db.quoteOperations.get(this.args.p_request_id.toLowerCase())
+    if (!receipt) return conflict('The saved quote request was not found. Refresh and try again.')
+    if (receipt.undone) return { data: true, error: null }
+    const quote = db.rows('quotes').find(row => row.id === receipt.quote.id)
+    const job = db.rows('jobs').find(row => row.id === receipt.quote.job_id)
+    if (!quote || canonical(quote) !== canonical(receipt.quote) || !job) {
+      return conflict('The saved quote or job changed. Undo cannot safely restore it.')
+    }
+    const phases = db.rows('phases').filter(row => row.job_id === job.id && FEE_PHASES.has(String(row.kind)))
+    const savedPhases = receipt.phases.map(phase => ({ ...phase, estimate_hours: receipt.quote[`${String(phase.kind)}_hours`] }))
+    if (canonical(quoteJobFields(job)) !== canonical(quoteJobFields(receipt.quote))
+      || canonical(quotePhaseFields(phases)) !== canonical(savedPhases)
+      || db.rows('quotes').some(row => row.job_id === job.id && row.id !== quote.id && !receipt.priorQuoteIds.includes(row.id))) {
+      return conflict('The job, phase estimates or quotes changed. Undo cannot safely restore them.')
+    }
+    if (receipt.job.job_type_id !== null && !db.rows('job_types').some(row => row.id === receipt.job.job_type_id)) {
+      return conflict('The original job type is no longer available. Undo cannot safely restore it.')
+    }
+    const failure = this.quoteFailure()
+    if (failure) return failure
+    Object.assign(job, clone(receipt.job))
+    const originalHours = new Map(receipt.phases.map(phase => [phase.id, phase.estimate_hours]))
+    for (const phase of phases) phase.estimate_hours = originalHours.get(phase.id)
+    db.tables.quotes = db.rows('quotes').filter(row => row.id !== quote.id)
+    receipt.undone = true
+    db.emit('jobs', 'UPDATE'); db.emit('phases', 'UPDATE'); db.emit('quotes', 'DELETE')
+    return { data: true, error: null }
   }
 }
 
