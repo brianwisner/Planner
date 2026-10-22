@@ -1,14 +1,17 @@
 // One client: their jobs, contact details, money across all jobs, and invoices.
 import { useMemo } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { Briefcase, ChevronRight, Mail, MapPin, Pencil, Phone, Plus, Receipt } from 'lucide-react'
+import { ChevronRight, Mail, MapPin, Pencil, Phone, Plus, Receipt } from 'lucide-react'
 import { useData } from '../lib/store'
 import { EMAIL_TARGET, useEmailLink } from '../lib/email'
 import { useEditors } from '../components/editors'
-import { Avatar, DueText, Empty, StageChip } from '../components/ui'
+import { Avatar, Empty } from '../components/ui'
 import { summarizeJob, type JobSummary } from '../lib/views'
+import { ClientJobList } from '../components/ClientJobList'
+import { ClientNotes } from '../components/ClientNotes'
+import { compareClientJobs } from '../lib/clientJobs'
 import { JOB_STATUS_LABEL } from '../lib/types'
-import { fmtDate, fmtHourlyRate, fmtHours, fmtMoney, sum, todayISO } from '../lib/utils'
+import { fmtDate, fmtHourlyRate, fmtMoney, sum, todayISO } from '../lib/utils'
 import './clients.css'
 
 const PALETTE = ['#2f5bea', '#0b8a7e', '#7a3fe4', '#d97a06', '#cf2f7d', '#12813f', '#e35a12', '#0e7490']
@@ -31,7 +34,7 @@ export function ClientPage() {
     if (!client) return []
     const isOpen = (s: string) => s === 'active' || s === 'on_hold'
     return store.jobs.filter(j => j.client_id === client.id)
-      .sort((a, b) => Number(isOpen(b.status)) - Number(isOpen(a.status)) || (isOpen(a.status) ? a.priority - b.priority : (b.due_date ?? b.created_at).localeCompare(a.due_date ?? a.created_at)))
+      .sort((a, b) => Number(isOpen(b.status)) - Number(isOpen(a.status)) || (isOpen(a.status) ? compareClientJobs(a, b) : (b.due_date ?? b.created_at).localeCompare(a.due_date ?? a.created_at)))
       .map(j => summarizeJob(store, j))
   }, [store, client])
 
@@ -51,6 +54,7 @@ export function ClientPage() {
   const jobIds = new Set(rows.map(r => r.job.id))
   const invoices = store.invoices.filter(i => jobIds.has(i.job_id)).sort((a, b) => b.issued_date.localeCompare(a.issued_date))
   const openCount = rows.filter(r => r.job.status === 'active' || r.job.status === 'on_hold').length
+  const past = rows.filter(r => r.job.status !== 'active' && r.job.status !== 'on_hold')
   const today = todayISO()
 
   return <div className="client-page">
@@ -72,26 +76,24 @@ export function ClientPage() {
     </div>
 
     <div className="client-layout">
-      <section className="card">
-        <div className="card-head"><h2>Jobs <span className="count">{rows.length}</span></h2>{rows.length > openCount && <span className="sub">open first</span>}</div>
-        {rows.length === 0
-          ? <Empty compact icon={<Briefcase size={20} />} title="No jobs yet" action={<button className="btn sm soft" onClick={() => edit.job(undefined, { client_id: client.id })}><Plus size={14} /> Start a job for {client.name}</button>}>Jobs you create for this client appear here.</Empty>
-          : <ul className="list">{rows.map(r => {
-            const open = r.job.status === 'active' || r.job.status === 'on_hold'
-            return <li key={r.job.id} className="list-row link client-job" onClick={() => navigate(`/jobs/${r.job.id}`)}>
-              <div className="grow" style={{ minWidth: 0 }}>
-                <Link to={`/jobs/${r.job.id}`} className="title" onClick={e => e.stopPropagation()}>{r.job.name}</Link>
-                <div className="meta">{[r.job.job_number, r.nextTask && open ? `Next: ${r.nextTask.title}` : null].filter(Boolean).join(' · ') || '—'}</div>
-              </div>
-              <span className="client-job-stage">{r.job.status === 'active' ? <StageChip stage={r.stage.stage} /> : r.job.status === 'on_hold' ? <StageChip stage={r.stage.stage} hold label="On hold" /> : <span className={`badge ${r.job.status === 'complete' ? 'ok' : r.job.status === 'cancelled' ? 'danger' : ''}`}>{JOB_STATUS_LABEL[r.job.status]}</span>}</span>
-              <span className="hide-sm client-job-due">{open && r.nextDeadline ? <DueText date={r.nextDeadline.date} /> : <span className="tiny muted">—</span>}</span>
-              <span className="hide-sm tiny muted num client-job-hours">{fmtHours(r.hours)}{r.estimate > 0 ? ` / ${fmtHours(r.estimate)}` : ''}</span>
-              <span className="num client-job-bill">{r.money.unbilledAmount > 0.5 ? <span className="ok-text strong small">{fmtMoney(r.money.unbilledAmount)}</span> : <span className="muted small">—</span>}</span>
-            </li>
-          })}</ul>}
-      </section>
+      <div className="stack loose">
+        <section className="card">
+          <ClientJobList client={client} detailed />
+        </section>
+        {past.length > 0 && <section className="card">
+          <div className="card-head"><h2>Past jobs <span className="count">{past.length}</span></h2></div>
+          <ul className="list">{past.map(r => <li key={r.job.id} className="list-row client-job">
+            <div className="grow" style={{ minWidth: 0 }}>
+              <Link to={`/jobs/${r.job.id}`} className="title">{r.job.name}</Link>
+              <div className="meta">{r.job.job_number}</div>
+            </div>
+            <span className={`badge ${r.job.status === 'complete' ? 'ok' : r.job.status === 'cancelled' ? 'danger' : ''}`}>{JOB_STATUS_LABEL[r.job.status]}</span>
+          </li>)}</ul>
+        </section>}
+      </div>
 
       <div className="stack loose">
+        <ClientNotes key={client.id} client={client} />
         <section className="card">
           <div className="card-head"><h2>Contact</h2><button className="btn ghost xs" onClick={() => edit.client(client)}><Pencil size={13} /> Edit</button></div>
           <div className="card-body contact-list">
@@ -100,7 +102,6 @@ export function ClientPage() {
             {client.email && <div className="contact-line"><span className="muted small">Email</span><a href={emailLink(client.email)} {...EMAIL_TARGET} className="truncate">{client.email}</a></div>}
             {client.address && <div className="contact-line"><span className="muted small">Address</span><a href={`https://maps.google.com/?q=${encodeURIComponent(client.address)}`} target="_blank" rel="noreferrer"><MapPin size={13} style={{ display: 'inline', verticalAlign: '-2px', marginRight: 3 }} />{client.address}</a></div>}
             {!client.contact_name && !client.phone && !client.email && !client.address && <p className="small muted">No contact details yet. <button className="btn ghost xs" onClick={() => edit.client(client)}>Add them</button></p>}
-            {client.notes && <div className="client-notes">{client.notes}</div>}
           </div>
         </section>
 

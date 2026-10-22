@@ -5,9 +5,11 @@ import { Building2, Download, LayoutGrid, List, Mail, Phone, Plus, Search } from
 import { useData } from '../lib/store'
 import { EMAIL_TARGET, useEmailLink } from '../lib/email'
 import { useEditors } from '../components/editors'
-import { Avatar, Empty, Segmented, StageChip } from '../components/ui'
+import { Avatar, Empty, Segmented } from '../components/ui'
 import { jobBilling } from '../lib/calc'
-import { jobStage, type Stage } from '../lib/stages'
+import { openClientJobs } from '../lib/clientJobs'
+import { ClientJobList } from '../components/ClientJobList'
+import { ClientNotes } from '../components/ClientNotes'
 import { pref, setPref } from '../lib/theme'
 import type { Client, Job } from '../lib/types'
 import { downloadCSV, fmtMoney, sum } from '../lib/utils'
@@ -32,7 +34,6 @@ interface ClientRow {
   client: Client
   jobs: Job[]
   open: Job[]
-  stages: { job: Job; stage: Stage; hold: boolean }[]
   toBill: number
   awaiting: number
 }
@@ -54,11 +55,10 @@ export function Clients() {
 
   const all = useMemo<ClientRow[]>(() => store.clients.map(client => {
     const jobs = store.jobs.filter(j => j.client_id === client.id)
-    const open = jobs.filter(j => j.status === 'active' || j.status === 'on_hold').sort((a, b) => a.priority - b.priority)
+    const open = openClientJobs(jobs, client.id)
     const money = jobs.filter(j => j.status !== 'archived').map(j => jobBilling(store, j))
     return {
       client, jobs, open,
-      stages: open.map(job => ({ job, stage: jobStage(store.phases, job.id).stage, hold: job.status === 'on_hold' })),
       toBill: sum(money.map(m => m.unbilledAmount)),
       awaiting: sum(money.map(m => m.outstanding)),
     }
@@ -124,8 +124,7 @@ export function Clients() {
 function ClientCard({ row }: { row: ClientRow }) {
   const navigate = useNavigate()
   const emailLink = useEmailLink()
-  const { client, open, stages, toBill, awaiting, jobs } = row
-  const shown = stages.slice(0, 3)
+  const { client, toBill, awaiting } = row
   return <article className="card client-card" onClick={() => navigate(`/clients/${client.id}`)}>
     <div className="client-card-top">
       <Avatar name={avatarName(client.name)} color={avatarColor(client.name)} />
@@ -134,15 +133,8 @@ function ClientCard({ row }: { row: ClientRow }) {
         <div className="small muted truncate">{client.contact_name || (client.email ? client.email : 'No contact person')}</div>
       </div>
     </div>
-    <div className="client-card-jobs">
-      {open.length
-        ? <><span className="small strong">{open.length} open job{open.length === 1 ? '' : 's'}</span>
-          <div className="client-card-chips">
-            {shown.map(s => <StageChip key={s.job.id} stage={s.stage} hold={s.hold} label={s.hold ? 'On hold' : undefined} />)}
-            {stages.length > shown.length && <span className="badge">+{stages.length - shown.length}</span>}
-          </div></>
-        : <span className="small muted">{jobs.length ? `No open jobs · ${jobs.length} past` : 'No jobs yet'}</span>}
-    </div>
+    <ClientJobList client={client} />
+    <ClientNotes client={client} compact />
     {(toBill > 0.5 || awaiting > 0.5) && <div className="client-card-money">
       {toBill > 0.5 && <span className="badge ok">{fmtMoney(toBill)} to bill</span>}
       {awaiting > 0.5 && <span className="badge warn">{fmtMoney(awaiting)} awaiting payment</span>}

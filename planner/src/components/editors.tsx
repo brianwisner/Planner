@@ -405,10 +405,11 @@ export function JobTypeEditor({ jobType, onClose, onCreated }: { jobType?: JobTy
 /* ================= Client ================= */
 
 export function ClientEditor({ client, onClose, onCreated }: { client?: Client; onClose: () => void; onCreated?: (c: Client) => void }) {
-  const { insert, update, remove, refresh, jobs } = useData()
+  const { insert, update, conditionalUpdate, remove, refresh, jobs } = useData()
   const confirm = useConfirm()
   const navigate = useNavigate()
   const form = useRecordForm('client', onClose, () => refresh('clients'))
+  const initialNotes = useRef(client?.notes ?? null).current
   const [d, setD] = useState({
     name: client?.name ?? '', contact_name: client?.contact_name ?? '', email: client?.email ?? '', phone: client?.phone ?? '',
     address: client?.address ?? '', notes: client?.notes ?? '',
@@ -420,7 +421,12 @@ export function ClientEditor({ client, onClose, onCreated }: { client?: Client; 
     if (!row.name) { form.fail('Enter a client or company name.'); return }
     if (row.email && !/^[^\s@]+@[^\s@]+$/.test(row.email)) { form.fail('Enter a valid email address, or leave it blank.'); return }
     await form.run('save', async () => {
-      if (client) return update('clients', client.id, row)
+      if (client) {
+        if (row.notes !== (initialNotes ?? '')) return conditionalUpdate('clients', client.id, row, { notes: initialNotes })
+        // A contact-only edit must not put an old copy of the notes back.
+        const { notes: _notes, ...contact } = row
+        return update('clients', client.id, contact)
+      }
       const created = await insert('clients', row)
       if (created) onCreated?.(created)
       return Boolean(created)

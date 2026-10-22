@@ -63,6 +63,8 @@ export interface Store {
   refresh: (table?: TableName) => Promise<void>
   insert: <K extends TableName>(table: K, row: Partial<Tables[K]>) => Promise<Tables[K] | null>
   update: <K extends TableName>(table: K, id: string | number, patch: Partial<Tables[K]>) => Promise<boolean>
+  /** Save only if the supplied previous values still match the database row. */
+  conditionalUpdate: <K extends TableName>(table: K, id: string | number, patch: Partial<Tables[K]>, expected: Partial<Tables[K]>) => Promise<boolean>
   remove: (table: TableName, id: string | number) => Promise<boolean>
   recordInvoice: (invoice: Omit<Invoice, 'id' | 'created_at'>, links: InvoiceWorkLink[]) => Promise<Invoice | null>
   /** Fresh rows straight from the database, e.g. the phases a new job just got. */
@@ -169,6 +171,32 @@ export function DataProvider({ session, children }: { session: Session | null; c
     return true
   }, [toast, fetchTable])
 
+  const conditionalUpdate = useCallback(async <K extends TableName>(table: K, id: string | number, patch: Partial<Tables[K]>, expected: Partial<Tables[K]>) => {
+    const previous = Object.entries(expected)
+    if (!previous.length || previous.some(([, value]) => value === undefined)) {
+      toast('Could not check the previous values. Refresh and try again.', 'error')
+      return false
+    }
+    try {
+      let query = supabase.from(table).update(patch as never).eq('id', id)
+      for (const [column, value] of previous) query = value === null ? query.is(column, null) : query.eq(column, value)
+      const { data: rows, error: err } = await query.select('*')
+      if (err) { toast(`Could not save: ${err.message}`, 'error'); return false }
+      const saved = rows?.[0] as Tables[K] | undefined
+      if (!saved || (saved as { id: string | number }).id !== id) {
+        await fetchTable(table).catch(() => {})
+        toast('The saved record changed. Review the latest version and try again.', 'error')
+        return false
+      }
+      // Wait for the guarded write to succeed before showing the new value.
+      setData(d => ({ ...d, [table]: d[table].map(r => (r as { id: string | number }).id === id ? saved : r) }))
+      return true
+    } catch (e) {
+      toast(`Could not save: ${(e as Error).message}`, 'error')
+      return false
+    }
+  }, [toast, fetchTable])
+
   const remove = useCallback(async (table: TableName, id: string | number) => {
     setData(d => ({ ...d, [table]: d[table].filter(r => (r as { id: string | number }).id !== id) }))
     const { error: err } = await supabase.from(table).delete().eq('id', id)
@@ -217,9 +245,9 @@ export function DataProvider({ session, children }: { session: Session | null; c
       schedule: [...data.schedule_entries].sort((a, b) => a.date.localeCompare(b.date)),
       timeEntries: [...data.time_entries].sort((a, b) => b.date.localeCompare(a.date) || b.created_at.localeCompare(a.created_at)),
       comments: [...data.comments].sort((a, b) => a.created_at.localeCompare(b.created_at)),
-      loading, error, online, refresh, insert, update, remove, recordInvoice, fetchWhere, signOut, toast, dismissToast, toasts,
+      loading, error, online, refresh, insert, update, conditionalUpdate, remove, recordInvoice, fetchWhere, signOut, toast, dismissToast, toasts,
     }
-  }, [data, session, loading, error, online, refresh, insert, update, remove, recordInvoice, fetchWhere, signOut, toast, dismissToast, toasts])
+  }, [data, session, loading, error, online, refresh, insert, update, conditionalUpdate, remove, recordInvoice, fetchWhere, signOut, toast, dismissToast, toasts])
 
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>
 }

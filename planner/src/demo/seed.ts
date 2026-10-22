@@ -102,10 +102,12 @@ export function seedData(): Record<string, Row[]> {
   const jobIds: Record<string, string> = {}
   const phaseIds: Record<string, string> = {}
   const jobs: Row[] = []
+  const clientPriorities = new Map<string, number>()
   const phases: Row[] = []
   jobSpecs.forEach((s, i) => {
     jobIds[s.key] = uid('j')
-    jobs.push({ id: jobIds[s.key], client_id: clientIds[s.client], job_number: s.number, name: s.name, description: s.description, address: s.address, status: s.status, priority: i + 1, fee: s.fee, job_type_id: s.type ? typeIds[s.type] : null, size: s.size ?? null, use_in_estimates: true, estimate_note: '', closeout_reason: s.closeout ?? '', queued_date: null, start_date: null, due_date: s.due == null ? null : iso(s.due), created_at: created(-80 + i * 3) })
+    clientPriorities.set(s.client, (clientPriorities.get(s.client) ?? 0) + 1)
+    jobs.push({ id: jobIds[s.key], client_id: clientIds[s.client], job_number: s.number, name: s.name, description: s.description, address: s.address, status: s.status, priority: i + 1, client_priority: clientPriorities.get(s.client), fee: s.fee, job_type_id: s.type ? typeIds[s.type] : null, size: s.size ?? null, use_in_estimates: true, estimate_note: '', closeout_reason: s.closeout ?? '', queued_date: null, start_date: null, due_date: s.due == null ? null : iso(s.due), created_at: created(-80 + i * 3) })
     kinds.forEach((kind, k) => {
       const pid = uid('p')
       phaseIds[`${s.key}:${kind}`] = pid
