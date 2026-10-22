@@ -36,7 +36,7 @@ export interface Client {
   email: string
   phone: string
   address: string
-  notes: string
+  notes: string | null
   is_sample: boolean
   created_at: string
 }
@@ -64,6 +64,7 @@ export interface Job {
   address: string
   status: JobStatus
   priority: number
+  client_priority?: number | null // independent order within this client; absent on older rows
   fee: number | null
   job_type_id: string | null      // links finished jobs to the fee estimator
   size: number | null             // in the job type's size unit

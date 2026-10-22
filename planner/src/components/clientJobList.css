@@ -1,0 +1,35 @@
+.client-job-plan { min-width: 0; }
+.client-job-plan-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 40px; }
+.client-job-plan-head h2 { font-size: 13px; display: flex; align-items: center; gap: 6px; }
+.client-plan-order { min-height: 40px; white-space: nowrap; }
+.client-plan-hint { color: var(--text-3); font-size: 12px; line-height: 1.5; margin: 0 0 8px; }
+.client-plan-list { list-style: none; margin: 0; padding: 0; }
+.client-plan-job { display: flex; align-items: flex-start; gap: 8px; padding: 10px 0; border-top: 1px solid var(--border); background: var(--surface); position: relative; }
+.client-plan-job.dragging { z-index: 1; box-shadow: var(--shadow); border-radius: var(--radius-sm); }
+.client-plan-number { flex: 0 0 22px; width: 22px; height: 24px; display: flex; align-items: center; justify-content: center; background: var(--surface-3); border-radius: var(--radius-xs); color: var(--text-3); font-size: 12px; font-weight: 650; }
+.client-plan-content { flex: 1; min-width: 0; }
+.client-plan-name { display: inline-block; color: var(--text); font-size: 13px; font-weight: 600; line-height: 1.45; overflow-wrap: anywhere; padding: 2px 0 5px; }
+.client-plan-name:hover { color: var(--accent); }
+.client-plan-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; color: var(--text-3); font-size: 11px; }
+.client-plan-meta .stage-chip { font-size: 10.5px; min-height: 20px; height: auto; }
+.client-plan-job .btn.icon { flex-shrink: 0; width: 40px; height: 40px; min-width: 40px; min-height: 40px; }
+.client-plan-grip { touch-action: none; cursor: grab; }
+.client-plan-grip:active { cursor: grabbing; }
+.client-plan-arrows { display: flex; gap: 0; }
+.client-plan-status:empty { display: none; }
+.client-plan-status { display: block; margin-top: 6px; }
+.client-plan-empty { padding: 5px 0; }
+.client-plan-next { margin-top: 6px; overflow-wrap: anywhere; }
+.client-plan-details { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 8px; }
+.client-job-plan.detailed .client-job-plan-head { padding: 12px 20px; border-bottom: 1px solid var(--border); }
+.client-job-plan.detailed .client-job-plan-head h2 { font-size: 15px; }
+.client-job-plan.detailed .client-plan-job { padding: 14px 20px; }
+.client-job-plan.detailed .client-plan-job:first-child { border-top: 0; }
+.client-job-plan.detailed .client-plan-name { font-size: 14px; }
+.client-job-plan.detailed .client-plan-hint, .client-job-plan.detailed .client-plan-empty, .client-job-plan.detailed .client-plan-status { margin: 10px 20px; }
+@media (max-width: 760px) {
+  .client-plan-name { min-height: 40px; display: flex; align-items: center; padding: 0 0 5px; }
+  .client-plan-arrows { flex-direction: column; }
+  .client-job-plan.detailed .client-plan-job { padding: 12px 14px; }
+  .client-job-plan.detailed .client-job-plan-head { padding: 10px 14px; }
+}

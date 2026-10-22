@@ -22,6 +22,11 @@ concurrency:
   group: pages
   cancel-in-progress: true
 
+# Keep a slow registry response from blocking the build indefinitely.
+env:
+  NPM_CONFIG_FETCH_TIMEOUT: "60000"
+  NPM_CONFIG_FETCH_RETRIES: "1"
+
 jobs:
   build-and-publish:
     runs-on: ubuntu-latest

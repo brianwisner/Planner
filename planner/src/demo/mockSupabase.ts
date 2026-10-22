@@ -7,7 +7,7 @@ import { seedData, DEMO_USER } from './seed'
 type Row = Record<string, unknown>
 type Tables = Record<string, Row[]>
 type Change = { table: string; eventType: 'INSERT' | 'UPDATE' | 'DELETE' }
-type Result = { data: unknown; error: { message: string } | null }
+type Result = { data: unknown; error: { message: string; code?: string } | null }
 
 const PLANNING = new Set(['daily_reviews', 'follow_ups', 'daily_availability', 'availability_blocks', 'job_planning', 'job_decisions'])
 
@@ -15,11 +15,13 @@ const uuid = () => (globalThis.crypto?.randomUUID?.() ?? 'xxxxxxxx-xxxx-4xxx-8xx
 const nowISO = () => new Date().toISOString()
 const todayISO = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` }
 const clone = <T,>(v: T): T => JSON.parse(JSON.stringify(v)) as T
+const clientOrder = (a: Row, b: Row) => Number(a.client_priority ?? a.priority) - Number(b.client_priority ?? b.priority)
+  || Number(a.priority) - Number(b.priority) || String(a.created_at).localeCompare(String(b.created_at)) || String(a.id).localeCompare(String(b.id))
 
 const DEFAULTS: Record<string, () => Row> = {
   settings: () => ({ business_email: '', minimum_fee: 0, site_visit_hours: 3, retainer_percent: 0, proposal_template: '' }),
   clients: () => ({ contact_name: '', email: '', phone: '', address: '', notes: '', is_sample: false }),
-  jobs: () => ({ job_number: '', description: '', address: '', status: 'active', priority: 100, fee: null, job_type_id: null, size: null, use_in_estimates: true, estimate_note: '', closeout_reason: '', queued_date: null, start_date: null, due_date: null }),
+  jobs: () => ({ job_number: '', description: '', address: '', status: 'active', priority: 100, client_priority: null, fee: null, job_type_id: null, size: null, use_in_estimates: true, estimate_note: '', closeout_reason: '', queued_date: null, start_date: null, due_date: null }),
   job_types: () => ({ design_hours: 0, plan_check_hours: 0, construction_hours: 0, site_visits: 0, size_unit: '', keywords: '', notes: '' }),
   past_jobs: () => ({ client: '', address: '', job_type_id: null, date: null, fee: null, hours: null, size: null, scope: '', source: '', use_in_estimates: true }),
   quotes: () => ({ job_type_id: null, rate: 0, design_hours: 0, plan_check_hours: 0, construction_hours: 0, site_visits: 0, visit_hours: 0, allowance_hours: 0, rush_percent: 0, size: null, suggested_fee: 0, fee: 0, fee_note: '' }),
@@ -58,6 +60,7 @@ class MockDB {
 
   prepareInsert(table: string, input: Row): Row {
     const row: Row = { id: uuid(), created_at: nowISO(), ...(DEFAULTS[table]?.() ?? {}), ...input }
+    if (table === 'jobs') row.client_priority = this.nextClientPriority(row.client_id)
     if (table === 'time_entries' && row.rate == null) {
       const profile = this.rows('profiles').find(p => p.id === row.user_id)
       row.rate = (profile?.hourly_rate as number | null) ?? (this.rows('settings')[0]?.default_rate as number) ?? 150
@@ -65,6 +68,10 @@ class MockDB {
     if (PLANNING.has(table)) Object.assign(row, { revision: 1, updated_at: nowISO() })
     this.normalizeBilling(table, row, undefined)
     return row
+  }
+
+  nextClientPriority(clientId: unknown, exceptId?: unknown) {
+    return Math.max(0, ...this.rows('jobs').filter(j => j.client_id === clientId && j.id !== exceptId).map(j => Number(j.client_priority ?? j.priority))) + 1
   }
 
   // Same rule as the database trigger: work that is not on an invoice keeps no credit.
@@ -169,7 +176,12 @@ class Query implements PromiseLike<Result> {
         const created: Row[] = []
         for (const raw of input) {
           const existing = this.op === 'upsert' && raw.id != null ? db.rows(table).find(r => same(r.id, raw.id)) : undefined
-          if (existing) { Object.assign(existing, raw); created.push(existing); continue }
+          if (existing) {
+            const moved = table === 'jobs' && raw.client_id != null && raw.client_id !== existing.client_id
+            Object.assign(existing, raw)
+            if (moved) existing.client_priority = db.nextClientPriority(existing.client_id, existing.id)
+            created.push(existing); continue
+          }
           const row = db.prepareInsert(table, raw)
           db.rows(table).push(row)
           created.push(row)
@@ -183,6 +195,7 @@ class Query implements PromiseLike<Result> {
         for (const r of rows) {
           const old = { ...r }
           Object.assign(r, clone(this.payload as Row))
+          if (table === 'jobs' && r.client_id !== old.client_id) r.client_priority = db.nextClientPriority(r.client_id, r.id)
           if (PLANNING.has(table)) { r.revision = (old.revision as number) + 1; r.updated_at = nowISO(); r.created_at = old.created_at }
           db.normalizeBilling(table, r, old)
         }
@@ -210,6 +223,30 @@ class Rpc implements PromiseLike<Result> {
   }
   private run(): Result {
     const db = this.db, a = this.args
+    if (this.name === 'reorder_client_jobs') {
+      if (db.failNext === 'jobs' || db.failNext === '*') {
+        db.failNext = null
+        return { data: null, error: { message: 'Simulated network failure' } }
+      }
+      const clientJobs = db.rows('jobs').filter(j => j.client_id === a.p_client_id).sort(clientOrder)
+      const current = clientJobs.filter(j => j.status === 'active' || j.status === 'on_hold').map(j => j.id)
+      const expected = a.p_expected_ids as string[] | null, ordered = a.p_ordered_ids as string[] | null
+      if (!db.rows('clients').some(c => c.id === a.p_client_id) || !expected || !ordered) {
+        return { data: null, error: { message: 'Invalid client job order.' } }
+      }
+      if (JSON.stringify(current) !== JSON.stringify(expected)) {
+        return { data: null, error: { message: 'The client job list changed. Refresh and try again.', code: '40001' } }
+      }
+      if (ordered.length !== expected.length || new Set(ordered).size !== ordered.length || ordered.some(id => !expected.includes(id))) {
+        return { data: null, error: { message: 'The new order must contain each open client job exactly once.' } }
+      }
+      let index = 0
+      const byId = new Map(clientJobs.map(j => [j.id, j]))
+      const next = clientJobs.map(j => expected.includes(String(j.id)) ? byId.get(ordered[index++])! : j)
+      next.forEach((j, i) => { j.client_priority = i + 1 })
+      db.emit('jobs', 'UPDATE')
+      return { data: null, error: null }
+    }
     if (this.name === 'record_invoice') {
       const invoice = db.prepareInsert('invoices', { job_id: a.p_job_id, number: a.p_number ?? '', amount: a.p_amount, issued_date: a.p_issued_date, paid_date: a.p_paid_date ?? null, notes: a.p_notes ?? '' })
       db.rows('invoices').push(invoice)

@@ -8,6 +8,11 @@ on:
 permissions:
   contents: read
 
+# Keep a slow registry response from blocking the build indefinitely.
+env:
+  NPM_CONFIG_FETCH_TIMEOUT: "60000"
+  NPM_CONFIG_FETCH_RETRIES: "1"
+
 jobs:
   check:
     runs-on: ubuntu-latest
