@@ -42,4 +42,9 @@ describe('automatic job typing', () => {
     expect(g?.type.id).toBe('add')
     expect(guessType({ ...s, pastJobs: [] , jobs: [] }, 'Sunroom for the Parks')).toBeNull()
   })
+
+  it('learns from the names of jobs already typed, not only their scope', () => {
+    const s = { jobTypes: types, pastJobs: [], jobs: [job('a', 'Lee sunroom', '', 'add'), job('b', 'Ortiz sunroom', '', 'add'), job('c', 'Ng sunroom', '', 'add')] }
+    expect(guessType(s, 'Parks sunroom')?.type.id).toBe('add')
+  })
 })
