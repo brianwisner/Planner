@@ -40,7 +40,7 @@ interface JobSpec {
 export function seedData(): Record<string, Row[]> {
   counter = 0
   const created = (days: number) => at(days, 9)
-  const settings = [{ id: 1, company_name: 'Wisner Engineering', business_email: 'office@example.com', default_rate: 185, weekly_capacity: 40, minimum_fee: 1200, site_visit_hours: 3, retainer_percent: 25, proposal_template: '' }]
+  const settings = [{ id: 1, company_name: 'Wisner Engineering', business_email: 'office@example.com', default_rate: 185, weekly_capacity: 40, minimum_fee: 1200, site_visit_hours: 3, retainer_percent: 25, proposal_template: '', letterhead: 'PO Box 4410, Bellingham, WA 98227\n(360) 555-0100', signature: 'Brian Wisner, P.E.\nPrincipal', visit_closing: '' }]
   const profiles = [{ id: DEMO_USER.id, email: DEMO_USER.email, full_name: 'Brian Wisner', color: '#2f5bea', hourly_rate: null, weekly_hours: 40, ics_token: 'demo-token', created_at: created(-90) }]
 
   const clientSpecs = [
@@ -275,8 +275,51 @@ export function seedData(): Record<string, Row[]> {
     { id: uid('m'), job_id: jobIds.fourplex, user_id: DEMO_USER.id, body: 'Architect moved the stair to the east wall — framing at grid 3 needs a new header.', created_at: at(-2, 16) },
   ]
 
+  // Site visit reports: one sent (with photos), one still a draft.
+  const site_visits: Row[] = [], site_photos: Row[] = []
+  const visit = (job: string, day: number, fields: Row, photos: [string, string][] = []) => {
+    const id = uid('v')
+    site_visits.push({ id, job_id: jobIds[job], task_id: null, visit_date: iso(day), purpose: '', weather: '', present: '', observations: '', corrections: '', conclusion: 'These observations are based on a visual review of the work that was accessible at the time of the visit. The visit was made to observe general conformance with the structural design; it is not a special inspection and does not guarantee the contractor\'s work. The contractor remains responsible for construction means, methods and safety, and for building the work to the approved plans. Please contact me with any questions.', sent_date: null, user_id: DEMO_USER.id, created_at: at(day, 15), ...fields })
+    photos.forEach(([name, caption], i) => site_photos.push({ id: uid('f'), visit_id: id, path: `${jobIds[job]}/${id}/${name}.jpg`, caption, sort_order: i + 1, created_at: at(day, 11, i) }))
+  }
+  visit('mezz', -6, {
+    purpose: 'Footing reinforcing and anchor bolts before the pour',
+    weather: 'Overcast, 48°F', present: 'Mike Thornton (Cascade Builders); county inspector',
+    observations: 'Footing excavations at grid lines A–C were clean, level and cut to the sizes shown on S2.0.\nBottom reinforcing (#5 at 12" each way) was on chairs with about 3" of cover.\nAnchor bolts at the moment frame columns were set with the steel template; projection checked at three columns.\nHold-down anchors at the stair wall were in place per detail 7/S3.1.',
+    corrections: 'Add the two #5 dowels missing at the grid B2 column pier before the pour.\nTie the loose top bar at the east end of footing F3.',
+    sent_date: iso(-5),
+  }, [['footing-f3', 'Footing F3 reinforcing before the pour'], ['holdown', 'Hold-down anchor at the stair wall'], ['footing-b2', 'Grid B2 pier: dowels to be added']])
+  visit('lot7', -10, {
+    purpose: 'Helical pier layout and first installations',
+    weather: 'Light rain', present: 'Rachel Kim (Bayside Homes); pier installer',
+    observations: 'Pier locations P1–P4 were marked per the revised layout.\nP1 and P2 reached the torque on the installation log at about 18 ft.',
+  }, [['footing-piers', 'Piers P1 and P2 installed']])
+
+  // Plan check: the church is mid-response; the remodel's responses went back.
+  const plan_check_rounds: Row[] = [], plan_check_comments: Row[] = []
+  const round = (job: string, fields: Row, items: [string, string, string, boolean][]) => {
+    const id = uid('r')
+    plan_check_rounds.push({ id, job_id: jobIds[job], round: 1, agency: '', reviewer: '', permit_number: '', received_date: null, sent_date: null, notes: '', created_at: created(-9), ...fields })
+    items.forEach(([number, comment, response, done], i) => plan_check_comments.push({ id: uid('k'), round_id: id, number, comment, response, done, sort_order: i + 1, created_at: created(-9) }))
+  }
+  round('church', { agency: 'Skagit County Planning & Development Services', reviewer: 'Karen Lund', permit_number: 'BP26-0412', received_date: iso(-9) }, [
+    ['1', 'Provide anchor spacing on the wall sections, not only in the anchor schedule.', 'Anchor spacing is now shown on sections 3/S4.1 and 5/S4.1.', true],
+    ['2', 'Show the diaphragm nailing for the new plywood overlay, including boundary and edge nailing.', 'Nailing schedule added to the roof framing plan, sheet S2.1.', true],
+    ['3', 'Provide calculations for out-of-plane bracing of the gable end walls.', 'Calculations added on pages 34–37.', true],
+    ['4', 'Identify the adhesive anchor product and its ICC-ES report number.', 'Simpson SET-3G (ESR-4057) is called out in the general notes on S0.1.', true],
+    ['5', 'Verify the existing roof trusses for the added collector loads.', '', false],
+    ['6', 'Adhesive anchors require special inspection. Add them to the statement of special inspections.', 'Added to the special inspection table on S0.1.', false],
+    ['7', 'Provide a detail for the new collector connection at the bell tower.', '', false],
+  ])
+  round('remodel', { agency: 'City of Bellingham Permit Center', reviewer: 'J. Ortega', permit_number: 'BLD2026-0388', received_date: iso(-20), sent_date: iso(-10), notes: 'Revised sheets S1 and S2 and the updated calculations are attached.' }, [
+    ['S-1', 'Provide the beam bearing detail at the new post.', 'Detail 4/S2 added.', true],
+    ['S-2', 'Show the footing size under the new post on the foundation plan.', 'Footing F1 (24" square × 12") is now on the foundation plan, S1.', true],
+    ['S-3', 'Specify the temporary shoring for removing the bearing wall.', 'Shoring note 6 added to S1: shore both sides of the wall until the beam is installed.', true],
+  ])
+
   return {
     settings, profiles, clients, job_types, past_jobs, jobs, quotes, phases, tasks, invoices, deposits, time_entries: time, job_items, schedule_entries, comments,
+    site_visits, site_photos, plan_check_rounds, plan_check_comments,
     daily_reviews: [], follow_ups: [], daily_availability: [], availability_blocks: [], job_planning: [], job_decisions: [], planning_events: [],
   }
 }

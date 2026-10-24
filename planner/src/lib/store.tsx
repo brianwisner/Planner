@@ -6,7 +6,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import type { Session } from '@supabase/supabase-js'
 import { supabase } from './supabase'
-import type { Client, Comment, Deposit, Invoice, Job, JobItem, JobType, PastJob, Phase, Quote, Profile, ScheduleEntry, Settings, Task, TimeEntry } from './types'
+import type { Client, Comment, Deposit, Invoice, Job, JobItem, JobType, PastJob, Phase, PlanCheckComment, PlanCheckRound, Quote, Profile, ScheduleEntry, Settings, SitePhoto, SiteVisit, Task, TimeEntry } from './types'
 import type { InvoiceWorkLink } from './billingActions'
 
 export interface Tables {
@@ -25,15 +25,20 @@ export interface Tables {
   schedule_entries: ScheduleEntry
   time_entries: TimeEntry
   comments: Comment
+  site_visits: SiteVisit
+  site_photos: SitePhoto
+  plan_check_rounds: PlanCheckRound
+  plan_check_comments: PlanCheckComment
 }
 export type TableName = keyof Tables
 
-const TABLE_NAMES: TableName[] = ['settings', 'profiles', 'clients', 'job_types', 'past_jobs', 'jobs', 'quotes', 'phases', 'tasks', 'invoices', 'deposits', 'job_items', 'schedule_entries', 'time_entries', 'comments']
+const TABLE_NAMES: TableName[] = ['settings', 'profiles', 'clients', 'job_types', 'past_jobs', 'jobs', 'quotes', 'phases', 'tasks', 'invoices', 'deposits', 'job_items', 'schedule_entries', 'time_entries', 'comments', 'site_visits', 'site_photos', 'plan_check_rounds', 'plan_check_comments']
 
 type Data = { [K in TableName]: Tables[K][] }
 
 const emptyData: Data = {
   settings: [], profiles: [], clients: [], job_types: [], past_jobs: [], jobs: [], quotes: [], phases: [], tasks: [], invoices: [], deposits: [], job_items: [], schedule_entries: [], time_entries: [], comments: [],
+  site_visits: [], site_photos: [], plan_check_rounds: [], plan_check_comments: [],
 }
 
 export interface ToastAction { label: string; run: () => void | Promise<unknown> }
@@ -57,11 +62,17 @@ export interface Store {
   schedule: ScheduleEntry[]
   timeEntries: TimeEntry[]
   comments: Comment[]
+  siteVisits: SiteVisit[]
+  sitePhotos: SitePhoto[]
+  planRounds: PlanCheckRound[]
+  planComments: PlanCheckComment[]
   loading: boolean
   error: string | null
   online: boolean
   refresh: (table?: TableName) => Promise<void>
   insert: <K extends TableName>(table: K, row: Partial<Tables[K]>) => Promise<Tables[K] | null>
+  /** Several rows in one request (all or nothing). */
+  insertMany: <K extends TableName>(table: K, rows: Partial<Tables[K]>[]) => Promise<Tables[K][] | null>
   update: <K extends TableName>(table: K, id: string | number, patch: Partial<Tables[K]>) => Promise<boolean>
   /** Save only if the supplied previous values still match the database row. */
   conditionalUpdate: <K extends TableName>(table: K, id: string | number, patch: Partial<Tables[K]>, expected: Partial<Tables[K]>) => Promise<boolean>
@@ -163,6 +174,16 @@ export function DataProvider({ session, children }: { session: Session | null; c
     return created as Tables[K]
   }, [toast, fetchTable])
 
+  const insertMany = useCallback(async <K extends TableName>(table: K, rows: Partial<Tables[K]>[]) => {
+    if (!rows.length) return []
+    const { data: created, error: err } = await supabase.from(table).insert(rows as never).select('*')
+    if (err) { toast(`Could not save: ${err.message}`, 'error'); return null }
+    const added = (created ?? []) as Tables[K][]
+    const ids = new Set(added.map(r => (r as { id: unknown }).id))
+    setData(d => ({ ...d, [table]: [...d[table].filter(r => !ids.has((r as { id: unknown }).id)), ...added] }))
+    return added
+  }, [toast])
+
   const update = useCallback(async <K extends TableName>(table: K, id: string | number, patch: Partial<Tables[K]>) => {
     // Optimistic: apply locally first so the UI feels instant.
     setData(d => ({ ...d, [table]: d[table].map(r => (r as { id: string | number }).id === id ? { ...r, ...patch } : r) }))
@@ -228,7 +249,7 @@ export function DataProvider({ session, children }: { session: Session | null; c
 
   const value = useMemo<Store>(() => {
     const me = data.profiles.find(p => p.id === session?.user.id) ?? null
-    const settings: Settings = data.settings[0] ?? { id: 1, company_name: 'Wisner Engineering', business_email: '', default_rate: 150, weekly_capacity: 40, minimum_fee: 0, site_visit_hours: 3, retainer_percent: 0, proposal_template: '' }
+    const settings: Settings = data.settings[0] ?? { id: 1, company_name: 'Wisner Engineering', business_email: '', default_rate: 150, weekly_capacity: 40, minimum_fee: 0, site_visit_hours: 3, retainer_percent: 0, proposal_template: '', letterhead: '', signature: '', visit_closing: '' }
     return {
       session, me, settings,
       profiles: [...data.profiles].sort((a, b) => a.full_name.localeCompare(b.full_name)),
@@ -245,9 +266,13 @@ export function DataProvider({ session, children }: { session: Session | null; c
       schedule: [...data.schedule_entries].sort((a, b) => a.date.localeCompare(b.date)),
       timeEntries: [...data.time_entries].sort((a, b) => b.date.localeCompare(a.date) || b.created_at.localeCompare(a.created_at)),
       comments: [...data.comments].sort((a, b) => a.created_at.localeCompare(b.created_at)),
-      loading, error, online, refresh, insert, update, conditionalUpdate, remove, recordInvoice, fetchWhere, signOut, toast, dismissToast, toasts,
+      siteVisits: [...data.site_visits].sort((a, b) => b.visit_date.localeCompare(a.visit_date) || b.created_at.localeCompare(a.created_at)),
+      sitePhotos: [...data.site_photos].sort((a, b) => a.sort_order - b.sort_order || a.created_at.localeCompare(b.created_at)),
+      planRounds: [...data.plan_check_rounds].sort((a, b) => a.round - b.round || a.created_at.localeCompare(b.created_at)),
+      planComments: [...data.plan_check_comments].sort((a, b) => a.sort_order - b.sort_order || a.created_at.localeCompare(b.created_at)),
+      loading, error, online, refresh, insert, insertMany, update, conditionalUpdate, remove, recordInvoice, fetchWhere, signOut, toast, dismissToast, toasts,
     }
-  }, [data, session, loading, error, online, refresh, insert, update, conditionalUpdate, remove, recordInvoice, fetchWhere, signOut, toast, dismissToast, toasts])
+  }, [data, session, loading, error, online, refresh, insert, insertMany, update, conditionalUpdate, remove, recordInvoice, fetchWhere, signOut, toast, dismissToast, toasts])
 
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>
 }

@@ -16,6 +16,9 @@ import { Time } from './pages/Time'
 import { Money } from './pages/Money'
 
 import { InvoiceView } from './pages/InvoiceView'
+import { SiteVisitPage } from './pages/SiteVisitPage'
+import { SiteVisitReport } from './pages/SiteVisitReport'
+import { PlanCheckLetter } from './pages/PlanCheckLetter'
 import { Clients } from './pages/Clients'
 import { ClientPage } from './pages/ClientPage'
 import { Settings } from './pages/Settings'
@@ -51,6 +54,9 @@ export default function App() {
                 <Route path="/" element={<Today />} />
                 <Route path="/jobs" element={<Jobs />} />
                 <Route path="/jobs/:id" element={<JobPage />} />
+                <Route path="/jobs/:id/visits/:visitId" element={<SiteVisitPage />} />
+                <Route path="/jobs/:id/visits/:visitId/report" element={<SiteVisitReport />} />
+                <Route path="/jobs/:id/plan-check/:roundId" element={<PlanCheckLetter />} />
                 <Route path="/schedule" element={<Schedule />} />
                 <Route path="/time" element={<Time />} />
                 <Route path="/money" element={<Money />} />

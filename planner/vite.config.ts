@@ -10,7 +10,11 @@ export default defineConfig(({ mode }) => ({
   // flag at build time lets the production build leave the demo code out.
   define: { __DEMO__: JSON.stringify(mode === 'demo') },
   base: './',
-  build: { chunkSizeWarningLimit: 900 },
+  build: {
+    chunkSizeWarningLimit: 900,
+    // The database library (including photo storage) loads as its own file.
+    rolldownOptions: { output: { codeSplitting: { groups: [{ name: 'supabase', test: /node_modules[\\/]@supabase/ }] } } },
+  },
   test: {
     environment: 'jsdom',
     include: ['src/**/*.test.{ts,tsx}', 'supabase/functions/**/*.test.ts'],

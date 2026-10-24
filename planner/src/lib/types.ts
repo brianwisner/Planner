@@ -16,6 +16,9 @@ export interface Settings {
   site_visit_hours: number      // hours per site visit, including travel and follow-up
   retainer_percent: number      // retainer shown on proposals; 0 leaves it out
   proposal_template: string     // blank uses DEFAULT_PROPOSAL_TEMPLATE in lib/estimate.ts
+  letterhead: string            // address/phone lines under the company name on invoices, reports, letters
+  signature: string             // sign-off on reports and letters; blank = the owner's name
+  visit_closing: string         // closing paragraph of site visit reports; blank = DEFAULT_VISIT_CLOSING
 }
 
 export interface Profile {
@@ -224,6 +227,58 @@ export interface Comment {
   job_id: string
   user_id: string | null
   body: string
+  created_at: string
+}
+
+/** Notes and photos from one trip to the site, printed as a site observation report. */
+export interface SiteVisit {
+  id: string
+  job_id: string
+  task_id: string | null        // the scheduled site-visit task it came from, if any
+  visit_date: string
+  purpose: string
+  weather: string
+  present: string               // who was there
+  observations: string          // one item per line
+  corrections: string           // items to fix, one per line
+  conclusion: string            // closing paragraph
+  sent_date: string | null
+  user_id: string | null
+  created_at: string
+}
+
+/** A photo from a site visit. The file is in the private "site-photos" storage bucket. */
+export interface SitePhoto {
+  id: string
+  visit_id: string
+  path: string
+  caption: string
+  sort_order: number
+  created_at: string
+}
+
+/** One set of plan-check comments from the building department. */
+export interface PlanCheckRound {
+  id: string
+  job_id: string
+  round: number
+  agency: string
+  reviewer: string
+  permit_number: string
+  received_date: string | null  // date of the comment letter
+  sent_date: string | null      // when the responses went back
+  notes: string                 // cover note printed in the response letter
+  created_at: string
+}
+
+export interface PlanCheckComment {
+  id: string
+  round_id: string
+  number: string                // the reviewer's numbering, e.g. "3" or "S-3"
+  comment: string
+  response: string
+  done: boolean
+  sort_order: number
   created_at: string
 }
 

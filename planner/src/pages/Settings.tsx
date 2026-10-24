@@ -2,7 +2,7 @@
 // reminders, installing on a phone, and links to other tools.
 import { useEffect, useState } from 'react'
 import { useLocation } from 'react-router-dom'
-import { Bell, Briefcase, Calculator, CalendarDays, Copy, Download, ExternalLink, History, Keyboard, LogOut, Moon, Monitor, Palette, Smartphone, Sun, Trash2, User } from 'lucide-react'
+import { Bell, Briefcase, Calculator, CalendarDays, Copy, Download, ExternalLink, FileSignature, History, Keyboard, LogOut, Moon, Monitor, Palette, Smartphone, Sun, Trash2, User } from 'lucide-react'
 import { useData } from '../lib/store'
 import { DEMO, SUPABASE_URL, supabase } from '../lib/supabase'
 import { isEmailAddress } from '../lib/email'
@@ -11,6 +11,7 @@ import { enableNotifications } from '../lib/reminders'
 import { buildICS, calendarItems } from '../lib/calendar'
 import { downloadText, fmtMoney, todayISO } from '../lib/utils'
 import { DEFAULT_PROPOSAL_TEMPLATE, PROPOSAL_FIELDS } from '../lib/estimate'
+import { DEFAULT_VISIT_CLOSING } from '../lib/siteVisits'
 import { Avatar, Field, NumberInput, Segmented, useConfirm } from '../components/ui'
 import './settings.css'
 
@@ -31,7 +32,10 @@ export function Settings() {
     minimum_fee: Number(settings.minimum_fee) || 0 as number | null, site_visit_hours: Number(settings.site_visit_hours) as number | null,
     retainer_percent: Number(settings.retainer_percent) || 0 as number | null, proposal_template: settings.proposal_template?.trim() || DEFAULT_PROPOSAL_TEMPLATE,
   }))
-  const [busy, setBusy] = useState<'profile' | 'business' | 'estimator' | 'password' | 'sample' | null>(null)
+  const [letters, setLetters] = useState(() => ({
+    letterhead: settings.letterhead ?? '', signature: settings.signature ?? '', visit_closing: settings.visit_closing?.trim() || DEFAULT_VISIT_CLOSING,
+  }))
+  const [busy, setBusy] = useState<'profile' | 'business' | 'estimator' | 'letters' | 'password' | 'sample' | null>(null)
   // Links like /settings#calendar scroll to that card.
   const { hash } = useLocation()
   useEffect(() => { if (hash) document.getElementById(hash.slice(1))?.scrollIntoView({ block: 'start' }) }, [hash])
@@ -78,6 +82,18 @@ export function Settings() {
     })
     setBusy(null)
     if (ok) toast('Fee estimator settings saved')
+  }
+  async function saveLetters() {
+    if (busy) return
+    const closing = letters.visit_closing.trim()
+    setBusy('letters')
+    const ok = await update('settings', 1, {
+      letterhead: letters.letterhead.trim(), signature: letters.signature.trim(),
+      // Saving the standard wording unchanged keeps it blank, so later improvements to it still apply.
+      visit_closing: closing === DEFAULT_VISIT_CLOSING ? '' : closing,
+    })
+    setBusy(null)
+    if (ok) toast('Letter settings saved')
   }
   async function changePassword() {
     if (busy) return
@@ -188,6 +204,28 @@ export function Settings() {
             <div className="row between wrap">
               <button type="button" className="btn ghost sm" onClick={() => setEstimator(x => ({ ...x, proposal_template: DEFAULT_PROPOSAL_TEMPLATE }))} disabled={estimator.proposal_template.trim() === DEFAULT_PROPOSAL_TEMPLATE.trim()}>Use the standard wording</button>
               <button className="btn primary" disabled={busy !== null}>{busy === 'estimator' ? 'Saving…' : 'Save estimator settings'}</button>
+            </div>
+          </form>
+        </section>
+
+        <section className="card" id="letters">
+          <div className="card-head"><h2><FileSignature size={17} className="muted" /> Letters and reports</h2></div>
+          <form className="card-body form-fields" onSubmit={e => { e.preventDefault(); void saveLetters() }}>
+            <p className="small soft">Used on invoices, site visit reports and plan check response letters.</p>
+            <div className="field-grid">
+              <Field label="Letterhead" htmlFor="set-letterhead" hint={`Lines under “${settings.company_name}”, like your address and phone. Your business email is added below them.`}>
+                <textarea id="set-letterhead" className="input" rows={3} value={letters.letterhead} onChange={e => setLetters(x => ({ ...x, letterhead: e.target.value }))} placeholder={'PO Box 123, Bellingham, WA 98227\n(360) 555-0100'} />
+              </Field>
+              <Field label="Signature" htmlFor="set-signature" hint="How you sign reports and letters. Blank uses your name.">
+                <textarea id="set-signature" className="input" rows={3} value={letters.signature} onChange={e => setLetters(x => ({ ...x, signature: e.target.value }))} placeholder={`${me?.full_name || 'Your name'}, P.E.\nPrincipal`} />
+              </Field>
+            </div>
+            <Field label="Site visit report closing" htmlFor="set-visit-closing" hint="New site visit reports start with this paragraph; you can change it on each report.">
+              <textarea id="set-visit-closing" className="input" rows={4} value={letters.visit_closing} onChange={e => setLetters(x => ({ ...x, visit_closing: e.target.value }))} />
+            </Field>
+            <div className="row between wrap">
+              <button type="button" className="btn ghost sm" onClick={() => setLetters(x => ({ ...x, visit_closing: DEFAULT_VISIT_CLOSING }))} disabled={letters.visit_closing.trim() === DEFAULT_VISIT_CLOSING}>Use the standard wording</button>
+              <button className="btn primary" disabled={busy !== null}>{busy === 'letters' ? 'Saving…' : 'Save letter settings'}</button>
             </div>
           </form>
         </section>

@@ -14,7 +14,10 @@ create table if not exists settings (
   minimum_fee numeric not null default 0 check (minimum_fee >= 0),           -- fee estimator floor
   site_visit_hours numeric not null default 3 check (site_visit_hours >= 0), -- per visit, with travel
   retainer_percent numeric not null default 0 check (retainer_percent between 0 and 100),
-  proposal_template text not null default ''      -- blank = the app's standard wording
+  proposal_template text not null default '',     -- blank = the app's standard wording
+  letterhead text not null default '',            -- address/phone lines under the company name on invoices, reports, letters
+  signature text not null default '',             -- sign-off on reports and letters; blank = your profile name
+  visit_closing text not null default ''          -- closing paragraph of site visit reports; blank = the app's standard wording
 );
 insert into settings (id) values (1) on conflict do nothing;
 
@@ -387,6 +390,58 @@ create table if not exists comments (
   created_at timestamptz not null default now()
 );
 
+-- ---------- Site visits: notes and photos from the site, printed as an observation report ----------
+create table if not exists site_visits (
+  id uuid primary key default gen_random_uuid(),
+  job_id uuid not null references jobs(id) on delete cascade,
+  task_id uuid references tasks(id) on delete set null,   -- the scheduled visit it came from, if any
+  visit_date date not null default current_date,
+  purpose text not null default '',        -- what was observed, e.g. "Shear wall nailing before drywall"
+  weather text not null default '',
+  present text not null default '',        -- who was there
+  observations text not null default '',   -- one item per line; numbered on the report
+  corrections text not null default '',    -- items to fix, one per line
+  conclusion text not null default '',     -- closing paragraph
+  sent_date date,                          -- when the report went out
+  user_id uuid references profiles(id) on delete set null,
+  created_at timestamptz not null default now()
+);
+
+-- Photo files live in the private "site-photos" storage bucket (see the end of this file).
+create table if not exists site_photos (
+  id uuid primary key default gen_random_uuid(),
+  visit_id uuid not null references site_visits(id) on delete cascade,
+  path text not null,                      -- file path in the site-photos bucket
+  caption text not null default '',
+  sort_order int not null default 0,
+  created_at timestamptz not null default now()
+);
+
+-- ---------- Plan check: the reviewer's comments and your responses, one round at a time ----------
+create table if not exists plan_check_rounds (
+  id uuid primary key default gen_random_uuid(),
+  job_id uuid not null references jobs(id) on delete cascade,
+  round int not null default 1 check (round >= 1),
+  agency text not null default '',         -- e.g. "City of Bellingham Permit Center"
+  reviewer text not null default '',
+  permit_number text not null default '',
+  received_date date,                      -- date of the comment letter
+  sent_date date,                          -- when the responses went back
+  notes text not null default '',          -- cover note printed in the response letter
+  created_at timestamptz not null default now()
+);
+
+create table if not exists plan_check_comments (
+  id uuid primary key default gen_random_uuid(),
+  round_id uuid not null references plan_check_rounds(id) on delete cascade,
+  number text not null default '',         -- the reviewer's numbering, e.g. "3" or "S-3"
+  comment text not null default '',
+  response text not null default '',
+  done boolean not null default false,     -- the change is made and the response written
+  sort_order int not null default 0,
+  created_at timestamptz not null default now()
+);
+
 -- Create an invoice and all of its work links in one database transaction.
 -- SECURITY INVOKER keeps the caller's existing table permissions and RLS.
 create or replace function public.record_invoice(
@@ -537,6 +592,10 @@ create index if not exists quotes_job_idx on quotes(job_id);
 create index if not exists past_jobs_type_idx on past_jobs(job_type_id);
 create index if not exists schedule_date_idx on schedule_entries(date);
 create index if not exists schedule_job_idx on schedule_entries(job_id);
+create index if not exists site_visits_job_idx on site_visits(job_id);
+create index if not exists site_photos_visit_idx on site_photos(visit_id);
+create index if not exists plan_check_rounds_job_idx on plan_check_rounds(job_id);
+create index if not exists plan_check_comments_round_idx on plan_check_comments(round_id);
 
 -- ---------- Security: only signed-in team members can see or change data ----------
 alter table settings     enable row level security;
@@ -554,11 +613,15 @@ alter table job_items    enable row level security;
 alter table schedule_entries enable row level security;
 alter table time_entries enable row level security;
 alter table comments     enable row level security;
+alter table site_visits  enable row level security;
+alter table site_photos  enable row level security;
+alter table plan_check_rounds   enable row level security;
+alter table plan_check_comments enable row level security;
 
 do $$
 declare t text;
 begin
-  foreach t in array array['settings','profiles','clients','job_types','past_jobs','jobs','quotes','phases','tasks','invoices','deposits','job_items','schedule_entries','time_entries','comments'] loop
+  foreach t in array array['settings','profiles','clients','job_types','past_jobs','jobs','quotes','phases','tasks','invoices','deposits','job_items','schedule_entries','time_entries','comments','site_visits','site_photos','plan_check_rounds','plan_check_comments'] loop
     execute format('drop policy if exists team_all on %I', t);
     execute format('create policy team_all on %I for all to authenticated using (true) with check (true)', t);
   end loop;
@@ -568,7 +631,7 @@ end $$;
 do $$
 declare t text;
 begin
-  foreach t in array array['settings','profiles','clients','job_types','past_jobs','jobs','quotes','phases','tasks','invoices','deposits','job_items','schedule_entries','time_entries','comments'] loop
+  foreach t in array array['settings','profiles','clients','job_types','past_jobs','jobs','quotes','phases','tasks','invoices','deposits','job_items','schedule_entries','time_entries','comments','site_visits','site_photos','plan_check_rounds','plan_check_comments'] loop
     begin
       execute format('alter publication supabase_realtime add table %I', t);
     exception when duplicate_object then null;
@@ -1046,3 +1109,23 @@ end;
 $$;
 revoke all on function public.reorder_client_jobs(uuid, uuid[], uuid[]) from public, anon;
 grant execute on function public.reorder_client_jobs(uuid, uuid[], uuid[]) to authenticated;
+
+-- ---------- Site photo files (private storage; only signed-in users can see them) ----------
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values ('site-photos', 'site-photos', false, 10485760, array['image/jpeg', 'image/png', 'image/webp'])
+on conflict (id) do nothing;
+
+do $$
+declare op text;
+begin
+  foreach op in array array['select', 'insert', 'update', 'delete'] loop
+    if not exists (select 1 from pg_policies where schemaname = 'storage' and tablename = 'objects' and policyname = 'site_photos_' || op) then
+      execute format(
+        'create policy %I on storage.objects for %s to authenticated %s',
+        'site_photos_' || op, op,
+        case op when 'insert' then 'with check (bucket_id = ''site-photos'')'
+                when 'update' then 'using (bucket_id = ''site-photos'') with check (bucket_id = ''site-photos'')'
+                else 'using (bucket_id = ''site-photos'')' end);
+    end if;
+  end loop;
+end $$;

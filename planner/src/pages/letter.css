@@ -1,0 +1,76 @@
+/* Printable site visit reports and plan check letters. Like invoices, the
+   document always looks like paper (white, dark ink) in light or dark mode,
+   so what you see is what prints. */
+.letter-page { max-width: 900px; margin: 0 auto; }
+.letter-toolbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 6px 0 8px; }
+.letter-toolbar .back-link { padding-left: 6px; max-width: 260px; min-width: 0; }
+.letter-tip { font-size: 12.5px; color: var(--text-3); margin: 0 0 14px; }
+.letter-warn { margin: 0 0 14px; }
+
+.letter-doc {
+  background: #fff; color: #1d2433; border: 1px solid var(--border); border-radius: 6px;
+  box-shadow: var(--shadow); padding: 52px 60px 44px; font-size: 13.5px; line-height: 1.55;
+  --ink: #1d2433; --ink-2: #4a5468; --ink-3: #6b7486; --rule: #e3e6ec; --brand: #2f5bea; --flag: #b54708;
+}
+.ltr-head { display: flex; justify-content: space-between; gap: 24px; padding-bottom: 22px; border-bottom: 3px solid var(--brand); }
+.ltr-company { font-size: 22px; font-weight: 700; letter-spacing: -0.015em; color: var(--ink); margin-bottom: 4px; }
+.ltr-muted { color: var(--ink-3); }
+.ltr-strong { font-weight: 650; color: var(--ink); }
+.ltr-title-block { text-align: right; }
+.ltr-title { font-size: 16px; font-weight: 750; letter-spacing: 0.1em; text-transform: uppercase; color: var(--brand); margin-bottom: 8px; }
+.ltr-facts { display: grid; gap: 2px; margin: 0; justify-content: end; }
+.ltr-fact { display: flex; justify-content: flex-end; gap: 12px; }
+.ltr-facts dt { color: var(--ink-3); }
+.ltr-facts dd { margin: 0; font-weight: 600; color: var(--ink); }
+
+.ltr-info { display: grid; grid-template-columns: max-content 1fr; gap: 5px 18px; margin: 22px 0 0; }
+.ltr-info dt { color: var(--ink-3); }
+.ltr-info dd { margin: 0; color: var(--ink); }
+.ltr-h { font-size: 11.5px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--brand); border-bottom: 1px solid var(--rule); padding-bottom: 5px; margin: 26px 0 10px; }
+.ltr-p { margin: 0 0 12px; color: var(--ink); white-space: pre-wrap; }
+.ltr-list { margin: 0; padding-left: 24px; }
+.ltr-list li { margin: 0 0 6px; padding-left: 4px; }
+.ltr-none { color: var(--ink-3); margin: 0; }
+
+.ltr-photos { display: grid; grid-template-columns: 1fr 1fr; gap: 18px 16px; }
+.ltr-photos figure { margin: 0; break-inside: avoid; }
+.ltr-photos img { display: block; width: 100%; aspect-ratio: 4 / 3; object-fit: contain; background: #f2f3f5; border: 1px solid var(--rule); border-radius: 4px; }
+.ltr-photos .ltr-photo-wait { aspect-ratio: 4 / 3; background: #f2f3f5; border-radius: 4px; }
+.ltr-photos figcaption { font-size: 12px; color: var(--ink-2); margin-top: 5px; }
+
+.ltr-to { margin: 24px 0 0; color: var(--ink); }
+.ltr-re { display: grid; grid-template-columns: max-content 1fr; gap: 2px 14px; margin: 18px 0; }
+.ltr-re dt { font-weight: 700; }
+.ltr-re dd { margin: 0; }
+.ltr-comments { margin: 6px 0 0; padding: 0; list-style: none; }
+.ltr-comment { display: grid; grid-template-columns: 44px 1fr; padding: 10px 0; border-bottom: 1px solid var(--rule); break-inside: avoid; }
+.ltr-comment:last-child { border-bottom: 0; }
+.ltr-num { font-weight: 700; color: var(--ink); }
+.ltr-q { color: var(--ink-2); font-style: italic; margin-bottom: 4px; }
+.ltr-a strong { color: var(--ink); }
+.ltr-missing { color: var(--flag); }
+
+.ltr-sign { margin-top: 30px; break-inside: avoid; color: var(--ink); }
+.ltr-sign p { margin: 0; }
+.ltr-sign-space { height: 36px; }
+
+@media (max-width: 760px) {
+  .letter-toolbar .btn { min-height: 40px; }
+  .letter-toolbar .back-link { max-width: 100%; flex: 1 1 100%; justify-content: flex-start; }
+  .letter-doc { padding: 24px 18px 22px; font-size: 12.5px; border-radius: 4px; }
+  .ltr-head { flex-direction: column; gap: 14px; padding-bottom: 16px; }
+  .ltr-title-block { text-align: left; }
+  .ltr-facts { justify-content: start; }
+  .ltr-fact { justify-content: flex-start; }
+  .ltr-company { font-size: 18px; }
+  .ltr-photos { grid-template-columns: 1fr; }
+  .ltr-comment { grid-template-columns: 34px 1fr; }
+}
+
+@media print {
+  @page { margin: 0.6in; }
+  .letter-page { max-width: none; }
+  .letter-doc { border: 0; box-shadow: none; border-radius: 0; padding: 0; font-size: 11pt; }
+  .ltr-photos { grid-template-columns: 1fr 1fr !important; }
+  * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+}

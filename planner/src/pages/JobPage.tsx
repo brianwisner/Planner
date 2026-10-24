@@ -2,13 +2,16 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, Navigate, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import {
-  Calculator, Check, ChevronRight, Clock, Ellipsis, FileText, Mail, MapPin, MessageSquare, Pencil, Phone, Play, Plus, Receipt, Square, Trash2, Wallet,
+  Calculator, Camera, Check, ChevronRight, ClipboardCheck, Clock, Ellipsis, FileText, Mail, MapPin, MessageSquare, Pencil, Phone, Play, Plus, Receipt, Square, Trash2, Wallet,
 } from 'lucide-react'
 import { useData } from '../lib/store'
 import { EMAIL_TARGET, useEmailLink } from '../lib/email'
 import { useEditors } from '../components/editors'
 import { TaskRow } from '../components/TaskRow'
 import { JobMoneyPanel } from '../components/JobMoneyPanel'
+import { JobPlanCheck } from '../components/JobPlanCheck'
+import { JobSiteVisits } from '../components/JobSiteVisits'
+import { planCheckStatus } from '../lib/planCheck'
 import { DueText, Empty, Menu, NumberInput, Progress, useConfirm, type MenuEntry } from '../components/ui'
 import { STAGES, STAGE_LABEL, type Stage } from '../lib/stages'
 import { moveJobToStage, setJobStatus } from '../lib/jobActions'
@@ -22,7 +25,8 @@ import { CLOSEOUT_REASONS, JOB_STATUS_LABEL, PHASE_STATUS_LABEL, type JobStatus,
 import { fmtDate, fmtDateTime, fmtHourlyRate, fmtHours, fmtMoney, fmtSigned, sum, todayISO } from '../lib/utils'
 import './job.css'
 
-type Tab = 'overview' | 'time' | 'billing' | 'notes'
+type Tab = 'overview' | 'time' | 'billing' | 'plancheck' | 'visits' | 'notes'
+const TABS: Tab[] = ['overview', 'time', 'billing', 'plancheck', 'visits', 'notes']
 
 export function JobPage() {
   const { id = '' } = useParams()
@@ -31,7 +35,7 @@ export function JobPage() {
   const [params, setParams] = useSearchParams()
   const navigate = useNavigate()
   const job = store.jobs.find(j => j.id === id)
-  const tab = (['overview', 'time', 'billing', 'notes'].includes(params.get('tab') ?? '') ? params.get('tab') : 'overview') as Tab
+  const tab = ((TABS as string[]).includes(params.get('tab') ?? '') ? params.get('tab') : 'overview') as Tab
   const setTab = (t: Tab) => setParams(p => { const n = new URLSearchParams(p); if (t === 'overview') n.delete('tab'); else n.set('tab', t); n.delete('task'); return n }, { replace: true })
 
   // Deep link: /jobs/:id?task=<id> opens that task.
@@ -49,6 +53,8 @@ export function JobPage() {
 
   const { client, stage, money } = summary
   const notes = store.comments.filter(c => c.job_id === job.id)
+  const planCheck = planCheckStatus(store, job.id)
+  const visits = store.siteVisits.filter(v => v.job_id === job.id).length
   const timer = runningTimer(store)
   const timerHere = timer?.job_id === job?.id ? timer : undefined
   const open = job.status === 'active' || job.status === 'on_hold'
@@ -61,7 +67,9 @@ export function JobPage() {
     { label: 'New invoice', icon: <Receipt size={15} />, onSelect: () => edit.invoice(job.id) },
     { label: 'Estimate fee', icon: <Calculator size={15} />, onSelect: () => navigate(`/money?tab=estimate&job=${job.id}`) },
     'sep',
-    { label: 'Site visit', icon: <MapPin size={15} />, onSelect: () => edit.task(undefined, { job_id: job.id, is_site_visit: true, due_date: todayISO() }) },
+    { label: 'Schedule a site visit', icon: <MapPin size={15} />, onSelect: () => edit.task(undefined, { job_id: job.id, is_site_visit: true, due_date: todayISO() }) },
+    { label: 'Site visit report', icon: <Camera size={15} />, onSelect: () => navigate(`/jobs/${job.id}/visits/new`) },
+    { label: 'Plan check comments', icon: <ClipboardCheck size={15} />, onSelect: () => setTab('plancheck') },
   ]
 
   return <div className="job-page">
@@ -95,7 +103,9 @@ export function JobPage() {
       : <div className="closed-note">{job.status === 'complete' ? <Check size={16} /> : null}This job is {JOB_STATUS_LABEL[job.status].toLowerCase()}. Its hours, invoices and notes are kept. {job.status !== 'archived' && <button className="btn sm" onClick={() => void setJobStatus(store, job, 'active')}>Reopen</button>}</div>}
 
     <div className="tabs" role="tablist">
-      {([['overview', 'Overview'], ['time', `Hours & charges`], ['billing', 'Billing'], ['notes', `Notes${notes.length ? ` (${notes.length})` : ''}`]] as [Tab, string][]).map(([t, label]) =>
+      {([['overview', 'Overview'], ['time', `Hours & charges`], ['billing', 'Billing'],
+        ['plancheck', `Plan check${planCheck?.open ? ` (${planCheck.open} open)` : ''}`], ['visits', `Site visits${visits ? ` (${visits})` : ''}`],
+        ['notes', `Notes${notes.length ? ` (${notes.length})` : ''}`]] as [Tab, string][]).map(([t, label]) =>
         <button key={t} role="tab" aria-selected={tab === t} className={tab === t ? 'on' : ''} onClick={() => setTab(t)}>{label}</button>)}
     </div>
 
@@ -103,6 +113,8 @@ export function JobPage() {
       {tab === 'overview' && <Overview jobId={job.id} />}
       {tab === 'time' && <JobTime jobId={job.id} />}
       {tab === 'billing' && <JobMoneyPanel jobId={job.id} />}
+      {tab === 'plancheck' && <JobPlanCheck jobId={job.id} />}
+      {tab === 'visits' && <JobSiteVisits jobId={job.id} />}
       {tab === 'notes' && <JobNotes jobId={job.id} />}
     </div>
     {!open && money.unbilledAmount > 0.5 && tab !== 'billing' && <p className="small muted mt">{fmtMoney(money.unbilledAmount)} of work on this job hasn't been billed yet. <button className="btn ghost xs" onClick={() => setTab('billing')}>Open billing</button></p>}

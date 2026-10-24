@@ -43,7 +43,7 @@ function quote(jobId: string, d: number, pc: number, c: number, at = '2026-01-05
 function store(jobs: Job[], timeEntries: TimeEntry[], invoices: Invoice[] = [], quotes: Quote[] = []): EstimateStore {
   return {
     jobs, phases: jobs.flatMap(j => phases(j.id)), timeEntries, invoices, deposits: [], items: [], profiles: [], quotes, jobTypes: [adu],
-    settings: { id: 1, company_name: '', business_email: '', default_rate: 150, weekly_capacity: 40, minimum_fee: 0, site_visit_hours: 3, retainer_percent: 0, proposal_template: '' },
+    settings: { id: 1, company_name: '', business_email: '', default_rate: 150, weekly_capacity: 40, minimum_fee: 0, site_visit_hours: 3, retainer_percent: 0, proposal_template: '', letterhead: '', signature: '', visit_closing: '' },
   }
 }
 

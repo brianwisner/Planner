@@ -26,7 +26,7 @@ describe('summarizeJob', () => {
     const store = {
       jobs: [job({ due_date: '2026-11-30' })], clients: [client], phases: [phase({ due_date: '2026-11-01' })],
       tasks: [task({ id: 'w', title: 'Waiting', status: 'waiting', due_date: '2026-10-22' }), task({ id: 'n', title: 'Next', due_date: '2026-10-25' }), task({ id: 'x', title: 'Done', status: 'done', due_date: '2026-10-01' })],
-      timeEntries: [], invoices: [], deposits: [], items: [], profiles: [], schedule: [], settings: { id: 1, company_name: '', business_email: '', default_rate: 100, weekly_capacity: 40, minimum_fee: 0, site_visit_hours: 3, retainer_percent: 0, proposal_template: '' },
+      timeEntries: [], invoices: [], deposits: [], items: [], profiles: [], schedule: [], settings: { id: 1, company_name: '', business_email: '', default_rate: 100, weekly_capacity: 40, minimum_fee: 0, site_visit_hours: 3, retainer_percent: 0, proposal_template: '', letterhead: '', signature: '', visit_closing: '' },
     }
     const s = summarizeJob(store, store.jobs[0], '2026-10-21')
     expect(s.nextTask?.title).toBe('Next')
@@ -45,7 +45,7 @@ describe('taskOrder', () => {
 describe('weekDays', () => {
   it('splits weekly capacity over weekdays and sums plans on active jobs only', () => {
     const days = weekDays({
-      jobs: [job(), job({ id: 'held', status: 'on_hold' })], me: null, settings: { id: 1, company_name: '', business_email: '', default_rate: 100, weekly_capacity: 40, minimum_fee: 0, site_visit_hours: 3, retainer_percent: 0, proposal_template: '' },
+      jobs: [job(), job({ id: 'held', status: 'on_hold' })], me: null, settings: { id: 1, company_name: '', business_email: '', default_rate: 100, weekly_capacity: 40, minimum_fee: 0, site_visit_hours: 3, retainer_percent: 0, proposal_template: '', letterhead: '', signature: '', visit_closing: '' },
       schedule: [{ id: 's1', job_id: 'j', phase_id: null, user_id: 'u', date: '2026-10-21', hours: 3, note: '', created_at: '' }, { id: 's2', job_id: 'held', phase_id: null, user_id: 'u', date: '2026-10-21', hours: 5, note: '', created_at: '' }],
       timeEntries: [],
     }, mondayOf('2026-10-21'), '2026-10-21')
