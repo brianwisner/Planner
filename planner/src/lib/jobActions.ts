@@ -3,9 +3,15 @@
 import type { Store } from './store'
 import type { Job, JobStatus, Phase } from './types'
 import { JOB_STATUS_LABEL } from './types'
-import { STAGE_LABEL, stageChanges, type PhaseChange, type Stage } from './stages'
+import { STAGES, STAGE_LABEL, stageChanges, type PhaseChange, type Stage } from './stages'
 
-type ActionStore = Pick<Store, 'phases' | 'jobs' | 'update' | 'toast'>
+type ActionStore = Pick<Store, 'phases' | 'jobs' | 'update' | 'toast'> & Partial<Pick<Store, 'planRounds' | 'planComments'>>
+
+/** Unticked comments in the job's latest round of plan check comments. */
+function openPlanComments(store: ActionStore, jobId: string): number {
+  const rounds = (store.planRounds ?? []).filter(r => r.job_id === jobId).sort((a, b) => b.round - a.round)
+  return rounds.length ? (store.planComments ?? []).filter(c => c.round_id === rounds[0].id && !c.done).length : 0
+}
 
 async function applyChanges(store: Pick<Store, 'update'>, changes: { id: string; to: Phase['status'] }[]): Promise<boolean> {
   const results = await Promise.all(changes.map(c => store.update('phases', c.id, { status: c.to })))
@@ -17,7 +23,10 @@ export async function moveJobToStage(store: ActionStore, job: Job, stage: Stage,
   if (!changes.length) return true
   const ok = await applyChanges(store, changes)
   if (ok && !opts.silent) {
-    store.toast(`${job.name} → ${STAGE_LABEL[stage]}`, 'ok', {
+    // Moving past plan check with comments still open is allowed, but say so.
+    const open = STAGES.indexOf(stage) > STAGES.indexOf('plan_check') ? openPlanComments(store, job.id) : 0
+    const note = open ? ` · ${open} plan check comment${open === 1 ? ' is' : 's are'} still open` : ''
+    store.toast(`${job.name} → ${STAGE_LABEL[stage]}${note}`, 'ok', {
       label: 'Undo',
       run: () => applyChanges(store, changes.map(c => ({ id: c.id, to: c.from }))),
     })

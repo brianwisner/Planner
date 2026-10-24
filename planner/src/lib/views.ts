@@ -6,9 +6,10 @@ import { entryHours, jobBilling, type JobBilling } from './calc'
 import { jobPhaseGroups } from './phases'
 import { jobStage, type JobStage } from './stages'
 import { calendarItems, type CalItem } from './calendar'
+import { planCheckStatus, type PlanCheckStatus } from './planCheck'
 import { sum, todayISO } from './utils'
 
-export type ViewStore = Pick<Store, 'jobs' | 'clients' | 'phases' | 'tasks' | 'timeEntries' | 'invoices' | 'deposits' | 'items' | 'profiles' | 'settings' | 'schedule'>
+export type ViewStore = Pick<Store, 'jobs' | 'clients' | 'phases' | 'tasks' | 'timeEntries' | 'invoices' | 'deposits' | 'items' | 'profiles' | 'settings' | 'schedule'> & Partial<Pick<Store, 'planRounds' | 'planComments'>>
 
 export const jobLabel = (job: Pick<Job, 'job_number' | 'name'>) => job.job_number ? `${job.job_number} · ${job.name}` : job.name
 
@@ -39,6 +40,8 @@ export interface JobSummary {
   estimate: number
   money: JobBilling
   plannedAhead: number
+  /** The latest round of plan check comments, if any. */
+  planCheck: PlanCheckStatus | null
 }
 
 export function summarizeJob(store: ViewStore, job: Job, today = todayISO()): JobSummary {
@@ -65,6 +68,7 @@ export function summarizeJob(store: ViewStore, job: Job, today = todayISO()): Jo
     estimate: sum(phases.map(p => p.estimate_hours)),
     money: jobBilling(store, job),
     plannedAhead: sum(store.schedule.filter(s => s.job_id === job.id && s.date >= today).map(s => s.hours)),
+    planCheck: planCheckStatus(store, job.id),
   }
 }
 

@@ -8,7 +8,7 @@ import {
 } from '@dnd-kit/core'
 import { SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { ArrowRightLeft, Briefcase, Columns3, Download, Ellipsis, GripVertical, Hourglass, List, PauseCircle, Play, Plus, Search, X } from 'lucide-react'
+import { ArrowRightLeft, Briefcase, ClipboardCheck, Columns3, Download, Ellipsis, GripVertical, Hourglass, List, PauseCircle, Play, Plus, Search, X } from 'lucide-react'
 import { useData } from '../lib/store'
 import { useEditors } from '../components/editors'
 import { DueText, Empty, Menu, Progress, Segmented, StageChip, type MenuEntry } from '../components/ui'
@@ -183,7 +183,7 @@ function DraggableCard({ row }: { row: JobSummary }) {
 
 function JobCard({ row, overlay }: { row: JobSummary; overlay?: boolean }) {
   const navigate = useNavigate()
-  const { job, client, stage, nextTask, nextDeadline, hours, estimate, money } = row
+  const { job, client, stage, nextTask, nextDeadline, hours, estimate, money, planCheck } = row
   const held = job.status === 'on_hold'
   return <article className={`job-card ${overlay ? 'overlay' : ''} ${held ? 'held' : ''}`} onClick={() => navigate(`/jobs/${job.id}`)}>
     <div className="job-card-top">
@@ -198,6 +198,9 @@ function JobCard({ row, overlay }: { row: JobSummary; overlay?: boolean }) {
     <div className="job-card-foot">
       {nextDeadline ? <DueText date={nextDeadline.date} /> : <span className="tiny muted">No dates</span>}
       {stage.state === 'waiting' && <span className="badge warn" title="Waiting on someone (client, architect, county…)"><Hourglass size={11} />Waiting</span>}
+      {stage.stage === 'plan_check' && planCheck && planCheck.total > 0 && !planCheck.round.sent_date && (planCheck.open
+        ? <span className="badge accent" title="Plan check comments not yet answered"><ClipboardCheck size={11} />{planCheck.open} of {planCheck.total} open</span>
+        : <span className="badge ok" title="Every comment is answered — the response letter is ready"><ClipboardCheck size={11} />Responses ready</span>)}
       <span className="grow" />
       {money.unbilledAmount > 0.5 && <span className="badge ok" title="Billable work not yet invoiced">{fmtMoney(money.unbilledAmount)} to bill</span>}
       {money.outstanding > 0.5 && <span className="badge warn" title="Invoiced, not yet paid">{fmtMoney(money.outstanding)} due</span>}

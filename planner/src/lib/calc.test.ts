@@ -46,7 +46,7 @@ function invoice(patch: Partial<Invoice> = {}): Invoice {
 function store(patch: Partial<MoneyStore> = {}): MoneyStore {
   return {
     timeEntries: [entry()], items: [], deposits: [deposit()], invoices: [],
-    profiles: [], settings: { id: 1, company_name: 'Test', business_email: '', default_rate: 150, weekly_capacity: 40, minimum_fee: 0, site_visit_hours: 3, retainer_percent: 0, proposal_template: '' },
+    profiles: [], settings: { id: 1, company_name: 'Test', business_email: '', default_rate: 150, weekly_capacity: 40, minimum_fee: 0, site_visit_hours: 3, retainer_percent: 0, proposal_template: '', letterhead: '', signature: '', visit_closing: '' },
     ...patch,
   }
 }

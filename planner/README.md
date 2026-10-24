@@ -13,12 +13,14 @@ The project planner for a solo structural engineering business: jobs, schedule, 
 |---|---|
 | **Today** | What needs you now: late items, today's tasks and deadlines, the next 7 days, things you're waiting on, this week's planned hours, and money to act on. Type a task and press Enter to add it for today. |
 | **Jobs** | **Board:** every open job in a column for its stage — Bidding, Ready to start, Design, Plan check, Construction, On hold. Drag a card to move the job along; the phases update for you (with Undo). **List:** your priority queue — drag ⋮⋮ to reorder; export to CSV. |
-| **A job** | The stage bar at the top (click a stage to move there), tasks, phases with estimates/dates/progress, client contact, scope, planned hours. Tabs for **Hours & charges**, **Billing** (create invoices, deposits, balance chart) and **Notes**. |
+| **A job** | The stage bar at the top (click a stage to move there), tasks, phases with estimates/dates/progress, client contact, scope, planned hours. Tabs for **Hours & charges**, **Billing** (create invoices, deposits, balance chart), **Plan check**, **Site visits** and **Notes**. |
+| **Plan check** (on a job) | Paste the reviewer's comment letter: each numbered comment becomes a line to answer and tick off. **Response letter** prints every comment with your response, ready to save as a PDF; **Mark sent** sets the job to waiting on the reviewer. Board cards show how many comments are still open. |
+| **Site visits** (on a job) | At the site, tap **New report**: take photos (shrunk on the phone so they upload fast), add captions, and type or dictate what you saw and what needs fixing. It saves as you type. **Report** is a printable site observation report with your letterhead, numbered items and the photos; **Email client** opens Gmail ready to attach the PDF. A scheduled site visit task has a **Start report** button. |
 | **Schedule** | **Week plan:** type how many hours you plan on each job each day; totals show against the hours you have, with deadlines on each day. **Timeline:** phases as bars — drag to change dates. **Calendar:** month view (or a list on phones) of deadlines, tasks and site visits. |
 | **Time** | Start/stop the timer, or type hours straight into the weekly timesheet. Every entry is listed below with its billing status; export to CSV. |
 | **Money** | What's ready to bill, unpaid invoices (with how long they've been out), deposits, and reports: hours by client and job, estimate vs actual, and what you earned per hour. Each invoice has a clean printable page — **Print / Save as PDF**, then **Email client** opens a Gmail message ready to attach it to. |
 | **Clients** | Contacts with one-tap call or Gmail, their open jobs and what they owe. |
-| **Settings** | Your rate and weekly hours, business defaults, light/dark mode, Google Calendar sync, reminders, and how to put the app on your phone. |
+| **Settings** | Your rate and weekly hours, business defaults, letterhead and signature for reports and letters, light/dark mode, Google Calendar sync, reminders, and how to put the app on your phone. |
 
 | Jobs board | A job | Week plan |
 |---|---|---|
@@ -27,6 +29,10 @@ The project planner for a solo structural engineering business: jobs, schedule, 
 | Billing on a job | Invoice | Phone |
 |---|---|---|
 | ![](docs/screenshots/desk-job-billing.png) | ![](docs/screenshots/desk-invoice.png) | ![](docs/screenshots/phone-today.png) |
+
+| Plan check comments | Response letter | Site visit report | Site visit on a phone |
+|---|---|---|---|
+| ![](docs/screenshots/desk-plan-check.png) | ![](docs/screenshots/desk-plan-check-letter.png) | ![](docs/screenshots/desk-site-report.png) | ![](docs/screenshots/phone-site-visit.png) |
 
 ### Handy everywhere
 

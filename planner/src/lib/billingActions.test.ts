@@ -3,7 +3,7 @@ import { invoiceWorkLinks } from './billingActions'
 
 function fixture() {
   const store: Parameters<typeof invoiceWorkLinks>[0] = {
-    settings: { id: 1, company_name: 'Synthetic', business_email: '', default_rate: 150, weekly_capacity: 40, minimum_fee: 0, site_visit_hours: 3, retainer_percent: 0, proposal_template: '' }, profiles: [], invoices: [],
+    settings: { id: 1, company_name: 'Synthetic', business_email: '', default_rate: 150, weekly_capacity: 40, minimum_fee: 0, site_visit_hours: 3, retainer_percent: 0, proposal_template: '', letterhead: '', signature: '', visit_closing: '' }, profiles: [], invoices: [],
     deposits: [{ id: 'deposit', job_id: 'job', amount: 100, received_date: '2026-01-01', method: '', notes: '', created_at: '2026-01-01T00:00:00Z' }],
     timeEntries: [{
       id: 'hours', job_id: 'job', user_id: 'owner', phase_id: null, task_id: null,

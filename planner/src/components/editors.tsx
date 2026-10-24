@@ -3,7 +3,7 @@
 // `const edit = useEditors(); edit.task()` without wiring state itself.
 import { createContext, useCallback, useContext, useId, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { AlertCircle, Briefcase, Building2, CalendarDays, Clock, FileText, Lock, MapPin, Repeat } from 'lucide-react'
+import { AlertCircle, Briefcase, Building2, CalendarDays, Camera, Clock, FileText, Lock, MapPin, Repeat } from 'lucide-react'
 import { addDays, format, nextMonday } from 'date-fns'
 import { useData, type Store } from '../lib/store'
 import type { Client, Deposit, Invoice, Job, JobItem, JobStatus, JobType, Recurrence, Task, TaskStatus, TimeEntry } from '../lib/types'
@@ -12,6 +12,7 @@ import { jobCharges, rateFor, workPhase } from '../lib/calc'
 import { fmtDate, fmtHours, fmtMoney, todayISO } from '../lib/utils'
 import { saveTask } from '../lib/taskActions'
 import { guessType } from '../lib/jobTyping'
+import { jobPhotoPaths, removePhotoFiles } from '../lib/siteVisits'
 import type { InvoiceWorkLink } from '../lib/billingActions'
 import { isWorkflowPhase, phaseLabel } from '../lib/phases'
 import { STAGE_LABEL, jobStage, stageChanges, type Stage } from '../lib/stages'
@@ -190,6 +191,7 @@ export function TaskEditor({ task, defaults, onClose }: { task?: Task; defaults?
           </div>
         </div>
         {d.is_site_visit && !d.due_date && <p className="tiny muted">Pick a date to set the visit time.</p>}
+        {task?.is_site_visit && <VisitReportLink task={task} onOpen={onClose} />}
         {d.recurrence !== 'none' && !d.due_date && <p className="tiny warn-text">Repeating tasks need a due date so the next one can be scheduled.</p>}
         <Field label="Notes" htmlFor={`${form.id}-notes`}>
           <textarea id={`${form.id}-notes`} className="input" value={d.description} onChange={e => set('description', e.target.value)} placeholder="Details, who you're waiting on, links…" />
@@ -200,6 +202,18 @@ export function TaskEditor({ task, defaults, onClose }: { task?: Task; defaults?
 }
 
 /* ================= Job ================= */
+
+/** From a scheduled site visit: open its report, or start one. */
+function VisitReportLink({ task, onOpen }: { task: Task; onOpen: () => void }) {
+  const { siteVisits } = useData()
+  const navigate = useNavigate()
+  const visit = siteVisits.find(v => v.task_id === task.id)
+  const go = () => { onOpen(); navigate(visit ? `/jobs/${task.job_id}/visits/${visit.id}` : `/jobs/${task.job_id}/visits/new?task=${task.id}`) }
+  return <div className="form-note info"><Camera size={16} style={{ flex: 'none', marginTop: 1 }} />
+    <span className="grow">{visit ? 'This visit has a report with your notes and photos.' : 'At the site? Start the report: photos and notes, printed as a site observation report.'}</span>
+    <button type="button" className="btn sm" onClick={go}>{visit ? 'Open report' : 'Start report'}</button>
+  </div>
+}
 
 export interface JobDefaults { client_id?: string }
 
@@ -263,10 +277,11 @@ export function JobEditor({ job, defaults, onClose, onCreated, openClient, openJ
   }
   async function del() {
     if (!job || form.busy.current) return
-    if (!await confirm({ title: `Delete "${job.name}"?`, body: 'This permanently removes the job and everything in it: phases, tasks, hours, charges, deposits and invoices. To keep the history, set the status to Complete or Cancelled instead.', confirmLabel: 'Delete job', danger: true })) return
+    if (!await confirm({ title: `Delete "${job.name}"?`, body: 'This permanently removes the job and everything in it: phases, tasks, hours, charges, deposits, invoices, plan check comments and site visit photos. To keep the history, set the status to Complete or Cancelled instead.', confirmLabel: 'Delete job', danger: true })) return
     await form.run('delete', async () => {
+      const photos = jobPhotoPaths(store, job.id)
       const ok = await remove('jobs', job.id)
-      if (ok) navigate('/jobs')
+      if (ok) { await removePhotoFiles(photos); navigate('/jobs') }
       return ok
     })
   }

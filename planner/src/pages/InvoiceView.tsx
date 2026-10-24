@@ -7,6 +7,7 @@ import { useData } from '../lib/store'
 import { EMAIL_TARGET, useEmailLink } from '../lib/email'
 import { useEditors } from '../components/editors'
 import { Empty } from '../components/ui'
+import { letterheadLines } from '../components/Letterhead'
 import { entryAmount, entryRate, itemAmount } from '../lib/calc'
 import { phaseLabel } from '../lib/phases'
 import { fmtDate, fmtHours, sum, todayISO } from '../lib/utils'
@@ -75,6 +76,7 @@ export function InvoiceView() {
         <div>
           <div className="inv-company">{store.settings.company_name}</div>
           {owner?.full_name && <div className="inv-muted">{owner.full_name}</div>}
+          {letterheadLines(store.settings.letterhead).map((line, i) => <div key={i} className="inv-muted">{line}</div>)}
           {store.settings.business_email?.trim() && <div className="inv-muted">{store.settings.business_email.trim()}</div>}
         </div>
         <div className="inv-title-block">
