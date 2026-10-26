@@ -1,0 +1,26 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: workbench
+      POSTGRES_PASSWORD: change-me
+      POSTGRES_DB: workbench
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    restart: unless-stopped
+  app:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      DATABASE_URL: postgres://workbench:change-me@db:5432/workbench
+      SESSION_SECRET: ${SESSION_SECRET:?set SESSION_SECRET}
+      TOKEN_ENCRYPTION_KEY: ${TOKEN_ENCRYPTION_KEY:?set TOKEN_ENCRYPTION_KEY}
+      APP_URL: ${APP_URL:-http://localhost:3000}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+    depends_on:
+      - db
+    restart: unless-stopped
+volumes:
+  pgdata:
