@@ -6,7 +6,8 @@ import { Bell, Briefcase, Calculator, CalendarDays, Copy, Download, ExternalLink
 import { useData } from '../lib/store'
 import { DEMO, SUPABASE_URL, supabase } from '../lib/supabase'
 import { isEmailAddress } from '../lib/email'
-import { applyTheme, savedTheme, type Theme } from '../lib/theme'
+import { applyTheme, savedTheme, useEasyReading, type Theme } from '../lib/theme'
+import { EasyReadingSettings } from '../components/EasyReading'
 import { enableNotifications } from '../lib/reminders'
 import { buildICS, calendarItems } from '../lib/calendar'
 import { downloadText, fmtMoney, todayISO } from '../lib/utils'
@@ -42,6 +43,7 @@ export function Settings() {
   const [pw, setPw] = useState('')
   const [pwMsg, setPwMsg] = useState<{ text: string; ok: boolean } | null>(null)
   const [theme, setTheme] = useState<Theme>(savedTheme)
+  const [easy] = useEasyReading()
   const [notifMsg, setNotifMsg] = useState('')
 
   const feedUrl = me ? `${SUPABASE_URL ?? 'https://your-project.supabase.co'}/functions/v1/ics?token=${me.ics_token}` : ''
@@ -230,15 +232,18 @@ export function Settings() {
           </form>
         </section>
 
-        <section className="card">
-          <div className="card-head"><h2><Palette size={17} className="muted" /> Appearance</h2></div>
+        <section className="card" id="display">
+          <div className="card-head"><h2><Palette size={17} className="muted" /> Appearance and easy reading</h2></div>
           <div className="card-body stack">
-            <p className="small soft">Dark mode is easier on the eyes at night. “System” follows your device.</p>
-            <Segmented label="Appearance" value={theme} onChange={pickTheme} options={[
-              { value: 'system', label: 'System', icon: <Monitor size={15} /> },
-              { value: 'light', label: 'Light', icon: <Sun size={15} /> },
-              { value: 'dark', label: 'Dark', icon: <Moon size={15} /> },
-            ]} />
+            {!easy.on && <>
+              <p className="small soft">Dark mode is easier on the eyes at night. “System” follows your device.</p>
+              <Segmented label="Appearance" value={theme} onChange={pickTheme} options={[
+                { value: 'system', label: 'System', icon: <Monitor size={15} /> },
+                { value: 'light', label: 'Light', icon: <Sun size={15} /> },
+                { value: 'dark', label: 'Dark', icon: <Moon size={15} /> },
+              ]} />
+            </>}
+            <EasyReadingSettings />
           </div>
         </section>
       </div>

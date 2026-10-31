@@ -7,38 +7,38 @@
 
 .color-row { display: flex; gap: 10px; flex-wrap: wrap; }
 .color-dot {
-  width: 30px; height: 30px; border-radius: 50%; border: 0; padding: 0;
+  width: 1.875rem; height: 1.875rem; border-radius: 50%; border: 0; padding: 0;
   box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.35); transition: transform 0.1s, box-shadow 0.1s;
 }
 .color-dot:hover { transform: scale(1.08); }
 .color-dot.on { box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--text); }
 
-.steps { margin: 0; padding-left: 0; list-style: none; counter-reset: step; display: flex; flex-direction: column; gap: 8px; font-size: 14px; color: var(--text-2); }
+.steps { margin: 0; padding-left: 0; list-style: none; counter-reset: step; display: flex; flex-direction: column; gap: 8px; font-size: 0.875rem; color: var(--text-2); }
 .steps li { counter-increment: step; }
 .steps li::before {
-  content: counter(step); flex: none; width: 22px; height: 22px; border-radius: 50%; background: var(--accent-soft); color: var(--accent-text);
-  font-size: 12px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center;
+  content: counter(step); flex: none; width: 1.375rem; height: 1.375rem; border-radius: 50%; background: var(--accent-soft); color: var(--accent-text);
+  font-size: 0.75rem; font-weight: 700; display: inline-flex; align-items: center; justify-content: center;
 }
 
 .install { display: flex; flex-direction: column; gap: 12px; }
 .install p { margin-top: 2px; }
 
 .settings-links { padding: 6px; }
-.settings-keys { display: flex; align-items: center; gap: 14px; min-height: 52px; padding: 0 12px; font-size: 15px; font-weight: 550; }
+.settings-keys { display: flex; align-items: center; gap: 14px; min-height: 3.25rem; padding: 0 12px; font-size: 0.9375rem; font-weight: 550; }
 
 .danger-card { border-color: color-mix(in srgb, var(--danger) 30%, var(--border)); }
 
 @media (max-width: 760px) {
-  .settings-page .page-head .actions .btn { height: 40px; }
-  .settings-page .card-body .btn, .settings-password .btn { min-height: 40px; }
-  .settings-page #set-business-email { min-height: 40px; }
-  .color-dot { width: 36px; height: 36px; }
+  .settings-page .page-head .actions .btn { height: 2.5rem; }
+  .settings-page .card-body .btn, .settings-password .btn { min-height: 2.5rem; }
+  .settings-page #set-business-email { min-height: 2.5rem; }
+  .color-dot { width: 2.25rem; height: 2.25rem; }
 }
 
 /* Forms that are also card bodies keep the card padding. */
 .settings-page .card-body.form-fields { padding: 16px 18px; }
-.settings-page .steps li { display: block; position: relative; padding-left: 32px; line-height: 22px; }
+.settings-page .steps li { display: block; position: relative; padding-left: 32px; line-height: 1.375rem; }
 .settings-page .steps li::before { position: absolute; left: 0; top: 0; }
 
-.settings-page textarea.proposal-template { min-height: 360px; font-size: 13.5px; line-height: 1.5; }
-.settings-page code { font-size: 12px; padding: 0 3px; border-radius: 4px; background: var(--surface-2); }
+.settings-page textarea.proposal-template { min-height: 360px; font-size: 0.84375rem; line-height: 1.5; }
+.settings-page code { font-size: 0.75rem; padding: 0 3px; border-radius: 4px; background: var(--surface-2); }

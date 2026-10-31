@@ -5,13 +5,13 @@
 .money-page .list-row .title { color: var(--text); }
 .money-page .list-row a.title:hover { color: var(--accent-text); text-decoration: none; }
 .inline-ico { display: inline; vertical-align: -2px; }
-.pay-ico { width: 30px; height: 30px; border-radius: 9px; flex: none; display: flex; align-items: center; justify-content: center; background: var(--ok-soft); color: var(--ok); }
+.pay-ico { width: 1.875rem; height: 1.875rem; border-radius: 9px; flex: none; display: flex; align-items: center; justify-content: center; background: var(--ok-soft); color: var(--ok); }
 .pay-ico.invoice { background: var(--accent-soft); color: var(--accent); }
 .dep-use-col { width: 190px; }
 
 /* Reports */
 .report-range { display: flex; align-items: center; gap: 12px 16px; flex-wrap: wrap; padding: 12px 16px; }
-.report-legend { display: inline-flex; align-items: center; gap: 14px; font-size: 12px; color: var(--text-2); flex-wrap: wrap; }
+.report-legend { display: inline-flex; align-items: center; gap: 14px; font-size: 0.75rem; color: var(--text-2); flex-wrap: wrap; }
 .report-legend > span { display: inline-flex; align-items: center; gap: 6px; }
 .bar-key, .est-key { display: inline-block; width: 10px; height: 10px; border-radius: 3px; }
 .bar-key.bill { background: var(--accent); }
@@ -70,13 +70,13 @@
 @media (max-width: 760px) { .est-sort-list .list-row { flex-wrap: wrap; } .est-sort-list .est-sort-select { width: 100%; } }
 .est-result { position: sticky; top: 16px; display: flex; flex-direction: column; }
 .est-result-top { display: flex; flex-direction: column; gap: 4px; padding: 18px 18px 14px; border-bottom: 1px solid var(--border); }
-.est-fee { font-size: 34px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.1; color: var(--text); }
+.est-fee { font-size: 2.125rem; font-weight: 700; letter-spacing: -0.02em; line-height: 1.1; color: var(--text); }
 .est-range { margin: 0; padding: 10px 18px 0; color: var(--text-2); }
 .est-result-body { display: flex; flex-direction: column; gap: 12px; padding: 14px 18px 18px; }
 .est-result-body .btn { justify-content: center; }
 .est-result-body .btn.xs { align-self: flex-start; }
 .est-split { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
-.est-split li { display: flex; align-items: center; gap: 8px; font-size: 13.5px; color: var(--text-2); }
+.est-split li { display: flex; align-items: center; gap: 8px; font-size: 0.84375rem; color: var(--text-2); }
 .est-split .dot { width: 9px; height: 9px; border-radius: 3px; background: var(--stage); flex: none; }
 .est-split strong { margin-left: auto; color: var(--text); }
 .est-type-pick { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; min-width: 0; padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
@@ -90,7 +90,7 @@
   .est-pickers { grid-template-columns: minmax(0, 1fr); }
   .est-phase-row { grid-template-columns: minmax(0, 1fr) 124px; }
   .est-phase-row .est-phase-track { grid-column: 1 / -1; grid-row: 2; }
-  .est-fee { font-size: 30px; }
+  .est-fee { font-size: 1.875rem; }
 }
 
 @media (max-width: 760px) {
@@ -100,5 +100,5 @@
   .dep-use-col { width: 130px; }
 }
 @media (max-width: 760px) {
-  .money-page .invoice-btn { width: 40px; height: 40px; padding: 0; }
+  .money-page .invoice-btn { width: 2.5rem; height: 2.5rem; padding: 0; }
 }

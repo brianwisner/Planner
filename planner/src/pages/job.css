@@ -1,5 +1,5 @@
 .job-head h1 { gap: 12px; }
-.job-head h1 .status-select { font-size: 12.5px; letter-spacing: 0; }
+.job-head h1 .status-select { font-size: 0.78125rem; letter-spacing: 0; }
 .job-meta { display: flex; flex-wrap: wrap; gap: 4px 14px; }
 .job-meta a { display: inline-flex; align-items: center; gap: 4px; color: var(--text-3); }
 .job-meta a:hover { color: var(--accent-text); }
@@ -11,10 +11,10 @@
 .step { flex: 1 1 0; min-width: 132px; position: relative; }
 .step button { display: flex; align-items: center; gap: 10px; width: 100%; padding: 8px 10px; border: 0; border-radius: 10px; background: none; text-align: left; color: var(--text-3); }
 .step button:hover { background: var(--surface-2); }
-.step-dot { width: 26px; height: 26px; border-radius: 50%; flex: none; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; border: 2px solid var(--border-strong); background: var(--surface); color: var(--text-3); }
+.step-dot { width: 1.625rem; height: 1.625rem; border-radius: 50%; flex: none; display: flex; align-items: center; justify-content: center; font-size: 0.75rem; font-weight: 700; border: 2px solid var(--border-strong); background: var(--surface); color: var(--text-3); }
 .step-text { display: flex; flex-direction: column; min-width: 0; }
-.step-label { font-size: 13.5px; font-weight: 620; color: var(--text-2); white-space: nowrap; }
-.step-sub { font-size: 11.5px; color: var(--text-3); white-space: nowrap; min-height: 15px; }
+.step-label { font-size: 0.84375rem; font-weight: 620; color: var(--text-2); white-space: nowrap; }
+.step-sub { font-size: 0.71875rem; color: var(--text-3); white-space: nowrap; min-height: 15px; }
 .step.done .step-dot { background: var(--stage); border-color: var(--stage); color: #fff; }
 .step.done .step-label { color: var(--text-2); }
 .step.current button { background: var(--stage-soft); }
@@ -23,19 +23,19 @@
 .step.current .step-sub { color: var(--stage); font-weight: 600; }
 .step.held .step-dot { background: var(--st-hold); border-color: var(--st-hold); box-shadow: none; }
 .step.held button { background: var(--st-hold-soft); }
-.cc-toggle { display: inline-flex; align-items: center; gap: 7px; height: 36px; padding: 0 12px; border-radius: 999px; border: 1px dashed var(--border-strong); background: none; color: var(--text-3); font-size: 13px; font-weight: 600; }
+.cc-toggle { display: inline-flex; align-items: center; gap: 7px; height: 2.25rem; padding: 0 12px; border-radius: 999px; border: 1px dashed var(--border-strong); background: none; color: var(--text-3); font-size: 0.8125rem; font-weight: 600; }
 .cc-toggle .dot { background: var(--border-strong); }
 .cc-toggle:hover { border-color: var(--stage); color: var(--stage); }
 .cc-toggle.on { border-style: solid; border-color: var(--stage); background: var(--stage-soft); color: var(--stage); }
 .cc-toggle.on .dot { background: var(--stage); }
-.closed-note { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 12px 16px; margin-bottom: 18px; border-radius: 12px; background: var(--surface-3); color: var(--text-2); font-size: 14px; }
+.closed-note { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 12px 16px; margin-bottom: 18px; border-radius: 12px; background: var(--surface-3); color: var(--text-2); font-size: 0.875rem; }
 
 .tab-body { margin-top: 20px; }
 .job-grid { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(280px, 1fr); gap: 20px; align-items: start; }
 @media (max-width: 1100px) { .job-grid { grid-template-columns: minmax(0, 1fr); } }
 .glance { display: flex; flex-direction: column; gap: 10px; }
-.glance-row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; font-size: 14px; color: var(--text-2); }
-.glance-row strong { color: var(--text); font-size: 15px; }
+.glance-row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; font-size: 0.875rem; color: var(--text-2); }
+.glance-row strong { color: var(--text); font-size: 0.9375rem; }
 .glance-row span[title] { text-decoration: underline dotted var(--border-strong); text-underline-offset: 3px; cursor: help; }
 .contact { display: flex; flex-direction: column; gap: 4px; }
 .contact-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
@@ -49,13 +49,13 @@
 .phase-bar { width: 4px; align-self: stretch; border-radius: 4px; background: var(--stage, var(--border)); opacity: 0.25; flex: none; }
 .phase-row.in_progress .phase-bar, .phase-row.waiting .phase-bar { opacity: 1; }
 .phase-row.complete .phase-bar { opacity: 0.6; }
-.phase-name { font-weight: 600; font-size: 14px; }
+.phase-name { font-weight: 600; font-size: 0.875rem; }
 .phase-row.not_started .phase-name { color: var(--text-2); }
-.phase-meta { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12.5px; color: var(--text-3); margin-top: 2px; align-items: center; }
-.phase-meta .due { font-size: 12.5px; }
-.phase-notes { padding: 0 18px 12px 34px; font-size: 13px; color: var(--text-2); }
+.phase-meta { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 0.78125rem; color: var(--text-3); margin-top: 2px; align-items: center; }
+.phase-meta .due { font-size: 0.78125rem; }
+.phase-notes { padding: 0 18px 12px 34px; font-size: 0.8125rem; color: var(--text-2); }
 .phase-status {
-  appearance: none; height: 30px; padding: 0 28px 0 11px; border-radius: 999px; border: 1px solid var(--border); font-size: 12.5px; font-weight: 600; cursor: pointer;
+  appearance: none; height: 1.875rem; padding: 0 28px 0 11px; border-radius: 999px; border: 1px solid var(--border); font-size: 0.78125rem; font-weight: 600; cursor: pointer;
   background: var(--surface) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%23667085' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") no-repeat right 9px center;
   color: var(--text-2);
 }
@@ -83,8 +83,8 @@
   .step { min-width: 118px; }
 }
 
-.quote-table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
-.quote-table th { font-size: 12px; font-weight: 550; color: var(--text-3); text-align: left; padding: 0 0 6px; }
+.quote-table { width: 100%; border-collapse: collapse; font-size: 0.84375rem; }
+.quote-table th { font-size: 0.75rem; font-weight: 550; color: var(--text-3); text-align: left; padding: 0 0 6px; }
 .quote-table td { padding: 5px 0; border-top: 1px solid var(--border); }
 .quote-table .num { text-align: right; padding-left: 10px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .quote-table tr.total td { font-weight: 650; }

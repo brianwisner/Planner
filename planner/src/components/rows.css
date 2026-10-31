@@ -10,11 +10,11 @@
 .task-title { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; font-weight: 550; color: var(--text); line-height: 1.35; }
 .task-open { border: 0; background: none; padding: 0; text-align: left; font: inherit; color: inherit; cursor: pointer; }
 .task-open:hover { color: var(--accent-text); }
-.task-meta { display: flex; gap: 6px; flex-wrap: wrap; font-size: 12.5px; color: var(--text-3); }
+.task-meta { display: flex; gap: 6px; flex-wrap: wrap; font-size: 0.78125rem; color: var(--text-3); }
 /* The dot sits at the end of each item, so a wrapped line never starts with one. */
 .task-meta > *:not(:last-child)::after { content: '·'; margin-left: 6px; color: var(--border-strong); }
 .task-meta a { color: var(--text-2); }
-.task-side { display: flex; align-items: center; gap: 6px; flex: none; min-height: 24px; }
+.task-side { display: flex; align-items: center; gap: 6px; flex: none; min-height: 1.5rem; }
 .task-row .row-action { opacity: 0; }
 .task-row:hover .row-action, .task-row .row-action:focus-visible { opacity: 1; }
 .task-row.is-done .task-title { color: var(--text-3); text-decoration: line-through; text-decoration-color: var(--border-strong); }
@@ -29,5 +29,5 @@
 .deadline-row { display: flex; align-items: center; gap: 12px; padding: 11px 18px; border-bottom: 1px solid var(--border); color: inherit; text-decoration: none; }
 .deadline-row:last-child { border-bottom: 0; }
 .deadline-row:hover { background: var(--surface-2); text-decoration: none; }
-.deadline-ico { width: 22px; height: 22px; border-radius: 7px; display: flex; align-items: center; justify-content: center; background: var(--surface-3); color: var(--text-3); flex: none; }
+.deadline-ico { width: 1.375rem; height: 1.375rem; border-radius: 7px; display: flex; align-items: center; justify-content: center; background: var(--surface-3); color: var(--text-3); flex: none; }
 @media (max-width: 760px) { .deadline-row { padding: 12px 14px; } }
