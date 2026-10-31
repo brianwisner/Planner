@@ -43,7 +43,7 @@
 .bid-card { border-top: 3px solid var(--stage); }
 .bid-body { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 14px 24px; }
 .bid-facts { display: flex; flex-wrap: wrap; gap: 10px 32px; margin: 0; }
-.bid-facts dt { color: var(--text-3); font-size: 13px; }
+.bid-facts dt { color: var(--text-3); font-size: 0.8125rem; }
 .bid-facts dd { margin: 2px 0 0; font-weight: 600; color: var(--text); }
 .bid-actions { gap: 6px; }
 
