@@ -2,11 +2,12 @@
 import { useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
-import { Briefcase, Building2, Calculator, CalendarDays, CheckSquare, CircleDollarSign, Clock, FileText, Keyboard, MapPin, Play, Plus, Search, Settings, Sun } from 'lucide-react'
+import { Briefcase, Building2, Calculator, CalendarDays, CheckSquare, CircleDollarSign, Clock, FileText, Keyboard, MapPin, Play, Plus, Search, Settings, Sun, Type } from 'lucide-react'
 import { useData } from '../lib/store'
 import { startTimer } from '../lib/timer'
 import { jobStage, STAGE_LABEL } from '../lib/stages'
 import { todayISO } from '../lib/utils'
+import { useEasyReading } from '../lib/theme'
 import { useEditors } from './editors'
 
 interface Item { id: string; group: string; label: string; sub?: string; icon: ReactNode; run: () => void; keywords?: string }
@@ -15,6 +16,7 @@ export function CommandPalette({ onClose, onHelp }: { onClose: () => void; onHel
   const store = useData()
   const edit = useEditors()
   const navigate = useNavigate()
+  const [easy, setEasy] = useEasyReading()
   const [q, setQ] = useState('')
   const [active, setActive] = useState(0)
   const listRef = useRef<HTMLDivElement>(null)
@@ -42,6 +44,7 @@ export function CommandPalette({ onClose, onHelp }: { onClose: () => void; onHel
       { id: 'g-clients', group: 'Go to', label: 'Clients', icon: <Building2 size={16} />, run: go('/clients'), keywords: 'contacts customers' },
       { id: 'g-settings', group: 'Go to', label: 'Settings', icon: <Settings size={16} />, run: go('/settings'), keywords: 'rate calendar sync theme dark' },
       { id: 'g-keys', group: 'Go to', label: 'Keyboard shortcuts', icon: <Keyboard size={16} />, run: onHelp, keywords: 'help keys' },
+      { id: 'c-easy', group: 'Display', label: easy.on ? 'Turn off easy reading' : 'Turn on easy reading', sub: 'Larger, clearer text and stronger colors', icon: <Type size={16} />, run: act(() => setEasy({ ...easy, on: !easy.on })), keywords: 'easy reading larger bigger text font size contrast vision low accessibility zoom read' },
     ]
     const jobs = store.jobs.filter(j => j.status !== 'archived' || needle).filter(j => match(j.name, j.job_number, j.address, client(j.client_id)))
     jobs.slice(0, needle ? 8 : 5).forEach(j => {

@@ -6,17 +6,18 @@
 }
 .login-art-inner { position: relative; z-index: 1; max-width: 480px; display: flex; flex-direction: column; gap: 22px; }
 .login-art .brand-mark { background: rgba(255,255,255,.16); box-shadow: none; }
-.login-art h2 { font-size: 32px; line-height: 1.15; font-weight: 680; letter-spacing: -0.025em; }
-.login-art ul { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 10px; font-size: 16px; color: rgba(255,255,255,.88); }
-.login-art li::before { content: '✓'; display: inline-flex; width: 22px; height: 22px; margin-right: 10px; border-radius: 50%; background: rgba(255,255,255,.18); align-items: center; justify-content: center; font-size: 12px; }
+.login-art h2 { font-size: 2rem; line-height: 1.15; font-weight: 680; letter-spacing: -0.025em; }
+.login-art ul { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 10px; font-size: 1rem; color: rgba(255,255,255,.88); }
+.login-art li::before { content: '✓'; display: inline-flex; width: 1.375rem; height: 1.375rem; margin-right: 10px; border-radius: 50%; background: rgba(255,255,255,.18); align-items: center; justify-content: center; font-size: 0.75rem; }
 .login-truss { position: absolute; left: 6%; bottom: 7%; width: 88%; color: rgba(255,255,255,.16); }
-.login-panel { display: flex; align-items: center; justify-content: center; padding: 32px 20px; }
+.login-panel { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 28px; padding: 32px 20px; }
 .login-card { width: 100%; max-width: 380px; display: flex; flex-direction: column; gap: 16px; }
-.login-card h1 { font-size: 28px; }
+.login-card h1 { font-size: 1.75rem; }
+.login-easy { width: 100%; max-width: 380px; padding-top: 16px; border-top: 1px solid var(--border); }
 .login-mobile-brand { display: none; align-items: center; gap: 10px; margin-bottom: 12px; }
 @media (max-width: 860px) {
   .login { grid-template-columns: 1fr; }
   .login-art { display: none; }
   .login-mobile-brand { display: flex; }
-  .login-panel { align-items: flex-start; padding-top: 12vh; }
+  .login-panel { justify-content: flex-start; padding-top: 12vh; }
 }

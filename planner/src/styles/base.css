@@ -1,11 +1,12 @@
 *, *::before, *::after { box-sizing: border-box; }
 
-html { -webkit-text-size-adjust: 100%; }
+/* Sizes are in rem: 16px here, larger in Easy reading (easy.css). */
+html { -webkit-text-size-adjust: 100%; font-size: 16px; }
 
 body {
   margin: 0;
   font-family: var(--font);
-  font-size: 14px;
+  font-size: 0.875rem;
   line-height: 1.45;
   color: var(--text);
   background: var(--bg);
@@ -15,9 +16,9 @@ body {
 }
 
 h1, h2, h3, h4 { margin: 0; line-height: 1.25; letter-spacing: -0.012em; }
-h1 { font-size: 24px; font-weight: 650; letter-spacing: -0.02em; }
-h2 { font-size: 16px; font-weight: 620; }
-h3 { font-size: 14px; font-weight: 620; }
+h1 { font-size: 1.5rem; font-weight: 650; letter-spacing: -0.02em; }
+h2 { font-size: 1rem; font-weight: 620; }
+h3 { font-size: 0.875rem; font-weight: 620; }
 p { margin: 0; }
 
 a { color: var(--accent-text); text-decoration: none; }
@@ -49,8 +50,8 @@ img, svg { display: block; }
 .grow { flex: 1 1 auto; min-width: 0; }
 .muted { color: var(--text-3); }
 .soft { color: var(--text-2); }
-.small { font-size: 13px; }
-.tiny { font-size: 12px; }
+.small { font-size: 0.8125rem; }
+.tiny { font-size: 0.75rem; }
 .strong { font-weight: 600; }
 .num { font-variant-numeric: tabular-nums; }
 .right { text-align: right; }

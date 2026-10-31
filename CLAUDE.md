@@ -104,7 +104,7 @@ lib/
   calendar.ts         calendar items, Google link, .ics builder
   phases.ts           workflow vs retired phases
   reminders.ts        once-a-day browser notification (off in demo)
-  theme.ts            light/dark/system + small per-device prefs (localStorage keys prefixed `wp2:`)
+  theme.ts            light/dark/system, Easy reading (useEasyReading; styles in easy.css + tokens.css) + small per-device prefs (localStorage keys prefixed `wp2:`)
   utils.ts            date/money/hours formatting, CSV/text download
   email.ts            Gmail "new message" links for every email button   (+ email.test.ts)
   siteVisits.ts       site visit helpers, photo shrink/upload/delete, signed photo links   (+ siteVisits.test.ts)
@@ -147,6 +147,7 @@ Routes (HashRouter, so GitHub Pages never 404s): `/` Today · `/jobs` (`?view=bo
 Conventions:
 - Pages never call Supabase directly; they use `useData()`. Open forms with `useEditors()`; ask for confirmation with `useConfirm()` (not `window.confirm`).
 - Use the design tokens and shared classes; no hard-coded colors (dark mode must keep working). Stage colors come from `[data-stage=…]` → `--stage` / `--stage-soft`.
+- **Easy reading** (Settings → Appearance, sign-in screen, command palette; per device) is for the owner's wife, who is legally blind: Atkinson Hyperlegible Next, 125%/150% text (`data-text-size`), and Cream / Dark / Yellow-on-black colors (`data-easy`, token sets at the end of `tokens.css`: text ≥ 7:1, include every new color token there). CSS font sizes and text-holding control heights are in **rem** (root 16px, so normal mode is unchanged); write new ones in rem, not px. Easy mode is screen-only: printed letters/invoices never change.
 - Icons are `lucide-react`. Font is Inter (bundled via `@fontsource-variable/inter`).
 - Hours display in quarter hours (`fmtHours`). Money via `fmtMoney`.
 - Phones (≤ 760px): touch targets ≥ 40px, no sideways page scrolling (wide grids scroll inside their card), `hide-sm` for non-essential columns, dialogs become bottom sheets.

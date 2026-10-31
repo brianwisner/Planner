@@ -11,22 +11,22 @@
 .pc-comment:first-child { border-top: 0; }
 .pc-comment .task-check { margin-top: 1px; }
 .pc-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
-.pc-text { font-size: 14px; color: var(--text); line-height: 1.45; }
+.pc-text { font-size: 0.875rem; color: var(--text); line-height: 1.45; }
 .pc-comment.done .pc-text { color: var(--text-3); }
 .pc-num {
-  display: inline-flex; align-items: center; justify-content: center; min-width: 24px; height: 20px; padding: 0 6px; margin-right: 8px;
-  border-radius: 6px; background: var(--surface-3); color: var(--text-2); font-size: 12px; font-weight: 700; vertical-align: 1px;
+  display: inline-flex; align-items: center; justify-content: center; min-width: 24px; height: 1.25rem; padding: 0 6px; margin-right: 8px;
+  border-radius: 6px; background: var(--surface-3); color: var(--text-2); font-size: 0.75rem; font-weight: 700; vertical-align: 1px;
 }
-textarea.pc-response { min-height: 38px; resize: none; overflow: hidden; font-size: 13.5px; line-height: 1.45; padding-top: 8px; padding-bottom: 8px; }
+textarea.pc-response { min-height: 2.375rem; resize: none; overflow: hidden; font-size: 0.84375rem; line-height: 1.45; padding-top: 8px; padding-bottom: 8px; }
 .pc-comment.done .pc-response { background: var(--surface-2); }
 
-textarea.pc-paste { min-height: 180px; font-size: 13.5px; line-height: 1.45; }
+textarea.pc-paste { min-height: 180px; font-size: 0.84375rem; line-height: 1.45; }
 .pc-preview { border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 10px 12px; background: var(--surface-2); }
 .pc-preview ol { list-style: none; margin: 8px 0 0; padding: 0; max-height: 220px; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; }
-.pc-preview li { display: flex; align-items: flex-start; font-size: 13px; color: var(--text-2); }
+.pc-preview li { display: flex; align-items: flex-start; font-size: 0.8125rem; color: var(--text-2); }
 .pc-preview .pc-num { flex: none; margin-top: 1px; }
 .pc-edit-grid { align-items: end; }
-.pc-done-switch { min-height: 40px; }
+.pc-done-switch { min-height: 2.5rem; }
 
 @media (max-width: 760px) {
   .pc-comment { padding: 12px 8px 12px 14px; gap: 10px; }

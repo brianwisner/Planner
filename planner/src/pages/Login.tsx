@@ -3,6 +3,7 @@ import { useState, type FormEvent } from 'react'
 import { AlertCircle, CheckCircle2 } from 'lucide-react'
 import { isConfigured, supabase } from '../lib/supabase'
 import { BrandMark } from '../components/Brand'
+import { EasyReadingSwitch } from '../components/EasyReading'
 import './login.css'
 
 function Frame({ children }: { children: React.ReactNode }) {
@@ -22,7 +23,10 @@ function Frame({ children }: { children: React.ReactNode }) {
         <path d="M20 140 76 40 132 140 188 40 244 140 300 40 356 140 412 40 468 140 524 40 580 140" />
       </svg>
     </section>
-    <section className="login-panel">{children}</section>
+    <section className="login-panel">
+      {children}
+      <div className="login-easy"><EasyReadingSwitch label="Larger, clearer text" /></div>
+    </section>
   </div>
 }
 
