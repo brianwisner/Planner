@@ -9,7 +9,7 @@ const adu: JobType = { id: 'adu', name: 'ADU', design_hours: 30, plan_check_hour
 function job(id: string, patch: Partial<Job> = {}): Job {
   return {
     id, client_id: 'client', job_number: id, name: id, description: '', address: '', status: 'complete', priority: 0,
-    fee: null, job_type_id: 'adu', size: null, use_in_estimates: true, estimate_note: '', closeout_reason: '',
+    fee: null, job_type_id: 'adu', size: null, use_in_estimates: true, estimate_note: '', closeout_reason: '', source: '', lost_reason: '', lost_date: null,
     queued_date: null, start_date: null, due_date: null, created_at: '2026-01-01T00:00:00Z', ...patch,
   }
 }

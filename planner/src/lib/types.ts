@@ -74,6 +74,9 @@ export interface Job {
   use_in_estimates: boolean       // false leaves a finished job out of the fee estimator
   estimate_note: string           // why it was left out
   closeout_reason: string         // what made the hours differ from the quote (CLOSEOUT_REASONS)
+  source: string                  // who referred the work or how they found you ('' = not recorded)
+  lost_reason: string             // why a bid was lost (LOST_REASONS)
+  lost_date: string | null        // set when a bid is marked lost; the job is Cancelled too
   queued_date: string | null      // legacy storage; no longer an active workflow control
   start_date: string | null
   due_date: string | null
@@ -116,6 +119,9 @@ export interface Quote {
   fee_note: string              // why the fee differs from the suggestion
   created_at: string
 }
+
+/** Why a bid didn't turn into work. "I passed on it" means the owner declined. */
+export const LOST_REASONS = ['Fee too high', "Couldn't start soon enough", 'Went with someone else', "Project didn't go ahead", 'I passed on it', 'Never heard back', 'Other'] as const
 
 export const CLOSEOUT_REASONS = ['Went as planned', 'Scope was bigger than quoted', 'Existing conditions', 'Plan-check comments', 'Coordination with others', 'Rework / my changes', 'Time records incomplete'] as const
 

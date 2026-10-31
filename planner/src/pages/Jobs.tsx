@@ -8,12 +8,13 @@ import {
 } from '@dnd-kit/core'
 import { SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { ArrowRightLeft, Briefcase, ClipboardCheck, Columns3, Download, Ellipsis, GripVertical, Hourglass, List, PauseCircle, Play, Plus, Search, X } from 'lucide-react'
+import { ArrowRightLeft, Briefcase, ClipboardCheck, Columns3, Download, Ellipsis, GripVertical, Hourglass, List, PauseCircle, Play, Plus, Search, Send, ThumbsDown, Trophy, X } from 'lucide-react'
 import { useData } from '../lib/store'
 import { useEditors } from '../components/editors'
 import { DueText, Empty, Menu, Progress, Segmented, StageChip, type MenuEntry } from '../components/ui'
 import { STAGES, STAGE_HINT, STAGE_LABEL, type Stage } from '../lib/stages'
 import { mergeOrder, moveJobToStage, reorderJobs, setJobStatus } from '../lib/jobActions'
+import { markProposalSent, markWon } from '../lib/bids'
 import { summarizeJob, type JobSummary } from '../lib/views'
 import { startTimer } from '../lib/timer'
 import { JOB_STATUS_LABEL, type JobStatus } from '../lib/types'
@@ -192,12 +193,14 @@ function JobCard({ row, overlay }: { row: JobSummary; overlay?: boolean }) {
       {!overlay && <JobMenu row={row} />}
     </div>
     <Link to={`/jobs/${job.id}`} className="job-card-name" onClick={e => e.stopPropagation()}>{job.name}</Link>
-    {client && <div className="job-card-client">{client.name}</div>}
+    {client && <div className="job-card-client">{client.name}{job.source && (stage.stage === 'lead' || stage.stage === 'bidding') && <span className="muted"> · via {job.source}</span>}</div>}
     {nextTask && <div className="job-card-next"><span className="muted">Next:</span> {nextTask.title}</div>}
     {estimate > 0 && <div className="job-card-hours"><Progress value={hours} max={estimate} /><span className="tiny muted num">{fmtHours(hours)} / {fmtHours(estimate)}</span></div>}
     <div className="job-card-foot">
       {nextDeadline ? <DueText date={nextDeadline.date} /> : <span className="tiny muted">No dates</span>}
-      {stage.state === 'waiting' && <span className="badge warn" title="Waiting on someone (client, architect, county…)"><Hourglass size={11} />Waiting</span>}
+      {stage.state === 'waiting' && (stage.stage === 'bidding'
+        ? <span className="badge warn" title="Proposal sent — waiting on the client's answer"><Send size={11} />Proposal sent</span>
+        : <span className="badge warn" title="Waiting on someone (client, architect, county…)"><Hourglass size={11} />Waiting</span>)}
       {stage.stage === 'plan_check' && planCheck && planCheck.total > 0 && !planCheck.round.sent_date && (planCheck.open
         ? <span className="badge accent" title="Plan check comments not yet answered"><ClipboardCheck size={11} />{planCheck.open} of {planCheck.total} open</span>
         : <span className="badge ok" title="Every comment is answered — the response letter is ready"><ClipboardCheck size={11} />Responses ready</span>)}
@@ -207,7 +210,7 @@ function JobCard({ row, overlay }: { row: JobSummary; overlay?: boolean }) {
       {held && <span className="badge"><PauseCircle size={11} />On hold</span>}
       {stage.clientChanges && <span className="stage-chip" data-stage="client_changes" style={{ height: 20, fontSize: 11 }}>Client changes</span>}
     </div>
-    {stage.state === 'not_started' && stage.stage !== 'ready' && stage.stage !== 'bidding' && <div className="job-card-note">{STAGE_LABEL[stage.stage]} not started yet</div>}
+    {stage.state === 'not_started' && stage.stage !== 'ready' && stage.stage !== 'lead' && stage.stage !== 'bidding' && <div className="job-card-note">{STAGE_LABEL[stage.stage]} not started yet</div>}
   </article>
 }
 
@@ -215,7 +218,15 @@ function JobMenu({ row }: { row: JobSummary }) {
   const store = useData()
   const edit = useEditors()
   const { job, stage } = row
+  const bid = stage.stage === 'lead' || stage.stage === 'bidding'
   const items: MenuEntry[] = [
+    ...(bid ? [
+      { section: 'Bid' },
+      ...(stage.state !== 'waiting' ? [{ label: 'Proposal sent', hint: <span className="tiny muted">remind me in 2 wks</span>, icon: <Send size={15} />, onSelect: () => void markProposalSent(store, job) }] : []),
+      { label: 'Won it', hint: <span className="tiny muted">→ {STAGE_LABEL.ready}</span>, icon: <Trophy size={15} />, onSelect: () => void markWon(store, job) },
+      { label: "Didn't get it…", icon: <ThumbsDown size={15} />, onSelect: () => edit.lost(job) },
+      'sep' as const,
+    ] : []),
     { section: 'Move to' },
     ...STAGES.map(s => ({ label: STAGE_LABEL[s], icon: <span className="stage-dot" data-stage={s} />, checked: job.status === 'active' && stage.stage === s, onSelect: async () => { if (job.status !== 'active') await store.update('jobs', job.id, { status: 'active' }); await moveJobToStage(store, job, s) } })),
     'sep',
@@ -227,7 +238,7 @@ function JobMenu({ row }: { row: JobSummary }) {
       ? [{ label: 'Resume (make active)', icon: <Play size={15} />, onSelect: () => void setJobStatus(store, job, 'active') }]
       : [{ label: 'Put on hold', icon: <PauseCircle size={15} />, onSelect: () => void setJobStatus(store, job, 'on_hold') }]),
     { label: 'Mark complete', onSelect: () => void setJobStatus(store, job, 'complete') },
-    { label: 'Cancel job', danger: true, onSelect: () => void setJobStatus(store, job, 'cancelled') },
+    ...(bid ? [] : [{ label: 'Cancel job', danger: true, onSelect: () => void setJobStatus(store, job, 'cancelled') }]),
   ]
   return <Menu label={`Actions for ${job.name}`} items={items} trigger={p => <button className="btn ghost icon xs" aria-label={`Actions for ${job.name}`} onPointerDown={e => e.stopPropagation()} {...p}><Ellipsis size={16} /></button>} />
 }

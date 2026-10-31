@@ -15,6 +15,7 @@ import {
   proposalText, quotedHours, splitFee, STARTER_WEIGHT, unitScale, type Estimate, type FeePhase, type PastEvidence, type PhaseHours,
 } from '../lib/estimate'
 import { jobPhaseGroups } from '../lib/phases'
+import { typeBidRecord } from '../lib/bids'
 import type { Job, JobType, PastJob } from '../lib/types'
 import { fmtDate, fmtHourlyRate, fmtHours, fmtMoney } from '../lib/utils'
 
@@ -235,7 +236,7 @@ function EstimateBody({ type, job, rate, picker, onPickType }: { type: JobType; 
             : `${fmtHours(priced.total)} × ${fmtHourlyRate(rate)}${(rush ?? 0) > 0 ? ` + ${rush}% rush` : ''}, rounded up to the next $50`}
         </span>
       </div>
-      <Evidence est={est} rate={rate} size={size} unit={unit} pu={pu} past={past} />
+      <Evidence est={est} rate={rate} size={size} unit={unit} pu={pu} past={past} bids={typeBidRecord(store, type.id)} />
       <div className="est-result-body">
         <Field label="Fee to quote" htmlFor="est-fee">
           <NumberInput id="est-fee" value={fee} onChange={v => setFeeOverride(v ?? 0)} step={50} min={0} prefix="$" />
@@ -283,7 +284,9 @@ function Basis({ est }: { est: Estimate }) {
   </>
 }
 
-function Evidence({ est, rate, size, unit, pu, past }: { est: Estimate; rate: number; size: number | null; unit: string; pu: ReturnType<typeof perUnit>; past: PastEvidence | null }) {
+function Evidence({ est, rate, size, unit, pu, past, bids }: { est: Estimate; rate: number; size: number | null; unit: string; pu: ReturnType<typeof perUnit>; past: PastEvidence | null; bids: ReturnType<typeof typeBidRecord> }) {
+  const decided = bids.won + bids.lost
+  const fees = bids.lostOnFee.map(f => fmtMoney(f))
   const covered = est.earnedPerHour != null && est.rateThen ? est.earnedPerHour / est.rateThen : null
   const scale = pu ? unitScale(pu.hours) : 1
   return <>
@@ -296,6 +299,9 @@ function Evidence({ est, rate, size, unit, pu, past }: { est: Estimate; rate: nu
     {est.earnedPerHour != null && <p className={`small est-range ${covered != null && covered < 0.9 ? 'warn-text' : ''}`}>
       {covered != null && covered < 0.9 && <AlertTriangle size={14} className="inline-ico" />} Finished jobs earned <strong>{fmtHourlyRate(est.earnedPerHour)}</strong>
       {covered != null && ` — ${Math.round(covered * 100)}% of the ${fmtHourlyRate(est.rateThen)} you were charging then`}. Counts every hour, including bidding and client changes.
+    </p>}
+    {decided > 0 && <p className="small est-range">
+      You won <strong>{bids.won} of {decided}</strong> bid{decided === 1 ? '' : 's'} for jobs like this{fees.length ? `. Lost ${fees.length} on price, at ${fees.length === 1 ? fees[0] : `${fees.slice(0, -1).join(', ')} and ${fees[fees.length - 1]}`}` : ''}.
     </p>}
     {pu && <p className="small est-range">
       Past jobs took {fmtHours(pu.hours * scale)} per {scale > 1 ? scale.toLocaleString() + ' ' : ''}{unit}{pu.fee != null ? ` and earned ${fmtMoney(pu.fee * scale)} per ${scale > 1 ? scale.toLocaleString() + ' ' : ''}${unit}` : ''}
