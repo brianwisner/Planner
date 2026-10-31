@@ -145,6 +145,9 @@ create table if not exists jobs (
   use_in_estimates boolean not null default true, -- false leaves a finished job out of the estimator
   estimate_note text not null default '',       -- why it was left out
   closeout_reason text not null default '',     -- what made the hours differ from the quote
+  source text not null default '',              -- who referred the work or how they found you
+  lost_reason text not null default '',         -- why a bid was lost (LOST_REASONS in types.ts)
+  lost_date date,                               -- set when a bid is marked lost; the job is then Cancelled
   queued_date date,                             -- when the job entered the queue
   start_date date,
   due_date date,

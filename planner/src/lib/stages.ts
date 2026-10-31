@@ -5,11 +5,12 @@
 import type { Job, Phase, PhaseKind, PhaseStatus } from './types'
 import { isWorkflowPhase } from './phases'
 
-export type Stage = 'bidding' | 'ready' | 'design' | 'plan_check' | 'construction'
+export type Stage = 'lead' | 'bidding' | 'ready' | 'design' | 'plan_check' | 'construction'
 
-export const STAGES: Stage[] = ['bidding', 'ready', 'design', 'plan_check', 'construction']
+export const STAGES: Stage[] = ['lead', 'bidding', 'ready', 'design', 'plan_check', 'construction']
 
 export const STAGE_LABEL: Record<Stage, string> = {
+  lead: 'Lead',
   bidding: 'Bidding',
   ready: 'Ready to start',
   design: 'Design',
@@ -18,6 +19,7 @@ export const STAGE_LABEL: Record<Stage, string> = {
 }
 
 export const STAGE_HINT: Record<Stage, string> = {
+  lead: 'A new inquiry — not priced yet',
   bidding: 'Pricing the work or waiting on a signed proposal',
   ready: 'Proposal accepted — waiting in your queue',
   design: 'Calcs and drawings',
@@ -62,7 +64,8 @@ export function jobStage(phases: Phase[], jobId: string): JobStage {
     const last = main[main.length - 1] ?? null
     return { stage: last ? last.kind as Stage : 'bidding', phase: last, state: last ? 'done' : 'not_started', clientChanges: side, allDone }
   }
-  if (next.kind === 'bidding') return { stage: 'bidding', phase: next, state: 'not_started', clientChanges: side, allDone }
+  // Bidding not started yet: the job is still a lead (an inquiry you haven't priced).
+  if (next.kind === 'bidding') return { stage: 'lead', phase: next, state: 'not_started', clientChanges: side, allDone }
   if (next.kind === 'design') return { stage: 'ready', phase: next, state: 'not_started', clientChanges: side, allDone }
   return { stage: next.kind as Stage, phase: next, state: 'not_started', clientChanges: side, allDone }
 }
@@ -76,7 +79,7 @@ export interface PhaseChange { id: string; from: PhaseStatus; to: PhaseStatus }
  */
 export function stageChanges(phases: Phase[], jobId: string, target: Stage): PhaseChange[] {
   const main = mainPhases(phases, jobId)
-  const targetKind: PhaseKind = target === 'ready' ? 'design' : target
+  const targetKind: PhaseKind = target === 'ready' ? 'design' : target === 'lead' ? 'bidding' : target
   const idx = main.findIndex(p => p.kind === targetKind)
   if (idx < 0) return []
   const changes: PhaseChange[] = []
@@ -84,7 +87,7 @@ export function stageChanges(phases: Phase[], jobId: string, target: Stage): Pha
   main.forEach((p, i) => {
     if (i < idx) set(p, 'complete')
     else if (i === idx) {
-      if (target === 'ready') set(p, 'not_started')
+      if (target === 'ready' || target === 'lead') set(p, 'not_started')
       else if (p.status !== 'waiting') set(p, 'in_progress')
     } else if (ACTIVE.includes(p.status) || (target === 'ready' && p.status === 'complete')) set(p, 'not_started')
   })

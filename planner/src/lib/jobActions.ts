@@ -36,10 +36,12 @@ export async function moveJobToStage(store: ActionStore, job: Job, stage: Stage,
 
 export async function setJobStatus(store: ActionStore, job: Job, status: JobStatus): Promise<boolean> {
   if (job.status === status) return true
-  const before = job.status
-  const ok = await store.update('jobs', job.id, { status })
+  // Reopening a lost bid clears the "lost" mark, so it counts as an open bid again.
+  const reopensLost = Boolean(job.lost_date) && (status === 'active' || status === 'on_hold')
+  const before = { status: job.status, ...(reopensLost ? { lost_reason: job.lost_reason, lost_date: job.lost_date } : {}) }
+  const ok = await store.update('jobs', job.id, { status, ...(reopensLost ? { lost_reason: '', lost_date: null } : {}) })
   if (ok) store.toast(`${job.name} is now ${JOB_STATUS_LABEL[status].toLowerCase()}`, 'ok', {
-    label: 'Undo', run: () => store.update('jobs', job.id, { status: before }),
+    label: 'Undo', run: () => store.update('jobs', job.id, before),
   })
   return ok
 }

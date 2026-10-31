@@ -82,6 +82,7 @@
   color: var(--stage); background: var(--stage-soft);
 }
 .stage-chip .dot { background: var(--stage); }
+[data-stage='lead'] { --stage: var(--st-lead); --stage-soft: var(--st-lead-soft); }
 [data-stage='bidding'] { --stage: var(--st-bidding); --stage-soft: var(--st-bidding-soft); }
 [data-stage='ready'] { --stage: var(--st-ready); --stage-soft: var(--st-ready-soft); }
 [data-stage='design'] { --stage: var(--st-design); --stage-soft: var(--st-design-soft); }

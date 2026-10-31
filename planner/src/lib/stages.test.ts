@@ -15,8 +15,12 @@ const apply = (list: Phase[], target: Stage) => {
 }
 
 describe('jobStage', () => {
-  it('starts new jobs in bidding', () => {
-    expect(jobStage(phases([]), 'j1')).toMatchObject({ stage: 'bidding', state: 'not_started' })
+  it('starts new jobs as a lead', () => {
+    expect(jobStage(phases([]), 'j1')).toMatchObject({ stage: 'lead', state: 'not_started' })
+  })
+  it('is bidding once pricing starts or the proposal is out', () => {
+    expect(jobStage(phases(['in_progress']), 'j1')).toMatchObject({ stage: 'bidding', state: 'working' })
+    expect(jobStage(phases(['waiting']), 'j1')).toMatchObject({ stage: 'bidding', state: 'waiting' })
   })
   it('puts a won job with design not started in "ready"', () => {
     expect(jobStage(phases(['complete']), 'j1')).toMatchObject({ stage: 'ready', state: 'not_started' })
@@ -49,6 +53,10 @@ describe('stageChanges', () => {
   it('moves back: later started phases reset, completed history kept', () => {
     const next = apply(phases(['complete', 'complete', 'complete', 'in_progress']), 'design')
     expect(next.map(p => p.status)).toEqual(['complete', 'in_progress', 'complete', 'not_started', 'not_started'])
+  })
+  it('moves back to lead: bidding not started, finished history kept', () => {
+    const next = apply(phases(['complete', 'in_progress', 'complete']), 'lead')
+    expect(next.map(p => p.status)).toEqual(['not_started', 'not_started', 'complete', 'not_started', 'not_started'])
   })
   it('keeps a waiting phase waiting when it is already the target', () => {
     expect(stageChanges(phases(['complete', 'waiting']), 'j1', 'design')).toEqual([])

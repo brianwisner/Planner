@@ -29,7 +29,12 @@ The shear wall analyzer that used to sit at this repository's root is kept in it
 `clients → jobs → phases → tasks`, plus `job_types`, `past_jobs`, `quotes`, `time_entries`, `job_items`, `invoices`, `deposits`, `schedule_entries`, `comments`, `site_visits` + `site_photos`, `plan_check_rounds` + `plan_check_comments`, `profiles` (one per login), and a single-row `settings` table.
 
 - New jobs get **five phases automatically** via the `add_standard_phases` trigger: `bidding`, `design`, `plan_check`, `construction`, `client_changes`. Older jobs may also have a retired `queued` phase: it is stored history only (`lib/phases.ts` `isWorkflowPhase()` excludes it; label "Planning history"). Phase `kind` is fixed; `name` is the label. `calc.ts` `workPhase()` picks the phase new hours/schedules default to (first unfinished workflow phase).
-- **Stages (v2 UI concept, no schema):** `lib/stages.ts` derives a job's pipeline stage from its phase statuses — Bidding · Ready to start · Design · Plan check · Construction. The most advanced main phase that is in progress/waiting wins; with none started, the first unfinished main phase decides (bidding not started → Bidding, design not started after bidding → Ready to start, later phases → that column, "not started"). `client_changes` is side work shown as a chip, never a stage. `stageChanges()` returns the phase status edits that put a job in a stage (earlier main phases complete, target started, later started phases reset; client changes untouched); the board, the job-page stepper and the card menus all use it via `lib/jobActions.ts` `moveJobToStage()`, which offers Undo.
+- **Stages (v2 UI concept, no schema):** `lib/stages.ts` derives a job's pipeline stage from its phase statuses — Lead · Bidding · Ready to start · Design · Plan check · Construction. The most advanced main phase that is in progress/waiting wins; with none started, the first unfinished main phase decides (bidding not started → Lead, design not started after bidding → Ready to start, later phases → that column, "not started"). Bidding in progress = being priced; bidding waiting = proposal sent. New jobs start as a Lead unless the job form picks a later stage. `client_changes` is side work shown as a chip, never a stage. `stageChanges()` returns the phase status edits that put a job in a stage (earlier main phases complete, target started, later started phases reset; client changes untouched); the board, the job-page stepper and the card menus all use it via `lib/jobActions.ts` `moveJobToStage()`, which offers Undo.
+- **Leads and bids** (no separate CRM; `lib/bids.ts` + tests, Money → Bids `pages/BidsReport.tsx`, the job page's Bid card, board card menus):
+  - `jobs.source` = who referred the work ("Referred by" in the job form, suggestions from earlier sources and client names; a new job copies the client's last referral). Blank = the client came directly, and reports group the job under the client (`sourceName()`, case-insensitive, so a referral and a client with the same name merge).
+  - `bidOutcome()`: lead (bidding not started) · bidding (in progress/waiting) · won (bidding complete, any later main phase started, or job complete/archived) · lost (`lost_date` on a Cancelled/Archived job, or cancelled before it was won).
+  - Actions, each with Undo: **Proposal sent** (`markProposalSent`: bidding → Waiting and one "Follow up on proposal" task due in 14 days, an existing one is moved), **Won it** (`markWon` → Ready to start), **Didn't get it** (`LostEditor` via `edit.lost(job)` → `markLost`: status Cancelled, `lost_reason` from `LOST_REASONS`, `lost_date` today). "Not lost after all" (`reopenBid`), setting the status back to Active/On hold anywhere (`setJobStatus`, job form) clears the lost fields.
+  - Money → Bids (`/money?tab=bids`): new leads, bids out, win rate, average fee offered on won vs. lost bids; "Who sends you work" (`sourceReport()`: jobs, won, lost, win rate, work won = agreed fees, earned per hour on finished jobs only; CSV); open leads and bids with follow-up dates; why bids were lost. The fee estimator adds "You won X of Y bids for jobs like this", with the fees of bids lost on price (`typeBidRecord()`).
 - **Fee estimator** (Money → Fee estimator, `/money?tab=estimate&job=&type=`; `lib/estimate.ts`, `pages/FeeEstimator.tsx`):
   - `job_types` hold starter hours for Design, Plan check and Construction (construction **excluding** site visits), the usual number of `site_visits`, and an optional `size_unit`. `jobs.job_type_id` links jobs to a type; `jobs.size` is in that unit.
   - Typical hours = starter numbers (usual visits × `settings.site_visit_hours` added to Construction) counted as 2 jobs (`STARTER_WEIGHT`) blended with the fee-phase hours of **complete/archived** jobs of that type with `use_in_estimates` true (`estimate_note` says why one was left out). Hours with no phase count as Design and are flagged; bidding and client changes are not part of the fee.
@@ -71,7 +76,7 @@ The shear wall analyzer that used to sit at this repository's root is kept in it
 
 **Changing the schema:** edit `setup.sql` so a fresh project still works, AND add a migration under `planner/supabase/migrations/` / give the owner a small SQL snippet for the existing project. Then update `src/lib/types.ts` (and the demo `DEFAULTS` in `src/demo/mockSupabase.ts`).
 
-Applied migrations (keep filenames aligned with the live history): `20261017182411_add_cancelled_job_status`, `20261018201758_preserve_deposit_credits_and_recurring_task_parent`, `20261018203905_add_billable_time_entries`, `20261019021910_retire_queued_phase_for_new_jobs`, `20261019045305_add_morning_review_planning`, `20261020031520_add_business_email`, `20261020084453_add_job_types_for_fee_estimator`, `20261021065135_fee_estimator_quotes_and_settings`, `20261021074050_job_type_keywords_and_past_jobs`, `20261022022559_client_job_priorities`, `20261024054004_site_visits_and_plan_check` (the live history also has `20261023052039_client_progress_read_only_capacity`, applied outside this repository). SQL regression suites in `planner/supabase/tests/` are for a disposable local database; never run test writes against customer records. v2 itself needed no schema change; the fee estimator added `job_types`, `quotes`, and job/settings fields.
+Applied migrations (keep filenames aligned with the live history): `20261017182411_add_cancelled_job_status`, `20261018201758_preserve_deposit_credits_and_recurring_task_parent`, `20261018203905_add_billable_time_entries`, `20261019021910_retire_queued_phase_for_new_jobs`, `20261019045305_add_morning_review_planning`, `20261020031520_add_business_email`, `20261020084453_add_job_types_for_fee_estimator`, `20261021065135_fee_estimator_quotes_and_settings`, `20261021074050_job_type_keywords_and_past_jobs`, `20261022022559_client_job_priorities`, `20261024054004_site_visits_and_plan_check`, `20261031052831_job_sources_and_lost_bids` (the live history also has `20261023052039_client_progress_read_only_capacity`, applied outside this repository). SQL regression suites in `planner/supabase/tests/` are for a disposable local database; never run test writes against customer records. v2 itself needed no schema change; the fee estimator added `job_types`, `quotes`, and job/settings fields.
 
 ### Frontend layout — `planner/src/`
 
@@ -101,6 +106,7 @@ lib/
   billingActions.ts   captures invoice work values and deposit credits
   estimate.ts         fee estimator: blended hours, pricing, overruns, per-size, past records, proposal text   (+ estimate.test.ts)
   jobTyping.ts        guess a job's type from its name/scope (key words + learned words)   (+ jobTyping.test.ts)
+  bids.ts             leads and bids: outcome, who sends you work, lost reasons, proposal sent / won / lost actions   (+ bids.test.ts)
   calendar.ts         calendar items, Google link, .ics builder
   phases.ts           workflow vs retired phases
   reminders.ts        once-a-day browser notification (off in demo)
@@ -121,7 +127,7 @@ components/
                       StageChip, DueText, Progress, Avatar, TaskCheck, Empty, Segmented, Field,
                       NumberInput (keeps typed text)
   editors.tsx         EditorProvider + useEditors(): task, job, job type, client, time, deposit, charge,
-                      invoice (pick unbilled work), mark paid. Billing-lock rules live here.
+                      invoice (pick unbilled work), mark paid, lost bid. Billing-lock rules live here.
   CommandPalette.tsx  search + commands (/ or Ctrl/Cmd+K)
   TaskRow.tsx         task line: tick (with Undo), open, start timer
   JobMoneyPanel.tsx   job Billing tab: totals, status bar, balance chart, invoice work, invoices,
@@ -138,7 +144,7 @@ views/                big reusable views
 pages/                one file per route (+ its own .css)
   Today, Jobs (Board / List), JobPage (Overview / Hours & charges / Billing / Plan check / Site visits / Notes),
   SiteVisitPage (photos + notes), SiteVisitReport + PlanCheckLetter (printable, letter.css),
-  Schedule, Time, Money (Overview / Ready to bill / Invoices / Deposits / Reports / Fee estimator → FeeEstimator.tsx),
+  Schedule, Time, Money (Overview / Ready to bill / Invoices / Deposits / Reports / Bids → BidsReport.tsx / Fee estimator → FeeEstimator.tsx),
   InvoiceView (printable invoice), Clients, ClientPage, Settings, Login
 ```
 

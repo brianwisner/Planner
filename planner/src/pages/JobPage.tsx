@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, Navigate, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import {
-  Calculator, Camera, Check, ChevronRight, ClipboardCheck, Clock, Ellipsis, FileText, Mail, MapPin, MessageSquare, Pencil, Phone, Play, Plus, Receipt, Square, Trash2, Wallet,
+  Calculator, Camera, Check, ChevronRight, ClipboardCheck, Clock, Ellipsis, FileText, Mail, MapPin, MessageSquare, Pencil, Phone, Play, Plus, Receipt, Send, Square, ThumbsDown, Trash2, Trophy, Wallet,
 } from 'lucide-react'
 import { useData } from '../lib/store'
 import { EMAIL_TARGET, useEmailLink } from '../lib/email'
@@ -15,6 +15,7 @@ import { planCheckStatus } from '../lib/planCheck'
 import { DueText, Empty, Menu, NumberInput, Progress, useConfirm, type MenuEntry } from '../components/ui'
 import { STAGES, STAGE_LABEL, type Stage } from '../lib/stages'
 import { moveJobToStage, setJobStatus } from '../lib/jobActions'
+import { bidOutcome, FOLLOW_UP_TITLE, markProposalSent, markWon, quotedFee, reopenBid } from '../lib/bids'
 import { allHours, entryHours, hoursForPhase, HOUR_STATUS_LABEL } from '../lib/calc'
 import { jobPhaseGroups, phaseLabel } from '../lib/phases'
 import { runningTimer, startTimer, elapsedLabel } from '../lib/timer'
@@ -84,6 +85,7 @@ export function JobPage() {
         <p className="lede job-meta">
           {job.job_number && <span>#{job.job_number}</span>}
           {job.address && <a href={`https://maps.google.com/?q=${encodeURIComponent(job.address)}`} target="_blank" rel="noreferrer"><MapPin size={13} />{job.address}</a>}
+          {job.source && <span>Referred by {job.source}</span>}
           {job.due_date && <span>Due {fmtDate(job.due_date, 'long')}</span>}
           {(t => t && <span>{t.name}</span>)(store.jobTypes.find(t => t.id === job.job_type_id))}
           {job.fee != null ? <span>Fee {fmtMoney(job.fee)}</span> : open && <Link to={`/money?tab=estimate&job=${job.id}`}><Calculator size={13} />Estimate fee</Link>}
@@ -100,7 +102,9 @@ export function JobPage() {
 
     {job.status === 'active' || job.status === 'on_hold'
       ? <StageStepper jobId={job.id} current={stage.stage} held={job.status === 'on_hold'} clientChanges={Boolean(stage.clientChanges)} />
-      : <div className="closed-note">{job.status === 'complete' ? <Check size={16} /> : null}This job is {JOB_STATUS_LABEL[job.status].toLowerCase()}. Its hours, invoices and notes are kept. {job.status !== 'archived' && <button className="btn sm" onClick={() => void setJobStatus(store, job, 'active')}>Reopen</button>}</div>}
+      : job.lost_date
+        ? <div className="closed-note"><ThumbsDown size={16} />Lost bid · {job.lost_reason || 'no reason recorded'} · {fmtDate(job.lost_date, 'long')}. Its notes and hours are kept. {job.status !== 'archived' && <button className="btn sm" onClick={() => void reopenBid(store, job)}>Not lost after all</button>}</div>
+        : <div className="closed-note">{job.status === 'complete' ? <Check size={16} /> : null}This job is {JOB_STATUS_LABEL[job.status].toLowerCase()}. Its hours, invoices and notes are kept. {job.status !== 'archived' && <button className="btn sm" onClick={() => void setJobStatus(store, job, 'active')}>Reopen</button>}</div>}
 
     <div className="tabs" role="tablist">
       {([['overview', 'Overview'], ['time', `Hours & charges`], ['billing', 'Billing'],
@@ -146,7 +150,7 @@ function StageStepper({ jobId, current, held, clientChanges }: { jobId: string; 
             <span className="step-dot">{state === 'done' ? <Check size={13} strokeWidth={3} /> : i + 1}</span>
             <span className="step-text">
               <span className="step-label">{STAGE_LABEL[s]}</span>
-              <span className="step-sub">{state === 'current' ? (held ? 'On hold' : p?.status === 'waiting' ? 'Waiting on someone' : p?.status === 'not_started' ? 'Not started' : 'In progress') : p?.due_date && state === 'todo' ? `Due ${fmtDate(p.due_date)}` : state === 'done' ? 'Done' : ''}</span>
+              <span className="step-sub">{state === 'current' ? (held ? 'On hold' : s === 'lead' ? 'New inquiry' : p?.status === 'waiting' ? 'Waiting on someone' : p?.status === 'not_started' ? 'Not started' : 'In progress') : p?.due_date && state === 'todo' ? `Due ${fmtDate(p.due_date)}` : state === 'done' ? 'Done' : ''}</span>
             </span>
           </button>
         </li>
@@ -176,6 +180,8 @@ function Overview({ jobId }: { jobId: string }) {
 
   return <div className="job-grid">
     <div className="stack loose">
+      <BidCard jobId={jobId} />
+
       <section className="card">
         <div className="card-head"><h2>Tasks <span className="count">{openTasks.length}</span></h2>
           <div className="row"><button className="btn ghost sm" onClick={() => setShowDone(s => !s)}>{showDone ? 'Hide done' : `Show done (${doneTasks.length})`}</button><button className="btn sm" onClick={() => edit.task(undefined, { job_id: jobId })}><Plus size={15} /> Add</button></div>
@@ -227,6 +233,38 @@ function Overview({ jobId }: { jobId: string }) {
       </section>}
     </div>
   </div>
+}
+
+/* ---------------- Bid (leads and open bids) ---------------- */
+
+function BidCard({ jobId }: { jobId: string }) {
+  const store = useData()
+  const edit = useEditors()
+  const navigate = useNavigate()
+  const job = store.jobs.find(j => j.id === jobId)!
+  const outcome = bidOutcome(store.phases, job)
+  if ((outcome !== 'lead' && outcome !== 'bidding') || (job.status !== 'active' && job.status !== 'on_hold')) return null
+  const quote = latestQuote(store, jobId)
+  const fee = quotedFee(store, job)
+  const sent = jobPhaseGroups(store.phases, jobId).workflow.find(p => p.kind === 'bidding')?.status === 'waiting'
+  const followUp = store.tasks.find(t => t.job_id === jobId && t.status !== 'done' && t.title === FOLLOW_UP_TITLE)
+  const days = Math.max(0, Math.round((Date.parse(todayISO()) - Date.parse(job.created_at.slice(0, 10))) / 86400000))
+  return <section className="card bid-card" data-stage={outcome}>
+    <div className="card-head"><h2>{outcome === 'lead' ? 'New lead' : sent ? 'Proposal sent' : 'Pricing this job'}</h2><span className="sub">{days === 0 ? 'Came in today' : `Came in ${days} day${days === 1 ? '' : 's'} ago`}</span></div>
+    <div className="card-body bid-body">
+      <dl className="bid-facts">
+        <div><dt>Referred by</dt><dd>{job.source ? job.source : <button className="btn ghost xs" onClick={() => edit.job(job)}><Plus size={13} /> Add</button>}</dd></div>
+        <div><dt>Fee offered</dt><dd className="num">{fee != null ? <>{fmtMoney(fee)}{quote && <span className="muted small"> · {fmtDate(quote.created_at.slice(0, 10))}</span>}</> : <Link to={`/money?tab=estimate&job=${jobId}`}>Not priced yet</Link>}</dd></div>
+        {followUp?.due_date && <div><dt>Follow up</dt><dd><DueText date={followUp.due_date} /></dd></div>}
+      </dl>
+      <div className="row wrap bid-actions">
+        {outcome === 'lead' && <button className="btn sm primary" onClick={() => navigate(`/money?tab=estimate&job=${jobId}`)}><Calculator size={14} /> Estimate fee</button>}
+        {!sent && <button className={`btn sm ${outcome === 'bidding' ? 'primary' : ''}`} onClick={() => void markProposalSent(store, job)} title="Moves the job to Bidding, waiting on the client, with a reminder to follow up in 2 weeks"><Send size={14} /> Proposal sent</button>}
+        <button className="btn sm" onClick={() => void markWon(store, job)} title="Bidding is done; the job waits in your queue (Ready to start)"><Trophy size={14} /> Won it</button>
+        <button className="btn sm" onClick={() => edit.lost(job)}><ThumbsDown size={14} /> Didn't get it</button>
+      </div>
+    </div>
+  </section>
 }
 
 /* ---------------- Quote vs. actual ---------------- */

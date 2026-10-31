@@ -21,7 +21,7 @@ const clientOrder = (a: Row, b: Row) => Number(a.client_priority ?? a.priority) 
 const DEFAULTS: Record<string, () => Row> = {
   settings: () => ({ business_email: '', minimum_fee: 0, site_visit_hours: 3, retainer_percent: 0, proposal_template: '', letterhead: '', signature: '', visit_closing: '' }),
   clients: () => ({ contact_name: '', email: '', phone: '', address: '', notes: '', is_sample: false }),
-  jobs: () => ({ job_number: '', description: '', address: '', status: 'active', priority: 100, client_priority: null, fee: null, job_type_id: null, size: null, use_in_estimates: true, estimate_note: '', closeout_reason: '', queued_date: null, start_date: null, due_date: null }),
+  jobs: () => ({ job_number: '', description: '', address: '', status: 'active', priority: 100, client_priority: null, fee: null, job_type_id: null, size: null, use_in_estimates: true, estimate_note: '', closeout_reason: '', source: '', lost_reason: '', lost_date: null, queued_date: null, start_date: null, due_date: null }),
   job_types: () => ({ design_hours: 0, plan_check_hours: 0, construction_hours: 0, site_visits: 0, size_unit: '', keywords: '', notes: '' }),
   past_jobs: () => ({ client: '', address: '', job_type_id: null, date: null, fee: null, hours: null, size: null, scope: '', source: '', use_in_estimates: true }),
   quotes: () => ({ job_type_id: null, rate: 0, design_hours: 0, plan_check_hours: 0, construction_hours: 0, site_visits: 0, visit_hours: 0, allowance_hours: 0, rush_percent: 0, size: null, suggested_fee: 0, fee: 0, fee_note: '' }),

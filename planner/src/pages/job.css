@@ -39,6 +39,13 @@
 .glance-row span[title] { text-decoration: underline dotted var(--border-strong); text-underline-offset: 3px; cursor: help; }
 .contact { display: flex; flex-direction: column; gap: 4px; }
 .contact-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+/* Leads and open bids: the stage color along the top of the card. */
+.bid-card { border-top: 3px solid var(--stage); }
+.bid-body { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 14px 24px; }
+.bid-facts { display: flex; flex-wrap: wrap; gap: 10px 32px; margin: 0; }
+.bid-facts dt { color: var(--text-3); font-size: 0.8125rem; }
+.bid-facts dd { margin: 2px 0 0; font-weight: 600; color: var(--text); }
+.bid-actions { gap: 6px; }
 
 /* Phases */
 .phase-list { display: flex; flex-direction: column; }

@@ -7,7 +7,7 @@ import { AlertCircle, Briefcase, Building2, CalendarDays, Camera, Clock, FileTex
 import { addDays, format, nextMonday } from 'date-fns'
 import { useData, type Store } from '../lib/store'
 import type { Client, Deposit, Invoice, Job, JobItem, JobStatus, JobType, Recurrence, Task, TaskStatus, TimeEntry } from '../lib/types'
-import { ITEM_CATEGORIES, JOB_STATUS_LABEL, RECURRENCE_LABEL } from '../lib/types'
+import { ITEM_CATEGORIES, JOB_STATUS_LABEL, LOST_REASONS, RECURRENCE_LABEL } from '../lib/types'
 import { jobCharges, rateFor, workPhase } from '../lib/calc'
 import { fmtDate, fmtHours, fmtMoney, todayISO } from '../lib/utils'
 import { saveTask } from '../lib/taskActions'
@@ -16,6 +16,7 @@ import { jobPhotoPaths, removePhotoFiles } from '../lib/siteVisits'
 import type { InvoiceWorkLink } from '../lib/billingActions'
 import { isWorkflowPhase, phaseLabel } from '../lib/phases'
 import { STAGE_LABEL, jobStage, stageChanges, type Stage } from '../lib/stages'
+import { lastSourceFor, markLost, quotedFee, sourceSuggestions } from '../lib/bids'
 import { Field, Modal, NumberInput, Segmented, useConfirm } from './ui'
 
 /* ================= Shared form helpers ================= */
@@ -233,6 +234,7 @@ export function JobEditor({ job, defaults, onClose, onCreated, openClient, openJ
     client_id: job?.client_id ?? defaults?.client_id ?? '',
     job_number: job?.job_number ?? suggestJobNumber(jobs),
     name: job?.name ?? '', description: job?.description ?? '', address: job?.address ?? '',
+    source: job?.source ?? (defaults?.client_id ? lastSourceFor(store, defaults.client_id) : ''),
     status: (job?.status ?? 'active') as JobStatus,
     fee: job?.fee ?? null as number | null,
     job_type_id: job?.job_type_id ?? null as string | null,
@@ -242,7 +244,11 @@ export function JobEditor({ job, defaults, onClose, onCreated, openClient, openJ
     start_date: job?.start_date ?? null as string | null,
     due_date: job?.due_date ?? null as string | null,
   }))
-  const [startStage, setStartStage] = useState<Stage>('bidding')
+  // New jobs start as a lead (an inquiry not priced yet) unless you pick a later stage.
+  const [startStage, setStartStage] = useState<Stage>('lead')
+  // A new job's "Referred by" follows the client's last referral until it's typed in.
+  const [sourceTouched, setSourceTouched] = useState(Boolean(job))
+  const sources = useMemo(() => sourceSuggestions(store), [store])
   // New jobs get a type guessed from their name and scope until one is picked by hand.
   const [typeTouched, setTypeTouched] = useState(Boolean(job?.job_type_id))
   const guess = useMemo(() => d.job_type_id ? null : guessType(store, `${d.name} ${d.description}`, job?.id), [store, d.job_type_id, d.name, d.description, job?.id])
@@ -250,6 +256,7 @@ export function JobEditor({ job, defaults, onClose, onCreated, openClient, openJ
   const typeId = d.job_type_id ?? autoType
   const sizeUnit = jobTypes.find(t => t.id === typeId)?.size_unit.trim() ?? ''
   const set = <K extends keyof typeof d>(k: K, v: (typeof d)[K]) => setD(x => ({ ...x, [k]: v }))
+  const pickClient = (clientId: string) => setD(x => ({ ...x, client_id: clientId, ...(sourceTouched ? {} : { source: lastSourceFor(store, clientId) }) }))
 
   async function save() {
     if (form.busy.current) return
@@ -258,14 +265,16 @@ export function JobEditor({ job, defaults, onClose, onCreated, openClient, openJ
     if ((d.start_date && !validDate(d.start_date)) || (d.due_date && !validDate(d.due_date))) { form.fail('Enter valid dates, or clear them.'); return }
     if (d.fee != null && d.fee < 0) { form.fail('The fee cannot be negative.'); return }
     if (d.size != null && d.size < 0) { form.fail('The size cannot be negative.'); return }
-    const row = { ...d, job_type_id: typeId, name: d.name.trim(), job_number: d.job_number.trim(), address: d.address.trim(), estimate_note: d.use_in_estimates ? '' : d.estimate_note.trim() }
+    const row = { ...d, job_type_id: typeId, name: d.name.trim(), job_number: d.job_number.trim(), address: d.address.trim(), source: d.source.trim(), estimate_note: d.use_in_estimates ? '' : d.estimate_note.trim(),
+      // Reopening a lost bid clears the "lost" mark.
+      ...(job?.lost_date && (d.status === 'active' || d.status === 'on_hold') ? { lost_reason: '', lost_date: null } : {}) }
     await form.run('save', async () => {
       if (job) return update('jobs', job.id, row)
       // New jobs go to the end of the queue with a number no other job uses.
       const maxPriority = Math.max(0, ...jobs.map(j => j.priority))
       const created = await insert('jobs', { ...row, priority: maxPriority + 1 })
       if (!created) return false
-      if (startStage !== 'bidding') {
+      if (startStage !== 'lead') {
         const phases = await fetchWhere('phases', 'job_id', created.id)
         await Promise.all(stageChanges(phases, created.id, startStage).map(c => update('phases', c.id, { status: c.to })))
       }
@@ -297,19 +306,23 @@ export function JobEditor({ job, defaults, onClose, onCreated, openClient, openJ
         <div className="field-grid">
           <Field label="Client" htmlFor={`${form.id}-client`}>
             <div className="row">
-              <select id={`${form.id}-client`} className="input" value={d.client_id} onChange={e => set('client_id', e.target.value)}>
+              <select id={`${form.id}-client`} className="input" value={d.client_id} onChange={e => pickClient(e.target.value)}>
                 <option value="">{clients.length ? 'Choose a client…' : 'Add a client first →'}</option>
                 {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
-              <button type="button" className="btn" onClick={() => openClient(c => set('client_id', c.id))}>New</button>
+              <button type="button" className="btn" onClick={() => openClient(c => pickClient(c.id))}>New</button>
             </div>
           </Field>
-          <Field label="Site address" htmlFor={`${form.id}-addr`}><input id={`${form.id}-addr`} className="input" value={d.address} onChange={e => set('address', e.target.value)} placeholder="Street, city" /></Field>
+          <Field label="Referred by" htmlFor={`${form.id}-source`} hint="An architect, contractor, past client, your website… Blank if they came to you directly.">
+            <input id={`${form.id}-source`} className="input" list={`${form.id}-sources`} value={d.source} onChange={e => { setSourceTouched(true); set('source', e.target.value) }} placeholder="Optional" autoComplete="off" />
+            <datalist id={`${form.id}-sources`}>{sources.map(s => <option key={s} value={s} />)}</datalist>
+          </Field>
         </div>
+        <Field label="Site address" htmlFor={`${form.id}-addr`}><input id={`${form.id}-addr`} className="input" value={d.address} onChange={e => set('address', e.target.value)} placeholder="Street, city" /></Field>
         {job ? <Field label="Status">
           <Segmented label="Status" value={d.status} onChange={v => set('status', v)} options={(Object.keys(JOB_STATUS_LABEL) as JobStatus[]).map(s => ({ value: s, label: JOB_STATUS_LABEL[s] }))} />
         </Field> : <Field label="Starts in" hint="You can move the job along later by dragging it on the Jobs board.">
-          <Segmented label="Starting stage" value={startStage} onChange={setStartStage} options={(['bidding', 'ready', 'design'] as Stage[]).map(s => ({ value: s, label: STAGE_LABEL[s] }))} />
+          <Segmented label="Starting stage" value={startStage} onChange={setStartStage} options={(['lead', 'bidding', 'ready', 'design'] as Stage[]).map(s => ({ value: s, label: STAGE_LABEL[s] }))} />
         </Field>}
         <div className="field-grid">
           <Field label="Job type" htmlFor={`${form.id}-type`} hint={autoType && guess
@@ -850,6 +863,32 @@ export function PaidEditor({ invoice, onClose }: { invoice: Invoice; onClose: ()
   </Modal>
 }
 
+/* ================= Lost bid ================= */
+
+export function LostEditor({ job, onClose }: { job: Job; onClose: () => void }) {
+  const store = useData()
+  const form = useRecordForm('change', onClose, () => store.refresh('jobs'))
+  const [reason, setReason] = useState<string | null>(null)
+  const [other, setOther] = useState('')
+  const fee = quotedFee(store, job)
+  async function save() {
+    if (!reason) { form.fail('Pick the closest reason. It shows up in Money → Bids so you can spot patterns.'); return }
+    await form.run('save', () => markLost(store, job, reason === 'Other' ? other.trim() || 'Other' : reason))
+  }
+  return <Modal size="narrow" title="Didn't get this one?" subtitle={`${job.name}${fee ? ` · offered ${fmtMoney(fee)}` : ''}`} onClose={form.close} footer={<Footer form={form} saveLabel="Mark lost" />}>
+    <FormError message={form.error} />
+    <form id={form.id} noValidate onSubmit={e => { e.preventDefault(); void save() }}>
+      <fieldset className="form-fields" disabled={form.pending !== null}>
+        <Field label="What happened?">
+          <QuickChips label="Reason" options={LOST_REASONS.map(r => ({ label: r, value: r as string }))} value={reason} onPick={setReason} />
+        </Field>
+        {reason === 'Other' && <Field label="Reason" htmlFor={`${form.id}-other`}><input id={`${form.id}-other`} className="input" autoFocus value={other} onChange={e => setOther(e.target.value)} placeholder="In a few words" /></Field>}
+        <p className="tiny muted">The job is set to Cancelled and its notes and hours are kept. You can reopen it any time.</p>
+      </fieldset>
+    </form>
+  </Modal>
+}
+
 /* ================= Provider ================= */
 
 type EditorRequest =
@@ -862,6 +901,7 @@ type EditorRequest =
   | { kind: 'charge'; item?: JobItem; jobId?: string }
   | { kind: 'invoice'; invoice?: Invoice; jobId: string; preselect?: { entryIds: string[]; itemIds: string[] } }
   | { kind: 'paid'; invoice: Invoice }
+  | { kind: 'lost'; job: Job }
 
 export interface Editors {
   task: (task?: Task, defaults?: TaskDefaults) => void
@@ -873,6 +913,8 @@ export interface Editors {
   charge: (item?: JobItem, jobId?: string) => void
   invoice: (jobId: string, invoice?: Invoice, preselect?: { entryIds: string[]; itemIds: string[] }) => void
   paid: (invoice: Invoice) => void
+  /** Mark a lead or bid lost, with the reason. */
+  lost: (job: Job) => void
 }
 
 const EditorContext = createContext<Editors | null>(null)
@@ -898,6 +940,7 @@ export function EditorProvider({ children }: { children: ReactNode }) {
     charge: (item, jobId) => open({ kind: 'charge', item, jobId }),
     invoice: (jobId, invoice, preselect) => open({ kind: 'invoice', jobId, invoice, preselect }),
     paid: invoice => open({ kind: 'paid', invoice }),
+    lost: job => open({ kind: 'lost', job }),
   }), [open])
 
   return <EditorContext.Provider value={editors}>
@@ -914,6 +957,7 @@ export function EditorProvider({ children }: { children: ReactNode }) {
         case 'charge': return <ChargeEditor key={id} item={req.item} jobId={req.jobId} onClose={close} />
         case 'invoice': return <InvoiceEditor key={id} invoice={req.invoice} jobId={req.jobId} preselect={req.preselect} onClose={close} />
         case 'paid': return <PaidEditor key={id} invoice={req.invoice} onClose={close} />
+        case 'lost': return <LostEditor key={id} job={req.job} onClose={close} />
       }
     })}
   </EditorContext.Provider>

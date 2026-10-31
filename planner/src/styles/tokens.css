@@ -37,6 +37,8 @@
   --visit-soft: #f1ebff;
 
   /* Pipeline stages: used on the board, timeline, badges and charts. */
+  --st-lead: #0b84d0;
+  --st-lead-soft: #e3f3fd;
   --st-bidding: #d97a06;
   --st-bidding-soft: #fff3e0;
   --st-ready: #0b8a7e;
@@ -107,6 +109,8 @@
     --info-soft: #0f2d33;
     --visit: #b593ff;
     --visit-soft: #2a1f45;
+    --st-lead: #4cb6f5;
+    --st-lead-soft: #0e2a3b;
     --st-bidding: #f1a33c;
     --st-bidding-soft: #33250f;
     --st-ready: #35c8b8;
@@ -162,6 +166,8 @@
   --info-soft: #0f2d33;
   --visit: #b593ff;
   --visit-soft: #2a1f45;
+  --st-lead: #4cb6f5;
+  --st-lead-soft: #0e2a3b;
   --st-bidding: #f1a33c;
   --st-bidding-soft: #33250f;
   --st-ready: #35c8b8;
