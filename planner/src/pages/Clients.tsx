@@ -87,6 +87,7 @@ export function Clients() {
   return <div className="clients-page">
     <div className="page-head">
       <div className="titles">
+        <span className="eyebrow">Contacts</span>
         <h1>Clients</h1>
         <p className="lede">{store.clients.length} client{store.clients.length === 1 ? '' : 's'} · {withOpen} with open jobs</p>
       </div>

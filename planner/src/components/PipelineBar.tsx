@@ -1,4 +1,4 @@
-// How many open jobs sit in each stage, as one colored bar with a legend.
+// How many open jobs sit in each stage: one row per stage with a bar.
 import { useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import { useData } from '../lib/store'
@@ -17,13 +17,10 @@ export function PipelineBar() {
     return { c, hold, total: Object.values(c).reduce((a, b) => a + b, 0) }
   }, [jobs, phases])
   if (!counts.total && !counts.hold) return <p className="small muted">No open jobs yet.</p>
-  return <div className="pipeline">
-    <div className="pipeline-bar" role="img" aria-label={STAGES.map(s => `${counts.c[s]} ${STAGE_LABEL[s]}`).join(', ')}>
-      {STAGES.filter(s => counts.c[s]).map(s => <span key={s} data-stage={s} style={{ flexGrow: counts.c[s] }} />)}
-    </div>
-    <ul className="pipeline-legend">
-      {STAGES.map(s => <li key={s} data-stage={s}><Link to={`/jobs?stage=${s}`}><span className="dot" /><span className="grow">{STAGE_LABEL[s]}</span><strong className="num">{counts.c[s]}</strong></Link></li>)}
-      {counts.hold > 0 && <li data-stage="hold"><Link to="/jobs?show=hold"><span className="dot" /><span className="grow">On hold</span><strong className="num">{counts.hold}</strong></Link></li>}
-    </ul>
-  </div>
+  const most = Math.max(counts.hold, ...STAGES.map(s => counts.c[s]))
+  const bar = (n: number) => <span className="pipeline-track" aria-hidden="true"><span style={{ width: `${(n / most) * 100}%` }} /></span>
+  return <ul className="pipeline-legend">
+    {STAGES.map(s => <li key={s} data-stage={s}><Link to={`/jobs?stage=${s}`}><span className="pl-name">{STAGE_LABEL[s]}</span>{bar(counts.c[s])}<strong className="num">{counts.c[s]}</strong></Link></li>)}
+    {counts.hold > 0 && <li data-stage="hold"><Link to="/jobs?show=hold"><span className="pl-name">On hold</span>{bar(counts.hold)}<strong className="num">{counts.hold}</strong></Link></li>}
+  </ul>
 }

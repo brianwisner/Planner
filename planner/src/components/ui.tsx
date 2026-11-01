@@ -196,8 +196,9 @@ export function Progress({ value, max, tone, size }: { value: number; max: numbe
   return <div className={`progress ${auto ?? ''} ${size ?? ''}`} role="progressbar" aria-valuenow={Math.round(pct)} aria-valuemin={0} aria-valuemax={100}><span style={{ width: `${pct}%` }} /></div>
 }
 
-export function Avatar({ name, color, size }: { name: string; color?: string; size?: 'lg' }) {
-  return <span className={`avatar ${size ?? ''}`} style={color ? { background: color } : undefined} aria-hidden="true">{initials(name)}</span>
+// Always ink with white initials; a saved person color is no longer shown.
+export function Avatar({ name, size }: { name: string; color?: string; size?: 'lg' }) {
+  return <span className={`avatar ${size ?? ''}`} aria-hidden="true">{initials(name)}</span>
 }
 
 export function TaskCheck({ done, onToggle, label, big }: { done: boolean; onToggle: () => void; label: string; big?: boolean }) {

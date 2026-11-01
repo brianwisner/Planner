@@ -11,8 +11,9 @@ export function applyTheme(theme: Theme) {
   if (theme === 'system') delete root.dataset.theme
   else root.dataset.theme = theme
   try { localStorage.setItem(KEY, theme) } catch { /* private mode */ }
-  const dark = theme === 'dark' || (theme === 'system' && window.matchMedia?.('(prefers-color-scheme: dark)').matches)
-  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', dark ? '#0e1217' : '#f5f6f8')
+  // Phone status bar matches the page background of whichever theme is showing.
+  const paper = getComputedStyle(root).getPropertyValue('--paper').trim()
+  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', paper || '#ffffff')
 }
 
 /** Small per-device preferences (remembered view, filters). Never business data. */

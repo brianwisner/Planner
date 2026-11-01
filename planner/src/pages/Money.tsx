@@ -44,6 +44,7 @@ export function Money() {
   return <div className="money-page">
     <div className="page-head">
       <div className="titles">
+        <span className="eyebrow">Billing</span>
         <h1>Money</h1>
         <p className="lede">Bill your work, follow up on what's owed, and see how the business is doing.</p>
       </div>
@@ -96,7 +97,7 @@ function Overview({ rows, ready, unpaid, today }: { rows: Row[]; ready: Row[]; u
         <span className="value">{fmtMoney(readyTotal)}</span>
         <span className="sub">{ready.length} job{ready.length === 1 ? '' : 's'} with unbilled work</span>
       </Link>
-      <Link className={`stat ${oldest > 30 ? 'danger' : ''}`} to="/money?tab=invoices">
+      <Link className="stat" to="/money?tab=invoices">
         <span className="label"><Send size={15} /> Awaiting payment</span>
         <span className="value">{fmtMoney(unpaidTotal)}</span>
         <span className="sub">{unpaid.length ? `${unpaid.length} invoice${unpaid.length === 1 ? '' : 's'} · oldest ${oldest} day${oldest === 1 ? '' : 's'}` : 'Nothing owed right now'}</span>
@@ -360,7 +361,7 @@ function Reports({ range, from, to, patch }: { range: RangeKey; from: string; to
         <div className="card-body">
           {data.phaseKinds.length === 0 ? <p className="small muted">Add hour estimates to job phases to compare them with the hours you actually log.</p> :
             <ul className="est-list">{data.phaseKinds.map(k => { const max = Math.max(k.estimate, k.actual, 1); const over = k.estimate > 0 && k.actual > k.estimate; return <li key={k.kind}>
-              <div className="row between"><span className="strong small">{PHASE_KIND_LABEL[k.kind]} <span className="tiny muted" style={{ fontWeight: 450 }}>· {k.phases} phase{k.phases === 1 ? '' : 's'}</span></span><span className={`small num ${over ? 'danger-text' : 'muted'}`}>{fmtHours(k.actual)} of {fmtHours(k.estimate)}{k.estimate > 0 ? ` · ${Math.round(k.actual / k.estimate * 100)}%` : ''}</span></div>
+              <div className="row between"><span className="strong small">{PHASE_KIND_LABEL[k.kind]} <span className="tiny muted" style={{ fontWeight: 400 }}>· {k.phases} phase{k.phases === 1 ? '' : 's'}</span></span><span className={`small num ${over ? 'danger-text' : 'muted'}`}>{fmtHours(k.actual)} of {fmtHours(k.estimate)}{k.estimate > 0 ? ` · ${Math.round(k.actual / k.estimate * 100)}%` : ''}</span></div>
               <div className="est-track" aria-hidden="true">
                 <span className="est-est" style={{ width: `${k.estimate / max * 100}%` }} />
                 <span className={`est-act ${over ? 'over' : ''}`} style={{ width: `${k.actual / max * 100}%` }} />

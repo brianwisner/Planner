@@ -11,7 +11,7 @@ import { phaseLabel } from '../lib/phases'
 import { runningTimers, needsReview, startTimer, elapsedLabel } from '../lib/timer'
 import { useStopTimer } from '../components/useTimerActions'
 import { mondayOf } from '../lib/views'
-import { downloadCSV, fmtDate, fmtHours, fmtMoney, sum, todayISO } from '../lib/utils'
+import { downloadCSV, fmtDate, fmtHours, fmtMoney, fmtMonthDay, sum, todayISO } from '../lib/utils'
 import { pref, setPref } from '../lib/theme'
 import type { TimeEntry } from '../lib/types'
 import './time.css'
@@ -47,7 +47,7 @@ export function Time() {
 
   return <div className="time-page">
     <div className="page-head">
-      <div className="titles"><h1>Time</h1><p className="lede">{weekTotal ? `${fmtHours(weekTotal)} logged this week · ${fmtHours(billable)} billable` : 'Nothing logged this week yet'}</p></div>
+      <div className="titles"><span className="eyebrow">Week of {fmtMonthDay(week)}</span><h1>Time</h1><p className="lede">{weekTotal ? `${fmtHours(weekTotal)} logged this week · ${fmtHours(billable)} billable` : 'Nothing logged this week yet'}</p></div>
       <div className="actions">
         <button className="btn" onClick={() => edit.time()}><Plus size={16} /> Log hours</button>
       </div>

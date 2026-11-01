@@ -98,7 +98,7 @@ export function Shell({ children }: { children: ReactNode }) {
     <aside className="sidebar" aria-label="Main">
       <NavLink to="/" className="brand" aria-label={`${settings.company_name} — Today`}>
         <BrandMark />
-        <span className="brand-text"><span className="brand-name">{settings.company_name}</span><span className="brand-sub" style={{ display: 'block' }}>Planner</span></span>
+        <span className="brand-text"><span className="brand-name">Planner</span><span className="brand-sub">{settings.company_name}</span></span>
       </NavLink>
       <nav className="nav">
         {NAV.map(n => <NavLink key={n.to} to={n.to} end={n.end} title={n.label}>
@@ -130,8 +130,8 @@ export function Shell({ children }: { children: ReactNode }) {
       </header>
 
       <header className="mobile-top">
-        <BrandMark small />
-        <span className="title truncate">{settings.company_name}</span>
+        <BrandMark />
+        <span className="sr-only">{settings.company_name} Planner</span>
         <TimerControl compact />
         <button className="btn icon" onClick={() => setPalette(true)} aria-label="Search"><Search size={20} /></button>
       </header>
