@@ -1,18 +1,19 @@
 .login { min-height: 100vh; display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); background: var(--surface); }
 .login-art {
-  position: relative; overflow: hidden; color: #fff; padding: 48px;
-  background: radial-gradient(1200px 600px at 10% 0%, #3d6bff 0%, #2346c2 45%, #172f86 100%);
+  position: relative; overflow: hidden; color: var(--text); padding: 48px;
+  background: var(--cream); border-right: 1px solid var(--border);
   display: flex; align-items: center;
 }
 .login-art-inner { position: relative; z-index: 1; max-width: 480px; display: flex; flex-direction: column; gap: 22px; }
-.login-art .brand-mark { background: rgba(255,255,255,.16); box-shadow: none; }
-.login-art h2 { font-size: 32px; line-height: 1.15; font-weight: 680; letter-spacing: -0.025em; }
-.login-art ul { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 10px; font-size: 16px; color: rgba(255,255,255,.88); }
-.login-art li::before { content: '✓'; display: inline-flex; width: 22px; height: 22px; margin-right: 10px; border-radius: 50%; background: rgba(255,255,255,.18); align-items: center; justify-content: center; font-size: 12px; }
-.login-truss { position: absolute; left: 6%; bottom: 7%; width: 88%; color: rgba(255,255,255,.16); }
+.login-art .brand-mark { width: 56px; }
+.login-art .row { gap: 14px; }
+.login-art h2 { font-size: 34px; line-height: 1.2; font-weight: 600; letter-spacing: -0.01em; }
+.login-art ul { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 10px; font-size: 16px; color: var(--text-2); }
+.login-art li::before { content: '✓'; display: inline-flex; width: 22px; height: 22px; margin-right: 10px; border-radius: var(--radius-xs); background: var(--paper); color: var(--text); align-items: center; justify-content: center; font-size: 12px; }
+.login-truss { position: absolute; left: 6%; bottom: 7%; width: 88%; color: var(--stone); }
 .login-panel { display: flex; align-items: center; justify-content: center; padding: 32px 20px; }
 .login-card { width: 100%; max-width: 380px; display: flex; flex-direction: column; gap: 16px; }
-.login-card h1 { font-size: 28px; }
+.login-card h1 { font-size: 34px; }
 .login-mobile-brand { display: none; align-items: center; gap: 10px; margin-bottom: 12px; }
 @media (max-width: 860px) {
   .login { grid-template-columns: 1fr; }

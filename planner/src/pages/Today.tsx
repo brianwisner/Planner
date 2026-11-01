@@ -10,7 +10,7 @@ import { WeekStrip } from '../components/WeekStrip'
 import { PipelineBar } from '../components/PipelineBar'
 import { jobBilling } from '../lib/calc'
 import { greeting, mondayOf, openAgenda, taskDay, taskOrder, unpaidInvoices, weekDays } from '../lib/views'
-import { fmtDate, fmtHours, fmtMoney, sum, todayISO } from '../lib/utils'
+import { fmtHours, fmtLongDay, fmtMoney, sum, todayISO } from '../lib/utils'
 import { saveTask } from '../lib/taskActions'
 import { jobStage } from '../lib/stages'
 import { pref, setPref } from '../lib/theme'
@@ -71,8 +71,9 @@ export function Today() {
   return <div className="today">
     <div className="page-head">
       <div className="titles">
+        <span className="eyebrow">{fmtLongDay(today)}</span>
         <h1>{greeting(now)}{firstName ? `, ${firstName}` : ''}</h1>
-        <p className="lede">{fmtDate(today, 'long').replace(/, \d{4}$/, '')}{summary ? ` — ${summary}` : ' — nothing urgent. Nice.'}</p>
+        <p className="lede">{summary || 'Nothing urgent. Nice.'}</p>
       </div>
       <div className="actions hide-sm">
         <button className="btn" onClick={() => edit.time()}><Clock size={16} /> Log hours</button>
@@ -154,9 +155,9 @@ export function Today() {
           <div className="card-body">
             <WeekStrip days={week} />
             <div className="week-summary">
-              <div><span className="muted small">Planned</span><strong className="num">{fmtHours(sum(week.map(d => d.planned)))}</strong></div>
-              <div><span className="muted small">Available</span><strong className="num">{fmtHours(sum(week.map(d => d.capacity)))}</strong></div>
-              <div><span className="muted small">Logged</span><strong className="num">{fmtHours(sum(week.map(d => d.logged)))}</strong></div>
+              <div><span className="caps">Planned</span><strong className="num">{fmtHours(sum(week.map(d => d.planned)))}</strong></div>
+              <div><span className="caps">Available</span><strong className="num">{fmtHours(sum(week.map(d => d.capacity)))}</strong></div>
+              <div><span className="caps">Logged</span><strong className="num">{fmtHours(sum(week.map(d => d.logged)))}</strong></div>
             </div>
             {plannedToday.length > 0 && <div className="today-plan">
               <div className="field-label" style={{ marginBottom: 6 }}>Planned for today</div>

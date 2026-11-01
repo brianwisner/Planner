@@ -80,7 +80,7 @@ main.tsx              entry: fonts, global CSS, theme
 App.tsx               auth gate (Login / SetPassword) + HashRouter routes, legacy redirects
 env.d.ts              __DEMO__ build flag
 styles/
-  tokens.css          ALL colors/sizes as CSS variables, light + dark (data-theme / prefers-color-scheme)
+  tokens.css          ALL colors/sizes as CSS variables; 9 brand tokens (--ink, --cream, --corten…) per theme, everything else points at them
   base.css            reset, typography, utilities (row, stack, muted, hide-sm/show-sm …)
   components.css      buttons, cards, badges, stage chips, inputs, segmented, tabs, tables, lists,
                       dialog (bottom sheet on phones), menu, toasts, stats, palette, form bits
@@ -146,8 +146,9 @@ Routes (HashRouter, so GitHub Pages never 404s): `/` Today · `/jobs` (`?view=bo
 
 Conventions:
 - Pages never call Supabase directly; they use `useData()`. Open forms with `useEditors()`; ask for confirmation with `useConfirm()` (not `window.confirm`).
-- Use the design tokens and shared classes; no hard-coded colors (dark mode must keep working). Stage colors come from `[data-stage=…]` → `--stage` / `--stage-soft`.
-- Icons are `lucide-react`. Font is Inter (bundled via `@fontsource-variable/inter`).
+- **Wisner Engineering look** (Oct 2026): ink `#2a2420` text and primary buttons, cream `#f5f0e8` sidebar/panels/tags, stone `#d9d1c5` outlines, rule `#e6ded2` row dividers, white pages. No gradients, shadows or pill shapes (4px panels/buttons/inputs, 2px tags; only the avatar is round). Corten `#8b3d1f` (`--corten` / `--late`) is reserved for: the eyebrow above each page title, anything late or overdue, the sidebar Today count, today markers (Timeline line, calendar dates) and Week plan days over 8h. Stages have no colors of their own; Timeline bars are ink when their dates include today, stone otherwise.
+- Use the design tokens and shared classes; no hard-coded colors (dark mode must keep working). Dark mode only redefines the brand tokens in `tokens.css` (both dark blocks).
+- Icons are `lucide-react`. Font is Inter (bundled via `@fontsource-variable/inter`), weights 400 and 600 only. The logo is the WE mark (`Brand.tsx`, `public/we-mark.svg`).
 - Hours display in quarter hours (`fmtHours`). Money via `fmtMoney`.
 - Phones (≤ 760px): touch targets ≥ 40px, no sideways page scrolling (wide grids scroll inside their card), `hide-sm` for non-essential columns, dialogs become bottom sheets.
 - The owner prefers compact job-status dropdowns: `.status-select` is 28px high on desktop, 30px on phones, with an inset chevron. Keep that.
@@ -179,7 +180,7 @@ Conventions:
 ### Things the owner is likely to ask for
 
 - New fields on jobs/phases/tasks → `setup.sql` (+ migration), `types.ts`, demo defaults/seed, the relevant editor in `editors.tsx`, and wherever it's displayed.
-- New phase types → the `kind` check constraint, `add_standard_phases()`, `PHASE_KIND_LABEL`/`PHASE_KIND_SHORT` in `types.ts`, and `lib/stages.ts` if it should be a pipeline stage (plus a `--st-…` color in `tokens.css`).
+- New phase types → the `kind` check constraint, `add_standard_phases()`, `PHASE_KIND_LABEL`/`PHASE_KIND_SHORT` in `types.ts`, and `lib/stages.ts` if it should be a pipeline stage (plus a `--st-…` token in `tokens.css`, pointing at ink).
 - Email reminders → would need a scheduled Edge Function (pg_cron + an email provider); currently reminders are browser notifications only. The **Monday morning email** is not app code: it's a Claude scheduled task ("Monday morning planner email", Mondays 6:34 am Pacific) that reads the database read-only, Google Calendar and Gmail, and sends one summary to the owner's business email. If its queries need to change after a schema change, update the scheduled task's prompt.
 - Sending invoices by email → the invoice page's Email button opens a pre-filled Gmail message, and Print/Save as PDF makes the attachment; sending without opening Gmail would need the Gmail API or an email provider.
 - Two-way Google Calendar → needs Google OAuth (Google Cloud project); current design is a one-way subscription feed.

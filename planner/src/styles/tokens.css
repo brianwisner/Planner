@@ -1,189 +1,129 @@
-/* Design tokens: every color, size and shadow the app uses.
-   Light theme by default; dark theme follows the device unless the person
-   picks one in Settings (stored as data-theme on <html>). */
+/* Design tokens: every color, size and radius the app uses.
+   Wisner Engineering look: warm ink on white, cream panels, corten accent.
+   The brand palette (first block) is the only thing a theme changes; every
+   other color points at it. Light by default; dark follows the device unless
+   the person picks one in Settings (stored as data-theme on <html>). */
 :root {
-  --font: 'Inter Variable', Inter, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  /* Brand palette */
+  --ink: #2a2420;        /* text, headings, primary buttons, in-progress bars */
+  --ink-2: #5c5148;      /* captions, labels, client names, meta lines */
+  --paper: #ffffff;      /* page background, cards */
+  --cream: #f5f0e8;      /* sidebar, soft panels, chips, table footers */
+  --stone: #d9d1c5;      /* outlines, hairlines, scheduled bars, planned hours */
+  --rule: #e6ded2;       /* row dividers, progress tracks */
+  --corten: #8b3d1f;     /* accent: eyebrows, late items, today markers */
+  --on-corten: #ffffff;
+  --placeholder: #7a6e64;
+
+  --font: 'Inter Variable', Inter, Arial, sans-serif;
   --mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
 
-  --bg: #f5f6f8;
-  --surface: #ffffff;
-  --surface-2: #f9fafb;
-  --surface-3: #f1f3f6;
-  --hover: #f2f4f7;
-  --border: #e4e7ec;
-  --border-strong: #d0d5dd;
-  --text: #101828;
-  --text-2: #475467;
-  --text-3: #667085;
-  --placeholder: #98a2b3;
+  --bg: var(--paper);
+  --surface: var(--paper);
+  --surface-2: var(--cream);
+  --surface-3: var(--cream);
+  --hover: var(--cream);
+  --border: var(--stone);
+  --border-strong: var(--stone);
+  --divider: var(--rule);
+  --track: var(--rule);
+  --text: var(--ink);
+  --text-2: var(--ink-2);
+  --text-3: var(--ink-2);
 
-  --accent: #2f5bea;
-  --accent-hover: #2249c4;
-  --accent-soft: #eef3ff;
-  --accent-soft-2: #dde7ff;
-  --accent-text: #2347bd;
-  --on-accent: #ffffff;
-  --focus: 0 0 0 3px rgba(47, 91, 234, 0.28);
+  /* "Accent" is ink: primary buttons, selected toggles, active marks.
+     Corten is kept for the few things that must stand out (see --late). */
+  --accent: var(--ink);
+  --accent-hover: color-mix(in srgb, var(--ink) 86%, var(--paper));
+  --accent-soft: var(--cream);
+  --accent-soft-2: var(--rule);
+  --accent-text: var(--ink);
+  --on-accent: var(--paper);
+  --focus: 0 0 0 1px var(--ink);
+  --late: var(--corten);
 
-  --ok: #12813f;
-  --ok-soft: #e3f8ea;
-  --warn: #b25e09;
-  --warn-soft: #fff4dc;
-  --danger: #d1293d;
-  --danger-soft: #fdecee;
-  --info: #0e7490;
-  --info-soft: #e2f6fa;
-  --visit: #7a3fe4;
-  --visit-soft: #f1ebff;
+  --ok: var(--ink);
+  --ok-soft: var(--cream);
+  --warn: var(--ink-2);
+  --warn-soft: var(--cream);
+  --danger: var(--corten);
+  --danger-soft: var(--cream);
+  --info: var(--ink);
+  --info-soft: var(--cream);
+  --visit: var(--ink);
+  --visit-soft: var(--cream);
 
-  /* Pipeline stages: used on the board, timeline, badges and charts. */
-  --st-bidding: #d97a06;
-  --st-bidding-soft: #fff3e0;
-  --st-ready: #0b8a7e;
-  --st-ready-soft: #ddf6f2;
-  --st-design: #2f5bea;
-  --st-design-soft: #e8efff;
-  --st-plan_check: #7a3fe4;
-  --st-plan_check-soft: #f0eaff;
-  --st-construction: #e35a12;
-  --st-construction-soft: #ffece1;
-  --st-client: #cf2f7d;
-  --st-client-soft: #fde8f2;
-  --st-hold: #8a94a6;
-  --st-hold-soft: #eef0f4;
+  /* Pipeline stages: no per-stage colors any more. Stages read as ink on
+     cream; held jobs as secondary text. */
+  --st-bidding: var(--ink);
+  --st-bidding-soft: var(--cream);
+  --st-ready: var(--ink);
+  --st-ready-soft: var(--cream);
+  --st-design: var(--ink);
+  --st-design-soft: var(--cream);
+  --st-plan_check: var(--ink);
+  --st-plan_check-soft: var(--cream);
+  --st-construction: var(--ink);
+  --st-construction-soft: var(--cream);
+  --st-client: var(--ink);
+  --st-client-soft: var(--cream);
+  --st-hold: var(--ink-2);
+  --st-hold-soft: var(--cream);
 
-  /* Money status (shared with charts) */
-  --m-paid: #12813f;
-  --m-deposit: #4aa36b;
-  --m-billed: #e2a312;
-  --m-unbilled: #d1293d;
-  --m-nonbillable: #98a2b3;
+  /* Money status (shared with charts): told apart by lightness, darkest =
+     furthest along (paid → invoiced → not billed → non-billable). */
+  --m-paid: var(--ink);
+  --m-deposit: var(--ink-2);
+  --m-billed: var(--ink-2);
+  --m-unbilled: var(--stone);
+  --m-nonbillable: var(--rule);
 
-  --radius-xs: 5px;
-  --radius-sm: 7px;
-  --radius: 10px;
-  --radius-lg: 14px;
-  --radius-xl: 18px;
+  --radius-xs: 2px;      /* chips, tags, timeline bars */
+  --radius-sm: 4px;      /* buttons, inputs */
+  --radius: 4px;
+  --radius-lg: 4px;      /* panels */
+  --radius-xl: 4px;
 
-  --shadow-xs: 0 1px 2px rgba(16, 24, 40, 0.05);
-  --shadow-sm: 0 1px 3px rgba(16, 24, 40, 0.07), 0 1px 2px rgba(16, 24, 40, 0.04);
-  --shadow: 0 4px 10px -2px rgba(16, 24, 40, 0.07), 0 2px 4px -2px rgba(16, 24, 40, 0.04);
-  --shadow-lg: 0 18px 40px -8px rgba(16, 24, 40, 0.2), 0 6px 12px -6px rgba(16, 24, 40, 0.08);
+  /* No shadows in this look; kept as names so old rules stay valid. */
+  --shadow-xs: none;
+  --shadow-sm: none;
+  --shadow: none;
+  --shadow-lg: none;
 
   --sidebar-w: 236px;
-  --topbar-h: 60px;
+  --topbar-h: 68px;
   --bottom-h: 64px;
-  --content-max: 1320px;
+  --content-max: 1276px;
 
   color-scheme: light;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme='light']) {
-    --bg: #0e1217;
-    --surface: #161b22;
-    --surface-2: #1b2129;
-    --surface-3: #212833;
-    --hover: #222a35;
-    --border: #2a323d;
-    --border-strong: #3a4452;
-    --text: #e8ecf1;
-    --text-2: #b4bfcc;
-    --text-3: #8b97a7;
-    --placeholder: #6b7686;
-    --accent: #5b82ff;
-    --accent-hover: #7797ff;
-    --accent-soft: #1b2645;
-    --accent-soft-2: #233259;
-    --accent-text: #9db4ff;
-    --focus: 0 0 0 3px rgba(91, 130, 255, 0.35);
-    --ok: #3ccf74;
-    --ok-soft: #12301f;
-    --warn: #f1aa45;
-    --warn-soft: #33260f;
-    --danger: #ff6b7d;
-    --danger-soft: #3a1820;
-    --info: #3ec5dd;
-    --info-soft: #0f2d33;
-    --visit: #b593ff;
-    --visit-soft: #2a1f45;
-    --st-bidding: #f1a33c;
-    --st-bidding-soft: #33250f;
-    --st-ready: #35c8b8;
-    --st-ready-soft: #0f2e2b;
-    --st-design: #6d90ff;
-    --st-design-soft: #1b2645;
-    --st-plan_check: #b593ff;
-    --st-plan_check-soft: #2a1f45;
-    --st-construction: #ff8a4c;
-    --st-construction-soft: #3a2010;
-    --st-client: #ff76b3;
-    --st-client-soft: #3a1729;
-    --st-hold: #8b97a7;
-    --st-hold-soft: #232a34;
-    --m-paid: #3ccf74;
-    --m-deposit: #2f9d5a;
-    --m-billed: #f1b43c;
-    --m-unbilled: #ff6b7d;
-    --m-nonbillable: #6b7686;
-    --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.3);
-    --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.35);
-    --shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
-    --shadow-lg: 0 18px 44px rgba(0, 0, 0, 0.55);
-    color-scheme: dark;
-  }
+/* Dark: warm charcoal ground, cream text, corten stays the accent.
+   Only the brand palette changes; keep this block and the one below in step. */
+:root[data-theme='dark'] {
+  --paper: #1d1916;      /* warm charcoal page */
+  --cream: #28231f;      /* sidebar and panels, a step lighter */
+  --rule: #3a332d;       /* row dividers */
+  --stone: #544a41;      /* outlines and scheduled bars: lighter than dividers */
+  --ink: #f5f0e8;        /* cream text, 15:1 on the page */
+  --ink-2: #bcb0a2;      /* captions, 7:1+ on page and panels */
+  --corten: #d9835d;     /* lifted so it reads on charcoal (5.4:1+) */
+  --on-corten: #1d1916;
+  --placeholder: #9a8e82;
+  color-scheme: dark;
 }
 
-:root[data-theme='dark'] {
-  --bg: #0e1217;
-  --surface: #161b22;
-  --surface-2: #1b2129;
-  --surface-3: #212833;
-  --hover: #222a35;
-  --border: #2a323d;
-  --border-strong: #3a4452;
-  --text: #e8ecf1;
-  --text-2: #b4bfcc;
-  --text-3: #8b97a7;
-  --placeholder: #6b7686;
-  --accent: #5b82ff;
-  --accent-hover: #7797ff;
-  --accent-soft: #1b2645;
-  --accent-soft-2: #233259;
-  --accent-text: #9db4ff;
-  --focus: 0 0 0 3px rgba(91, 130, 255, 0.35);
-  --ok: #3ccf74;
-  --ok-soft: #12301f;
-  --warn: #f1aa45;
-  --warn-soft: #33260f;
-  --danger: #ff6b7d;
-  --danger-soft: #3a1820;
-  --info: #3ec5dd;
-  --info-soft: #0f2d33;
-  --visit: #b593ff;
-  --visit-soft: #2a1f45;
-  --st-bidding: #f1a33c;
-  --st-bidding-soft: #33250f;
-  --st-ready: #35c8b8;
-  --st-ready-soft: #0f2e2b;
-  --st-design: #6d90ff;
-  --st-design-soft: #1b2645;
-  --st-plan_check: #b593ff;
-  --st-plan_check-soft: #2a1f45;
-  --st-construction: #ff8a4c;
-  --st-construction-soft: #3a2010;
-  --st-client: #ff76b3;
-  --st-client-soft: #3a1729;
-  --st-hold: #8b97a7;
-  --st-hold-soft: #232a34;
-  --m-paid: #3ccf74;
-  --m-deposit: #2f9d5a;
-  --m-billed: #f1b43c;
-  --m-unbilled: #ff6b7d;
-  --m-nonbillable: #6b7686;
-  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.3);
-  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.35);
-  --shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
-  --shadow-lg: 0 18px 44px rgba(0, 0, 0, 0.55);
-  color-scheme: dark;
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --paper: #1d1916;
+    --cream: #28231f;
+    --rule: #3a332d;
+    --stone: #544a41;
+    --ink: #f5f0e8;
+    --ink-2: #bcb0a2;
+    --corten: #d9835d;
+    --on-corten: #1d1916;
+    --placeholder: #9a8e82;
+    color-scheme: dark;
+  }
 }

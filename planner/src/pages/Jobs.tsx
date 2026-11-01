@@ -81,6 +81,7 @@ export function Jobs() {
   return <div className="jobs-page">
     <div className="page-head">
       <div className="titles">
+        <span className="eyebrow">Pipeline</span>
         <h1>Jobs</h1>
         <p className="lede">{counts.active} active · {counts.hold} on hold{view === 'board' ? ' — drag a job to move it to its next stage' : ' — drag ⋮⋮ to set your priority order'}</p>
       </div>

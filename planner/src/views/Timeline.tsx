@@ -62,6 +62,11 @@ export function Timeline() {
       <label className="switch small"><input type="checkbox" checked={showHold} onChange={e => setShowHold(e.target.checked)} />Show on-hold jobs</label>
       <button className="btn sm ghost" onClick={() => setCollapsed(allCollapsed ? [] : visibleJobs.map(j => j.id))}>{allCollapsed ? <><ChevronsUpDown size={15} /> Expand all</> : <><ChevronsDownUp size={15} /> Collapse all</>}</button>
     </div>
+    <div className="tl-legend">
+      <span><i className="live" />In progress</span>
+      <span><i />Scheduled</span>
+      <span><i className="now" />Today, {fmtDate(today)}</span>
+    </div>
 
     <div className="card tl-card">
       <div className="tl-scroll">
@@ -169,6 +174,8 @@ function PhaseRow({ phase, x, dayW, width, ticks, startDate }: { phase: Phase; x
     if (await store.update('phases', phase.id, { start_date: start, due_date: due })) store.toast(`${phase.name}: ${fmtDate(start)} – ${fmtDate(due)}`, 'ok', { label: 'Undo', run: () => store.update('phases', phase.id, { start_date: null, due_date: null }) })
   }
 
+  const today = todayISO()
+  const live = !!preview && preview.a <= today && today <= preview.b
   return <div className={`tl-row tl-phase-row ${phase.status}`} data-stage={stageKey}>
     <div className="tl-label tl-phase-label">
       <span className="grow truncate">{phaseLabel(phase)}</span>
@@ -176,7 +183,7 @@ function PhaseRow({ phase, x, dayW, width, ticks, startDate }: { phase: Phase; x
     </div>
     <div className={`tl-track ${!s ? 'tl-unset' : ''}`} style={{ width }} onClick={e2 => void setDates(e2)} title={!s ? 'Click to give this phase dates' : undefined}>
       <Backdrop ticks={ticks} dayW={dayW} />
-      {preview && <div className={`tl-bar ${drag ? 'dragging' : ''}`} style={{ left: x(preview.a), width: Math.max(dayW, x(preview.b) - x(preview.a) + dayW) }}
+      {preview && <div className={`tl-bar ${live ? 'live' : ''} ${drag ? 'dragging' : ''}`} style={{ left: x(preview.a), width: Math.max(dayW, x(preview.b) - x(preview.a) + dayW) }}
         onPointerDown={ev => down(ev, 'move')} onPointerMove={move} onPointerUp={() => void up()} onPointerCancel={() => setDrag(null)}
         title={`${phaseLabel(phase)}: ${fmtDate(preview.a)} – ${fmtDate(preview.b)}`} role="slider" aria-label={`${phase.name} dates`} aria-valuetext={`${fmtDate(preview.a)} to ${fmtDate(preview.b)}`}>
         <span className="tl-handle start" onPointerDown={ev => down(ev, 'start')} />

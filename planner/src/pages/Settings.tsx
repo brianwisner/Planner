@@ -128,7 +128,7 @@ export function Settings() {
 
   return <div className="settings-page">
     <div className="page-head">
-      <div className="titles"><h1>Settings</h1><p className="lede">Your rates, calendar sync and how the app looks.</p></div>
+      <div className="titles"><span className="eyebrow">Account</span><h1>Settings</h1><p className="lede">Your rates, calendar sync and how the app looks.</p></div>
       <div className="actions"><button className="btn" onClick={() => void signOut()}><LogOut size={16} /> Sign out</button></div>
     </div>
 
@@ -149,11 +149,6 @@ export function Settings() {
                 <NumberInput id="set-hours" value={profile.weekly_hours} onChange={v => setProfile(p => ({ ...p, weekly_hours: v }))} step={1} min={1} suffix="hours" />
               </Field>
             </div>
-            <Field label="Color">
-              <div className="color-row" role="radiogroup" aria-label="Profile color">
-                {COLORS.map(c => <button key={c} type="button" role="radio" aria-checked={profile.color === c} aria-label={c} className={`color-dot ${profile.color === c ? 'on' : ''}`} style={{ background: c }} onClick={() => setProfile(p => ({ ...p, color: c }))} />)}
-              </div>
-            </Field>
             <div className="row between wrap">
               <span className="small muted">Signed in as {me?.email ?? '—'}</span>
               <button className="btn primary" disabled={busy !== null}>{busy === 'profile' ? 'Saving…' : 'Save profile'}</button>

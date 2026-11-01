@@ -80,7 +80,7 @@ export function MonthCalendar({ month, onMonth }: { month: string; onMonth: (m: 
               <button className="mg-add" aria-label={`Add a task on ${format(d, 'MMMM d')}`} onClick={() => edit.task(undefined, { due_date: key })}><Plus size={13} /></button>
             </div>
             <div className="mg-items">
-              {list.slice(0, 4).map(it => <button key={it.id} className={`mg-item k-${it.kind} ${it.done ? 'done' : ''}`} data-stage={stageOf(it)} onClick={() => open(it)} title={`${it.title} — ${it.jobName}`}>
+              {list.slice(0, 4).map(it => <button key={it.id} className={`mg-item k-${it.kind} ${it.done ? 'done' : it.date < today ? 'late' : ''}`} data-stage={stageOf(it)} onClick={() => open(it)} title={`${it.title} — ${it.jobName}`}>
                 {it.kind === 'site_visit' ? <MapPin size={11} /> : it.kind !== 'task' ? <CalendarClock size={11} /> : <span className="mg-dot" />}
                 <span className="truncate">{it.time ? `${format(new Date(it.time), 'h:mma').toLowerCase()} ` : ''}{it.kind === 'task' || it.kind === 'site_visit' ? it.title : it.title.replace(/ — .*/, '')}</span>
               </button>)}
@@ -93,7 +93,7 @@ export function MonthCalendar({ month, onMonth }: { month: string; onMonth: (m: 
       {agendaDays.length === 0 && <div className="empty"><h3>Nothing scheduled</h3><p>Deadlines, tasks and site visits will show up here.</p></div>}
       {agendaDays.map(([date, list]) => <div key={date} className="agenda-day">
         <div className={`agenda-date ${date === today ? 'today' : ''} ${date < today ? 'past' : ''}`}><span className="ad-dow">{format(parseISO(date), 'EEE')}</span><span className="ad-num">{format(parseISO(date), 'd')}</span><span className="ad-mon">{format(parseISO(date), 'MMM')}</span></div>
-        <div className="agenda-items">{list.map(it => <div key={it.id} className={`agenda-item k-${it.kind} ${it.done ? 'done' : ''}`} data-stage={stageOf(it)}>
+        <div className="agenda-items">{list.map(it => <div key={it.id} className={`agenda-item k-${it.kind} ${it.done ? 'done' : it.date < today ? 'late' : ''}`} data-stage={stageOf(it)}>
           <button className="ai-main" onClick={() => open(it)}>
             <span className="ai-kind">{it.kind === 'site_visit' ? <MapPin size={14} /> : it.kind === 'task' ? <span className="mg-dot" /> : <CalendarClock size={14} />}</span>
             <span className="grow" style={{ minWidth: 0 }}><span className="strong" style={{ display: 'block' }}>{it.time && `${format(new Date(it.time), 'h:mm a')} · `}{it.title}</span><span className="tiny muted">{[it.jobName, it.clientName].filter(Boolean).join(' · ')}</span></span>

@@ -9,6 +9,16 @@ export function fmtDate(iso: string | null | undefined, style: 'short' | 'long' 
   return format(d, style === 'short' ? 'MMM d' : 'EEE, MMM d, yyyy')
 }
 
+/** Page eyebrows: "Saturday, October 31". */
+export function fmtLongDay(iso: string): string {
+  return format(parseISO(iso), 'EEEE, MMMM d')
+}
+
+/** Page eyebrows: "October 26" (as in "Week of October 26"). */
+export function fmtMonthDay(iso: string): string {
+  return format(parseISO(iso), 'MMMM d')
+}
+
 export function fmtDateTime(iso: string | null | undefined): string {
   if (!iso) return ''
   return format(new Date(iso), 'EEE, MMM d · h:mm a')

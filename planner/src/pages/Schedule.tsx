@@ -7,12 +7,12 @@ import { MonthCalendar } from '../views/MonthCalendar'
 import { Segmented } from '../components/ui'
 import { mondayOf } from '../lib/views'
 import { pref, setPref } from '../lib/theme'
-import { todayISO } from '../lib/utils'
+import { fmtMonthDay, todayISO } from '../lib/utils'
 
 type View = 'week' | 'timeline' | 'month'
 const LEDE: Record<View, string> = {
   week: 'Type the hours you plan to spend on each job. Totals show against the time you have.',
-  timeline: 'Phases on a calendar — drag bars to change dates.',
+  timeline: 'Phases on a calendar. Drag bars to change dates.',
   month: 'Deadlines, tasks and site visits. Click a day to add a task.',
 }
 
@@ -30,7 +30,7 @@ export function Schedule() {
   }, { replace: true })
   return <div className="schedule-page">
     <div className="page-head">
-      <div className="titles"><h1>Schedule</h1><p className="lede">{LEDE[view]}</p></div>
+      <div className="titles"><span className="eyebrow">{view === 'week' ? `Week of ${fmtMonthDay(week)}` : view === 'timeline' ? 'Timeline' : 'Calendar'}</span><h1>Schedule</h1><p className="lede">{LEDE[view]}</p></div>
       <div className="actions">
         <Segmented label="View" value={view} onChange={v => { setPref('schedule.view', v); patch({ view: v }) }} options={[
           { value: 'week', label: 'Week plan', icon: <LayoutList size={15} /> },
